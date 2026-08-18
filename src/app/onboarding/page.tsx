@@ -1,18 +1,17 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
-const ageBands = [
-  ['18_20', '18–20'], ['21_29', '21–29'], ['30_44', '30–44'], ['45_59', '45–59'], ['60_plus', '60+'],
-]
+const ageBands = [['18_20', '18–20'], ['21_29', '21–29'], ['30_44', '30–44'], ['45_59', '45–59'], ['60_plus', '60+']]
 const languages = [['en','English'],['ur','Urdu'],['hi','Hindi'],['ar','Arabic'],['es','Spanish'],['fr','French'],['de','German'],['tr','Turkish']]
 const generations = [['gen_z','Gen Z'],['millennial','Millennial'],['gen_x','Gen X'],['boomer','Boomer']]
 const genders = ['woman','man','non_binary','prefer_not_to_say']
 const interests = ['music','movies','gaming','anime','sports','technology','books','travel','food','art','fitness','memes']
 
 export default function OnboardingPage() {
-  const supabase = useMemo(() => createClient(), [])
+  const router = useRouter()
   const [step, setStep] = useState(1)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -28,10 +27,11 @@ export default function OnboardingPage() {
   const [profileVisible, setProfileVisible] = useState(true)
 
   useEffect(() => {
+    const supabase = createClient()
     void supabase.auth.getSession().then(({ data }) => {
-      if (!data.session) window.location.href = '/'
+      if (!data.session) router.replace('/')
     })
-  }, [supabase])
+  }, [router])
 
   function toggleInterest(value: string) {
     setSelectedInterests((current) => current.includes(value) ? current.filter((x) => x !== value) : current.length >= 8 ? current : [...current, value])
@@ -47,6 +47,7 @@ export default function OnboardingPage() {
 
   async function finish() {
     setBusy(true); setError('')
+    const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setError('Your session expired. Please start again.'); setBusy(false); return }
     const { error: profileError } = await supabase.from('profiles').upsert({
@@ -55,11 +56,16 @@ export default function OnboardingPage() {
       chat_language: chatLanguage, online_visible: onlineVisible, profile_visible: profileVisible, last_active_at: new Date().toISOString(),
     })
     if (profileError) { setError(profileError.message); setBusy(false); return }
-    await supabase.from('match_preferences').upsert({ profile_id: user.id, preferred_languages: [chatLanguage] })
-    const { data: rows } = await supabase.from('interests').select('id,slug').in('slug', selectedInterests)
+    const { error: preferenceError } = await supabase.from('match_preferences').upsert({ profile_id: user.id, preferred_languages: [chatLanguage] })
+    if (preferenceError) { setError(preferenceError.message); setBusy(false); return }
+    const { data: rows, error: interestError } = await supabase.from('interests').select('id,slug').in('slug', selectedInterests)
+    if (interestError) { setError(interestError.message); setBusy(false); return }
     await supabase.from('profile_interests').delete().eq('profile_id', user.id)
-    if (rows?.length) await supabase.from('profile_interests').insert(rows.map((row) => ({ profile_id: user.id, interest_id: row.id })))
-    window.location.href = '/app'
+    if (rows?.length) {
+      const { error: insertError } = await supabase.from('profile_interests').insert(rows.map((row) => ({ profile_id: user.id, interest_id: row.id })))
+      if (insertError) { setError(insertError.message); setBusy(false); return }
+    }
+    router.replace('/app')
   }
 
   function next() {
@@ -77,7 +83,7 @@ export default function OnboardingPage() {
         {step === 3 && <div><h2 className="text-xl font-semibold">What are you into?</h2><p className="mt-2 text-sm text-slate-400">Pick 3–8 interests. They help with discovery, not safety.</p><div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">{interests.map(value=><button type="button" key={value} onClick={()=>toggleInterest(value)} className={`rounded-xl border px-4 py-3 text-sm capitalize transition ${selectedInterests.includes(value)?'border-cyan-400 bg-cyan-400/10 text-cyan-200':'border-slate-700 bg-slate-950 hover:border-slate-500'}`}>{value}</button>)}</div><p className="mt-4 text-xs text-slate-500">{selectedInterests.length}/8 selected</p></div>}
         {step === 4 && <div><h2 className="text-xl font-semibold">Language & privacy</h2><p className="mt-2 text-sm text-slate-400">Your app language and chat language can be different.</p><div className="mt-6 grid gap-5 sm:grid-cols-2"><label className="text-sm">Interface language<select value={interfaceLanguage} onChange={e=>setInterfaceLanguage(e.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3">{languages.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label><label className="text-sm">Chat language<select value={chatLanguage} onChange={e=>setChatLanguage(e.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3">{languages.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label></div><div className="mt-7 space-y-3"><label className="flex items-center justify-between rounded-xl border border-slate-800 p-4"><span><span className="block text-sm font-medium">Show me online</span><span className="text-xs text-slate-500">Optional online directory visibility.</span></span><input type="checkbox" checked={onlineVisible} onChange={e=>setOnlineVisible(e.target.checked)} /></label><label className="flex items-center justify-between rounded-xl border border-slate-800 p-4"><span><span className="block text-sm font-medium">Profile discoverable</span><span className="text-xs text-slate-500">Let compatible users see your profile.</span></span><input type="checkbox" checked={profileVisible} onChange={e=>setProfileVisible(e.target.checked)} /></label></div></div>}
         {error && <p className="mt-6 rounded-xl border border-red-900 bg-red-950/40 p-3 text-sm text-red-200">{error}</p>}
-        <div className="mt-8 flex gap-3"><button type="button" disabled={busy} onClick={()=>step===1?window.location.href='/':setStep(step-1)} className="rounded-xl border border-slate-700 px-5 py-3 text-sm font-semibold">Back</button>{step<4?<button type="button" onClick={next} className="ml-auto rounded-xl bg-cyan-400 px-6 py-3 text-sm font-bold text-slate-950">Continue</button>:<button type="button" disabled={busy} onClick={finish} className="ml-auto rounded-xl bg-cyan-400 px-6 py-3 text-sm font-bold text-slate-950 disabled:opacity-50">{busy?'Saving…':'Enter ShahZap'}</button>}</div>
+        <div className="mt-8 flex gap-3"><button type="button" disabled={busy} onClick={()=>step===1?router.replace('/'):setStep(step-1)} className="rounded-xl border border-slate-700 px-5 py-3 text-sm font-semibold">Back</button>{step<4?<button type="button" onClick={next} className="ml-auto rounded-xl bg-cyan-400 px-6 py-3 text-sm font-bold text-slate-950">Continue</button>:<button type="button" disabled={busy} onClick={finish} className="ml-auto rounded-xl bg-cyan-400 px-6 py-3 text-sm font-bold text-slate-950 disabled:opacity-50">{busy?'Saving…':'Enter ShahZap'}</button>}</div>
       </section>
     </div>
   </main>
