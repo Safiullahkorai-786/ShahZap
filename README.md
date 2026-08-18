@@ -14,8 +14,8 @@ ShahZap is built deliberately in completed phases. **Do not move to the next pha
 | 4 | Real-time chat | ✅ Completed |
 | 5 | Safety | ✅ Completed |
 | 6 | Social | ✅ Completed |
-| 7 | Gamification | 🔄 In progress |
-| 8 | Rewards | ⏳ Not started |
+| 7 | Gamification | ✅ Completed |
+| 8 | Rewards | 🔄 In progress |
 | 9 | Monetization | ⏳ Not started |
 | 10 | Admin | ⏳ Not started |
 | 11 | SEO | ⏳ Not started |
@@ -23,162 +23,190 @@ ShahZap is built deliberately in completed phases. **Do not move to the next pha
 
 ## Current branch
 
-`feat/step-7-gamification`
+`feat/step-8-rewards`
 
-## Step 7 — Gamification
+## Step 8 — Rewards
 
-The product roadmap defines Step 7 as **Zap Points, XP, levels, streaks, quests, and achievements**. The original product discussion also specifies that XP should have real utility rather than being a meaningless number. fileciteturn233file0L33-L39
+The roadmap defines Step 8 as **Region Credits, Chat Passes, and rewards**. fileciteturn240file0L37-L43
 
-### Implemented database model
+The product discussion separates the reward economy into useful resources rather than meaningless points: Region Credits are for geographic targeting, while temporary rewards such as Chat Passes provide uninterrupted chat time. fileciteturn240file6L886-L897
 
-- `gamification_profiles`
-  - Zap Points balance
-  - XP balance
-  - level
-  - current streak
-  - longest streak
-  - last active date
-- `gamification_ledger`
-  - immutable-style event history for earn/spend/adjust operations
-  - source and metadata
-  - XP amount
-- `quests`
-  - daily / weekly / one-time cadence
-  - XP and Zap rewards
-- `quest_progress`
-  - per-user quest progress and period
-- `achievements`
-  - achievement definitions
-- `profile_achievements`
-  - unlocked achievement records
+### Implemented reward infrastructure
 
-### Progression logic
+#### Region Credits
 
-The database owns the main progression mutation through `gamification_apply_event` so the browser cannot simply edit its own XP/ZP totals.
+`region_credits` provides a server-side balance per profile.
+
+Purpose:
+
+- future country/region targeting
+- separate geographic resource from XP/Zap Points
+- private wallet state
+
+The source discussion explicitly proposes Region Credits as the resource for geographic targeting. fileciteturn240file6L962-L990
+
+#### Chat Passes
+
+`chat_passes` stores server-side pass state:
+
+- owner
+- source
+- started_at
+- expires_at
+- remaining_seconds
+- status
+- creation timestamp
+
+This is deliberately server-side. The source product design explicitly says the timer must survive refreshes, closing the browser, and switching chats rather than resetting in the client. fileciteturn240file5L843-L860
+
+The intended ShahZap UX is a 30-minute uninterrupted chat allowance, not an advertisement inserted into an active conversation. fileciteturn240file4L686-L715
+
+#### Rewards catalog
+
+`rewards_catalog` is data-driven and currently contains:
+
+- **30-Minute Chat Pass** — 150 Zap Points
+- **10 Region Credits** — 100 Zap Points
+- **Streak Shield** — 200 Zap Points
+- **Profile Highlight** — 250 Zap Points
+
+The exact prices are balancing values and can later be changed through the catalog without redesigning the application.
+
+#### Reward redemptions
+
+`reward_redemptions` records:
+
+- user
+- reward
+- actual Zap Point cost
+- redemption timestamp
+
+This gives the economy an auditable reward history.
+
+#### Streak Shields
+
+`streak_shields` stores the user's available protection balance separately from XP/ZP.
+
+The product discussion specifically proposes streak protection as a useful reward earned through activity, challenges, referrals, or similar legitimate actions. fileciteturn240file9L1342-L1355
+
+### Secure redemption
+
+Reward spending happens through the Supabase `redeem_reward` security-definer function.
 
 The function:
 
-1. Creates a gamification profile when necessary.
-2. Locks the user's progression row while updating it.
-3. Applies Zap Points and XP.
-4. Recalculates level from total XP.
-5. Updates daily activity streaks.
-6. Preserves the longest streak.
-7. Records the event in the gamification ledger.
+1. Requires authentication.
+2. Looks up an active reward by code.
+3. Locks the reward and user's gamification row.
+4. Verifies sufficient Zap Points.
+5. Deducts the exact catalog price server-side.
+6. Records the spend in the gamification ledger.
+7. Creates the correct reward entitlement.
+8. Records the redemption.
+9. Returns the remaining Zap Point balance.
 
-This is intentionally server-side because progression values are an economy and must not be trusted to client-side arithmetic.
+The browser never gets permission to directly modify the wallet balances.
 
-### Initial quests
+### Chat Pass activation
 
-Seeded mission definitions:
+`activate_chat_pass` verifies that the requested pass belongs to the authenticated user and is still available before activating it.
 
-- **Three Chats** — complete three valid conversations.
-- **15 Minutes** — spend 15 minutes in valid conversations.
-- **Shared Interest** — complete a conversation with a shared interest.
-- **Use Translation** — use translation during a conversation.
-- **Complete Profile** — complete profile setup.
+Activation establishes the server-side start/expiry state using the stored remaining allowance.
 
-The source product discussion gives these as examples of ShahZap Missions and explicitly connects them to XP/ZP progression. fileciteturn233file8L1319-L1330
+**Important future integration requirement:** the chat session must consume the pass's remaining seconds server-side. A UI countdown must never be the authority for time remaining.
 
-### Initial achievements
+### Rewards UI
 
-- First Chat
-- Ten Chats
-- Seven Day Streak
+`/rewards` provides:
 
-These are starter definitions and are intentionally data-driven so the achievement catalog can grow without changing the application schema.
+- Region Credits wallet
+- available Chat Pass count
+- Streak Shield balance
+- rewards catalog
+- Zap Point prices
+- one-click secure redemption
+- active/available Chat Pass display
 
-### Progression UI
+The authenticated app should link to this page as the reward wallet becomes part of the main navigation.
 
-`/progression` provides:
+## Economy boundaries
 
-- Zap Points
+Step 7 owns:
+
 - XP
-- current level
-- current streak
-- active mission list
-- reward values for each mission
+- levels
+- streaks
+- quests
+- achievements
+- Zap Point earning
 
-The authenticated application dashboard now links directly to Progression.
+Step 8 owns:
 
-## Economy design notes
+- Region Credits
+- Chat Passes
+- Streak Shields
+- reward catalog
+- reward redemption
+- reward wallet
 
-Zap Points are the main progression currency. The source discussion explicitly proposes spending ZP on useful personalization and perks such as display-name changes, avatar customization, profile customization, ad-free time, Region Credits, streak shields, and profile spotlight. Exact costs are intentionally treated as balancing values rather than permanently fixed product requirements. fileciteturn233file4L702-L722
+Step 9 owns:
 
-The source discussion also recommends a daily earning cap to prevent chat-bot farming and other economy abuse. A future reward implementation must preserve that anti-abuse principle rather than allowing unlimited passive chat earnings. fileciteturn233file8L1243-L1261
+- rewarded advertisements
+- Premium
+- monetization
+- country/region commercial targeting
 
-## Important implementation boundary
+Do not merge advertising implementation into Step 8. Step 8 provides the entitlement infrastructure that Step 9 can later grant through rewarded ads or Premium.
 
-Step 7 creates the **progression foundation**. Step 8 owns Region Credits, Chat Passes, and the broader rewards shop. Step 9 owns advertising and Premium monetization.
+## Product rules carried into Step 8
 
-Do not mix those later economies into Step 7 merely because the database already contains related legacy columns.
+### Never interrupt an active conversation
 
-## Existing architecture
+The source product requirement is explicit: ads should not interrupt an active conversation. The reward model is intended to exchange an opt-in reward action for uninterrupted chat time. fileciteturn240file4L743-L759
 
-### Step 1 — Foundation
+### Pass is session-level, not conversation-level
 
-- Next.js + TypeScript
-- responsive Tailwind UI
-- Supabase client/server foundations
-- GitHub Actions validation
-- Node 22 CI
-- production build validation
-- current Next.js proxy convention
+A Chat Pass represents chat-time allowance that can span multiple conversations. The source design explicitly gives the example of using the same remaining allowance across Chat #1, Next, Chat #2, etc. fileciteturn240file5L784-L798
 
-### Step 2 — Anonymous onboarding
+### Reward alternatives
 
-- pseudonymous profile
-- age band
-- gender/orientation
-- generation preference
-- interface language
-- chat language
-- interests
-- visibility preferences
+The product design supports obtaining a Chat Pass through different channels:
 
-### Step 3 — Matching
+- free rewarded-ad flow — Step 9
+- Zap Point redemption — Step 8
+- Premium entitlement — Step 9
+- earned/referral/admin grants — Step 8 infrastructure
 
-Safety → age compatibility → preferences → language → generation → interests → region → random fallback.
-
-Includes match queue, compatibility scoring, configurable interest timeout, block-aware matching, and matched conversation creation.
-
-### Step 4 — Real-time chat
-
-- authenticated conversation route
-- message history
-- message sending
-- Supabase Realtime
-- original/translated message architecture
-- Next navigation
-- participant-aware RLS
-
-### Step 5 — Safety
-
-- report
-- block
-- report reasons
-- safety controls in chat
-- block-aware matching/social interactions
-- RLS protections
-
-### Step 6 — Social
-
-- friend requests
-- accept/decline/cancel
-- friends list
-- profile viewing
-- visibility-aware profile display
-- block-aware requests
-- social RLS
+The source discussion explicitly describes the free/reward/Premium hierarchy. fileciteturn240file5L799-L820
 
 ## Security rules
 
-- Never allow browser code to directly mutate XP, ZP, level, or streak totals.
-- Use authenticated server-side/RPC operations for progression mutations.
-- Keep the gamification ledger protected by RLS.
-- Quest and achievement definitions can be read by authenticated users only when active.
-- User progress and unlocked achievements are private to the owning profile.
-- Do not use client-side balances as authoritative economy state.
+- Never mutate reward balances directly from browser code.
+- Keep Region Credits private to the owning profile.
+- Keep Chat Passes private to the owning profile.
+- Keep Streak Shields private to the owning profile.
+- Only active catalog rewards are publicly readable to authenticated users.
+- Reward redemption must be authenticated and server-side.
+- Every spend must be represented in the gamification ledger and redemption table.
+- Chat Pass timing must remain server-authoritative.
+- Later rewarded-ad and Premium grants must use trusted server-side entitlement issuance.
+
+## Existing architecture
+
+### Steps 1–7
+
+Foundation, onboarding, matching, real-time chat, safety, social, and gamification are completed before Step 8.
+
+Key existing systems include:
+
+- Next.js + TypeScript + Tailwind
+- Supabase Auth/Postgres/Realtime
+- profile and privacy controls
+- match queue and compatibility RPC
+- real-time conversations/messages
+- report/block safety layer
+- friends/profile system
+- XP/ZP/levels/streaks/quests/achievements
 
 ## AI handoff instructions
 
@@ -186,14 +214,14 @@ If another AI takes over:
 
 1. Read this README completely.
 2. Inspect the current branch and latest commit.
-3. Check GitHub Actions for the latest commit before changing code.
-4. Inspect the Supabase schema and RLS before changing economy logic.
-5. Preserve the staged roadmap.
-6. Do not mark Step 7 complete until CI and acceptance checks are green.
-7. Update this README whenever Step 7 changes.
-8. Keep later Step 8/9 features separated from Step 7 unless the master specification explicitly requires shared infrastructure.
+3. Check GitHub Actions for the latest commit.
+4. Inspect Supabase RLS and reward functions before modifying economy code.
+5. Treat server-side wallet state as authoritative.
+6. Do not implement Step 9 advertising/Premium as part of Step 8.
+7. Do not mark Step 8 complete until CI and acceptance checks are green.
+8. Update this README with every significant Step-8 change.
 
-When fixing CI:
+CI/debug process:
 
 `identify exact failure → smallest correct fix → commit → wait for CI → inspect result → repeat until green.`
 
@@ -205,8 +233,8 @@ When fixing CI:
 4. Real-time chat — completed
 5. Safety — completed
 6. Social — completed
-7. Gamification — **current**
-8. Rewards
+7. Gamification — completed
+8. Rewards — **current**
 9. Monetization
 10. Admin
 11. SEO
