@@ -1,9 +1,11 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 export function StartShahZap() {
+  const router = useRouter()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -11,9 +13,9 @@ export function StartShahZap() {
     setBusy(true)
     setError('')
     const supabase = createClient()
-    const { data, error: authError } = await supabase.auth.getSession()
+    const { data } = await supabase.auth.getSession()
     if (data.session) {
-      window.location.href = '/onboarding'
+      router.push('/onboarding')
       return
     }
     const { error: signInError } = await supabase.auth.signInAnonymously()
@@ -22,7 +24,7 @@ export function StartShahZap() {
       setBusy(false)
       return
     }
-    window.location.href = '/onboarding'
+    router.push('/onboarding')
   }
 
   return <div className="flex flex-col items-center gap-3 sm:flex-row">
