@@ -16,153 +16,149 @@ Anonymous social discovery, random chat, intelligent matching, translation, prog
 | 8 | Rewards | ✅ Completed |
 | 9 | Monetization | ✅ Completed |
 | 10 | Admin | ✅ Completed |
-| 11 | SEO | 🔄 In progress |
-| 12 | PWA/mobile preparation | ⏳ Not started |
+| 11 | SEO | ✅ Completed |
+| 12 | PWA/mobile preparation | 🔄 In progress |
 
 ## Current branch
 
-`feat/step-11-seo`
+`feat/step-12-pwa`
 
-## Step 11 — SEO
+## Step 12 — PWA / Mobile Preparation
 
-The product specification defines Step 11 as **public pages, metadata, sitemap, structured data, and blog**. fileciteturn254file0L49-L55
+Step 12 is the final roadmap phase in the original 12-step build plan. It prepares ShahZap to behave like a mobile-first installable web application without prematurely creating separate native iOS/Android applications.
 
-### SEO architecture
+### Implemented
 
-SEO is deliberately separated from the authenticated application. Private areas such as chats, matching, friends and progression are not included in the public sitemap and are disallowed for crawlers.
+- `public/manifest.webmanifest`
+  - app name and short name
+  - standalone display mode
+  - portrait orientation
+  - theme/background colors
+  - installable web-app metadata
+- `src/app/icon.svg`
+  - ShahZap application icon
+- `src/app/layout.tsx`
+  - manifest metadata
+  - theme color
+  - application icon
+- `public/sw.js`
+  - minimal service worker
+  - install/activate lifecycle
+  - same-origin GET fallback
+  - offline fallback to cached homepage
+- `src/components/PwaRegister.tsx`
+  - browser-side service-worker registration
+  - HTTPS-only registration
 
-The source product discussion explicitly recommends a public SEO layer rather than indexing private conversations. fileciteturn254file7L990-L1012
+### Security boundary
 
-### Public routes
+The service worker must not cache private conversations, authenticated user data, tokens, admin data, or personalized API responses. The current implementation only provides a minimal shell fallback and does not turn private ShahZap data into an offline cache.
 
-Implemented public content routes include:
+### Mobile-first rule
 
-- `/`
-- `/random-chat`
-- `/anonymous-chat`
-- `/chat-with-strangers`
-- `/gender-chat`
-- `/country-chat`
-- `/translate-chat`
-- `/meet-new-people`
-- `/how-it-works`
-- `/safety`
-- `/privacy`
-- `/faq`
-- `/about`
-- `/blog`
-
-These correspond to the public information architecture discussed in the product specification. fileciteturn254file3L318-L334
-
-### Metadata
-
-The public layout provides:
-
-- descriptive page titles
-- descriptions
-- canonical URLs
-- Open Graph metadata
-- Twitter metadata
-- ShahZap site/application identity
-
-The homepage is written as actual useful content rather than only a Start Chatting button. The source specification explicitly calls for human-readable homepage content explaining anonymous discovery, worldwide connections, matching, translation, safety and rewards. fileciteturn254file8L1136-L1161
-
-### Sitemap
-
-Next.js `sitemap.ts` generates `/sitemap.xml` containing only public SEO routes.
-
-Private routes are intentionally excluded.
-
-### Robots
-
-Next.js `robots.ts` generates `/robots.txt`.
-
-It allows public content and disallows private application areas including:
-
-- `/app`
-- `/chat`
-- `/matching`
-- `/friends`
-- `/profile`
-- `/progression`
-- `/rewards`
-- `/premium`
-- `/admin`
-- `/api/`
-
-The admin route is especially important: **ordinary users should never see an admin button/link, and search engines should not discover the admin interface through the public SEO layer.** Authorization remains server/database enforced separately from robots rules.
-
-### Structured data
-
-Added a reusable JSON-LD component and public `WebSite` + `WebApplication` structured data.
-
-We intentionally do not generate fake structured data for every page. The source plan explicitly says to use Schema.org types where they actually apply and avoid fake rich-result markup. fileciteturn254file2L232-L240
-
-### Blog
-
-`/blog` is included as a public educational entry point. Initial content focuses on genuine ShahZap topics such as online safety, pseudonymous chat, and cross-language communication.
-
-The architecture is intentionally content-first rather than generating thousands of near-identical keyword pages. The product specification warns against doorway/scaled-content patterns. fileciteturn254file9L1325-L1356
-
-### Search Console
-
-The application exposes the sitemap required for later Google Search Console submission:
-
-`https://shahzap.com/sitemap.xml`
-
-Actual Search Console ownership/verification and domain submission remain deployment/ownership tasks and are not faked in source code.
-
-### Performance principles
-
-Public SEO pages should remain lightweight and mobile-first. The source plan specifically identifies LCP, INP and CLS as important performance considerations and rejects unnecessarily heavy homepage media. fileciteturn254file8L1125-L1135
+PWA work does not replace responsive web design. All existing application flows remain web-first and responsive. Native mobile applications should only be created later if product usage justifies them.
 
 ## Admin visibility rule
 
-The `/admin` page is never part of normal navigation. It must remain invisible to ordinary users.
+The Admin area remains invisible to ordinary users:
 
-There are two separate protections:
+1. no normal navigation link/button;
+2. database staff authorization remains mandatory;
+3. `/admin` remains excluded from SEO/sitemap/crawling;
+4. manually entering `/admin` does not grant access.
 
-1. **UI visibility** — ordinary users receive no Admin button/link.
-2. **Authorization** — the database staff check rejects non-staff users even if they manually enter `/admin`.
+PWA installation does not change this rule.
 
-Robots rules are only an additional crawl-control layer; they are not security.
+## Provider credentials
 
-## Existing architecture
+Production ad/payment provider credentials are deliberately not committed to Git. They will be configured as deployment secrets when the complete product is ready for real monetization activation.
 
-Steps 1–10 are completed before Step 11.
+## Validation requirements for Step 12
 
-Key systems include:
+Before Step 12 is marked complete:
 
-- Next.js + TypeScript + Tailwind
-- Supabase Auth/Postgres/Realtime
-- anonymous/pseudonymous profiles
-- compatibility matching
-- real-time chat
-- translation architecture
-- safety/report/block
-- friends/profile system
-- XP/ZP/levels/streaks/quests/achievements
-- Region Credits
-- Chat Passes
-- rewards catalog/redemption
-- Premium/ad monetization foundation
-- protected admin/moderation system
-- public SEO layer
+- TypeScript/build must pass.
+- CI must be green.
+- Manifest must be reachable.
+- Service worker must register only in a secure browser context.
+- No private/authenticated data may be added to the offline cache.
+- Existing authenticated routes must continue working normally.
+- Admin visibility/authorization must remain intact.
+- README must be updated with final implementation and handoff details.
+
+## What comes after Step 12?
+
+The original 12-step implementation roadmap ends with Step 12. That means the next phase should **not** be another arbitrary feature number. It should be a **post-roadmap production hardening and launch phase**.
+
+Recommended order after Step 12:
+
+### Phase 13A — Full-system audit
+
+- review Steps 1–12 together
+- verify database schema and RLS
+- test auth/session edge cases
+- test matching/safety/chat flows
+- test rewards/economy integrity
+- test monetization boundaries
+- test admin authorization
+- verify SEO/private-route separation
+- verify PWA behavior
+
+### Phase 13B — Production infrastructure
+
+- production domain/DNS
+- Cloudflare configuration
+- Supabase production configuration
+- environment variables/secrets
+- backups and recovery
+- logging/monitoring
+- rate limits and abuse protection
+- error tracking
+
+### Phase 13C — Real provider activation
+
+Only after the core product passes the audit:
+
+- production ad provider
+- rewarded-ad server verification
+- payment provider
+- subscription webhooks
+- payment reconciliation
+- App Store/Play Store accounts if native apps are later created
+
+### Phase 13D — Launch readiness
+
+- legal/privacy/terms review
+- age/safety policy review
+- moderation operations
+- support/contact flows
+- analytics
+- Search Console
+- production performance tests
+- staging-to-production release checklist
+
+### Phase 13E — Launch + iteration
+
+- controlled beta
+- monitor abuse and retention
+- balance rewards economy
+- monitor infrastructure costs
+- fix production issues
+- prioritize improvements from real usage
 
 ## AI handoff instructions
 
 If another AI takes over:
 
 1. Read this README completely.
-2. Inspect the current branch and latest commit.
-3. Check GitHub Actions before changing code.
-4. Keep private application routes out of the sitemap.
-5. Never expose admin navigation to ordinary users.
-6. Never treat robots.txt as an authorization mechanism.
-7. Preserve canonical metadata and public content quality.
-8. Do not create mass low-value keyword pages.
-9. Update this README after meaningful Step-11 changes.
-10. Do not mark Step 11 complete until SEO routes, metadata, sitemap, robots, structured data, build and CI are green.
+2. Inspect `feat/step-12-pwa` and the latest CI result.
+3. Do not declare Step 12 complete until the validation requirements above are green.
+4. Do not start Phase 13 until Step 12 is complete.
+5. After Step 12, use the post-roadmap phases documented here rather than inventing a new feature roadmap.
+6. Never commit production credentials.
+7. Preserve the Admin visibility rule.
+8. Keep private data out of service-worker caches.
+9. Update this README after every major production-hardening decision.
 
 CI/debug process:
 
@@ -180,5 +176,6 @@ CI/debug process:
 8. Rewards — completed
 9. Monetization — completed
 10. Admin — completed
-11. SEO — **current**
-12. PWA/mobile preparation
+11. SEO — completed
+12. PWA/mobile preparation — **current**
+13. Production hardening & launch — next after Step 12
