@@ -1,10 +1,8 @@
 # ⚡ ShahZap
 
-Anonymous social discovery, random chat, intelligent matching, translation, progression, rewards, monetization, moderation, and privacy-first social features.
+Anonymous social discovery, random chat, intelligent matching, translation, progression, rewards, monetization, moderation, SEO, and privacy-first social features.
 
 ## Build status
-
-ShahZap is built deliberately in completed phases. **Do not move to the next phase until the current phase's implementation, database/security work, CI validation, and acceptance checks are complete.**
 
 | Step | Area | Status |
 |---|---|---|
@@ -17,129 +15,121 @@ ShahZap is built deliberately in completed phases. **Do not move to the next pha
 | 7 | Gamification | ✅ Completed |
 | 8 | Rewards | ✅ Completed |
 | 9 | Monetization | ✅ Completed |
-| 10 | Admin | 🔄 In progress |
-| 11 | SEO | ⏳ Not started |
+| 10 | Admin | ✅ Completed |
+| 11 | SEO | 🔄 In progress |
 | 12 | PWA/mobile preparation | ⏳ Not started |
 
 ## Current branch
 
-`feat/step-10-admin`
+`feat/step-11-seo`
 
-## Step 10 — Admin & Moderation
+## Step 11 — SEO
 
-Step 10 is the operational control layer for ShahZap. It must remain separate from normal user permissions and must be auditable.
+The product specification defines Step 11 as **public pages, metadata, sitemap, structured data, and blog**. fileciteturn254file0L49-L55
 
-### Database model
+### SEO architecture
 
-#### `admin_roles`
+SEO is deliberately separated from the authenticated application. Private areas such as chats, matching, friends and progression are not included in the public sitemap and are disallowed for crawlers.
 
-Maps a profile to a restricted staff role:
+The source product discussion explicitly recommends a public SEO layer rather than indexing private conversations. fileciteturn254file7L990-L1012
 
-- `admin`
-- `moderator`
+### Public routes
 
-The table is protected by RLS and a user can only see their own role record.
+Implemented public content routes include:
 
-#### `admin_audit_log`
+- `/`
+- `/random-chat`
+- `/anonymous-chat`
+- `/chat-with-strangers`
+- `/gender-chat`
+- `/country-chat`
+- `/translate-chat`
+- `/meet-new-people`
+- `/how-it-works`
+- `/safety`
+- `/privacy`
+- `/faq`
+- `/about`
+- `/blog`
 
-Records staff actions:
+These correspond to the public information architecture discussed in the product specification. fileciteturn254file3L318-L334
 
-- actor
-- action
-- target type
-- target ID
-- metadata
-- timestamp
+### Metadata
 
-Audit records are readable only by staff.
+The public layout provides:
 
-#### `moderation_actions`
+- descriptive page titles
+- descriptions
+- canonical URLs
+- Open Graph metadata
+- Twitter metadata
+- ShahZap site/application identity
 
-Records operational moderation actions:
+The homepage is written as actual useful content rather than only a Start Chatting button. The source specification explicitly calls for human-readable homepage content explaining anonymous discovery, worldwide connections, matching, translation, safety and rewards. fileciteturn254file8L1136-L1161
 
-- warn
-- mute
-- suspend
-- unsuspend
-- review
-- dismiss_report
+### Sitemap
 
-Each action records its staff actor, target profile/message where applicable, reason, expiry and creation time.
+Next.js `sitemap.ts` generates `/sitemap.xml` containing only public SEO routes.
 
-### Staff authorization
+Private routes are intentionally excluded.
 
-The database owns staff checks through:
+### Robots
 
-- `is_staff()`
-- `is_admin()`
+Next.js `robots.ts` generates `/robots.txt`.
 
-Admin operations must not rely on a hidden route or client-side boolean. The server/database authorization boundary is authoritative.
+It allows public content and disallows private application areas including:
 
-### Admin dashboard
+- `/app`
+- `/chat`
+- `/matching`
+- `/friends`
+- `/profile`
+- `/progression`
+- `/rewards`
+- `/premium`
+- `/admin`
+- `/api/`
 
-`/admin` is a protected operational screen.
+The admin route is especially important: **ordinary users should never see an admin button/link, and search engines should not discover the admin interface through the public SEO layer.** Authorization remains server/database enforced separately from robots rules.
 
-It:
+### Structured data
 
-- verifies the authenticated session;
-- checks the user's staff role;
-- denies non-staff users;
-- shows recent moderation actions;
-- shows recent audit events;
-- does not expose admin data to ordinary users.
+Added a reusable JSON-LD component and public `WebSite` + `WebApplication` structured data.
 
-### Admin action recording
+We intentionally do not generate fake structured data for every page. The source plan explicitly says to use Schema.org types where they actually apply and avoid fake rich-result markup. fileciteturn254file2L232-L240
 
-`admin_record_action()` is the server-side audit entry point.
+### Blog
 
-It verifies staff access before inserting an audit event.
+`/blog` is included as a public educational entry point. Initial content focuses on genuine ShahZap topics such as online safety, pseudonymous chat, and cross-language communication.
 
-Client helper:
+The architecture is intentionally content-first rather than generating thousands of near-identical keyword pages. The product specification warns against doorway/scaled-content patterns. fileciteturn254file9L1325-L1356
 
-`src/lib/admin.ts`
+### Search Console
 
-The client helper is only a convenience wrapper around the protected RPC; it is not an authorization mechanism.
+The application exposes the sitemap required for later Google Search Console submission:
 
-## Security requirements
+`https://shahzap.com/sitemap.xml`
 
-- Never trust `/admin` route visibility as authorization.
-- Never let ordinary users write audit records.
-- Never let ordinary users read moderation records.
-- Staff actions must be auditable.
-- Keep actor identity on every moderation/audit event.
-- Keep production payment/ad credentials out of Git.
-- Admin UI must not bypass the existing report/block/safety protections.
+Actual Search Console ownership/verification and domain submission remain deployment/ownership tasks and are not faked in source code.
 
-## Operational boundaries
+### Performance principles
 
-### Step 5 owns
+Public SEO pages should remain lightweight and mobile-first. The source plan specifically identifies LCP, INP and CLS as important performance considerations and rejects unnecessarily heavy homepage media. fileciteturn254file8L1125-L1135
 
-Safety reports, blocks and user safety controls.
+## Admin visibility rule
 
-### Step 8 owns
+The `/admin` page is never part of normal navigation. It must remain invisible to ordinary users.
 
-Rewards and user economy.
+There are two separate protections:
 
-### Step 9 owns
+1. **UI visibility** — ordinary users receive no Admin button/link.
+2. **Authorization** — the database staff check rejects non-staff users even if they manually enter `/admin`.
 
-Monetization, Premium and provider-neutral ad/payment entitlement infrastructure.
-
-### Step 10 owns
-
-Operational administration:
-
-- staff roles
-- moderation actions
-- audit trail
-- operational review interface
-- future revenue/monetization configuration controls
-- future abuse/fraud review tools
-
-Provider credentials remain outside source control and will be configured later when the full product is ready for real ad/payment activation.
+Robots rules are only an additional crawl-control layer; they are not security.
 
 ## Existing architecture
 
-Steps 1–9 are completed before Step 10.
+Steps 1–10 are completed before Step 11.
 
 Key systems include:
 
@@ -156,6 +146,8 @@ Key systems include:
 - Chat Passes
 - rewards catalog/redemption
 - Premium/ad monetization foundation
+- protected admin/moderation system
+- public SEO layer
 
 ## AI handoff instructions
 
@@ -164,12 +156,13 @@ If another AI takes over:
 1. Read this README completely.
 2. Inspect the current branch and latest commit.
 3. Check GitHub Actions before changing code.
-4. Inspect admin RLS and staff functions before modifying authorization.
-5. Never make the client the source of truth for staff permissions.
-6. Never commit production secrets.
-7. Preserve the audit trail when adding administrative operations.
-8. Update this README after meaningful Step-10 changes.
-9. Do not mark Step 10 complete until UI, authorization, database/RLS, CI and acceptance checks are green.
+4. Keep private application routes out of the sitemap.
+5. Never expose admin navigation to ordinary users.
+6. Never treat robots.txt as an authorization mechanism.
+7. Preserve canonical metadata and public content quality.
+8. Do not create mass low-value keyword pages.
+9. Update this README after meaningful Step-11 changes.
+10. Do not mark Step 11 complete until SEO routes, metadata, sitemap, robots, structured data, build and CI are green.
 
 CI/debug process:
 
@@ -186,19 +179,6 @@ CI/debug process:
 7. Gamification — completed
 8. Rewards — completed
 9. Monetization — completed
-10. Admin — **current**
-11. SEO
+10. Admin — completed
+11. SEO — **current**
 12. PWA/mobile preparation
-
-## Product principles
-
-- Privacy-first anonymous/pseudonymous social discovery.
-- Safety and age compatibility come before matching preferences.
-- Generation is a discovery preference, never the primary safety boundary.
-- Interface language and chat language are independent.
-- Never interrupt an active conversation with an advertisement.
-- Rewarded ads are opt-in exchanges for useful entitlements.
-- Premium is a subscription entitlement, not a client-side flag.
-- Public SEO content is separate from private conversations.
-- Web is mobile-first and PWA-ready.
-- Rewards should encourage meaningful activity and resist abuse.
