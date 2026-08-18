@@ -15,198 +15,245 @@ ShahZap is built deliberately in completed phases. **Do not move to the next pha
 | 5 | Safety | ✅ Completed |
 | 6 | Social | ✅ Completed |
 | 7 | Gamification | ✅ Completed |
-| 8 | Rewards | 🔄 In progress |
-| 9 | Monetization | ⏳ Not started |
+| 8 | Rewards | ✅ Completed |
+| 9 | Monetization | 🔄 In progress |
 | 10 | Admin | ⏳ Not started |
 | 11 | SEO | ⏳ Not started |
 | 12 | PWA/mobile preparation | ⏳ Not started |
 
 ## Current branch
 
-`feat/step-8-rewards`
+`feat/step-9-monetization`
 
-## Step 8 — Rewards
+## Step 9 — Monetization
 
-The roadmap defines Step 8 as **Region Credits, Chat Passes, and rewards**. fileciteturn240file0L37-L43
+The master roadmap defines Step 9 as **Rewarded Ads + Premium + country/region targeting**. fileciteturn245file0L41-L43
 
-The product discussion separates the reward economy into useful resources rather than meaningless points: Region Credits are for geographic targeting, while temporary rewards such as Chat Passes provide uninterrupted chat time. fileciteturn240file6L886-L897
+The monetization philosophy is intentionally different from traditional interruptive chat advertising: users should voluntarily exchange an ad interaction for a valuable Chat Pass, and an active conversation must never be interrupted by an advertisement. fileciteturn245file3L420-L441
 
-### Implemented reward infrastructure
+### Monetization architecture
 
-#### Region Credits
+Step 9 consists of three separate but connected systems:
 
-`region_credits` provides a server-side balance per profile.
+1. **Rewarded advertising** — optional ad interaction grants a server-issued 30-minute Chat Pass.
+2. **Premium** — subscription entitlement provides unlimited ad-free Chat Pass access and premium geographic targeting.
+3. **Country/region targeting** — commercial targeting configuration is separated from the user's private matching preferences.
 
-Purpose:
+### Database model
 
-- future country/region targeting
-- separate geographic resource from XP/Zap Points
-- private wallet state
+#### `premium_plans`
 
-The source discussion explicitly proposes Region Credits as the resource for geographic targeting. fileciteturn240file6L962-L990
+Stores:
 
-#### Chat Passes
+- plan code
+- title
+- description
+- duration
+- price in minor currency units
+- currency
+- active state
 
-`chat_passes` stores server-side pass state:
+Seed plans:
 
-- owner
-- source
-- started_at
-- expires_at
-- remaining_seconds
+- `premium_monthly` — 30 days — USD 9.99
+- `premium_yearly` — 365 days — USD 79.99
+
+These are catalog defaults, not hard-coded checkout amounts. A real payment provider must remain the authority for successful payment.
+
+#### `premium_subscriptions`
+
+Stores:
+
+- profile
+- plan
+- subscription status
+- start/end time
+- provider
+- provider subscription ID
+- update timestamps
+
+This separates the application entitlement from the payment provider. Webhook/server verification should update this table after a successful purchase or cancellation.
+
+#### `ad_reward_events`
+
+Stores rewarded-ad entitlement events:
+
+- profile
+- ad provider
+- ad unit
+- provider event ID
+- reward type/value
 - status
-- creation timestamp
+- grant time
 
-This is deliberately server-side. The source product design explicitly says the timer must survive refreshes, closing the browser, and switching chats rather than resetting in the client. fileciteturn240file5L843-L860
+A partial unique index prevents the same provider event ID from granting the reward twice.
 
-The intended ShahZap UX is a 30-minute uninterrupted chat allowance, not an advertisement inserted into an active conversation. fileciteturn240file4L686-L715
+#### `monetization_targeting`
 
-#### Rewards catalog
+Stores commercial country/region settings:
 
-`rewards_catalog` is data-driven and currently contains:
+- country code
+- region code
+- Premium enabled/disabled
+- rewarded ads enabled/disabled
+- ad frequency cap
+- metadata
+- active state
 
-- **30-Minute Chat Pass** — 150 Zap Points
-- **10 Region Credits** — 100 Zap Points
-- **Streak Shield** — 200 Zap Points
-- **Profile Highlight** — 250 Zap Points
+This is intentionally distinct from matching preferences and Region Credits.
 
-The exact prices are balancing values and can later be changed through the catalog without redesigning the application.
+### Rewarded Chat Pass flow
 
-#### Reward redemptions
+The intended user experience is:
 
-`reward_redemptions` records:
+`User wants a new chat`
 
-- user
-- reward
-- actual Zap Point cost
-- redemption timestamp
+→ `No active Premium / pass`
 
-This gives the economy an auditable reward history.
+→ `Offer optional rewarded ad`
 
-#### Streak Shields
+→ `User explicitly opts in`
 
-`streak_shields` stores the user's available protection balance separately from XP/ZP.
+→ `Ad provider confirms reward`
 
-The product discussion specifically proposes streak protection as a useful reward earned through activity, challenges, referrals, or similar legitimate actions. fileciteturn240file9L1342-L1355
+→ `Server validates provider event`
 
-### Secure redemption
+→ `Server creates 1 × 30-minute Chat Pass`
 
-Reward spending happens through the Supabase `redeem_reward` security-definer function.
+→ `User chats without ad interruption`
 
-The function:
+The source product discussion explicitly defines the 1-ad → 30-minute pass model and says ads should never appear inside an active conversation. fileciteturn245file5L650-L687
 
-1. Requires authentication.
-2. Looks up an active reward by code.
-3. Locks the reward and user's gamification row.
-4. Verifies sufficient Zap Points.
-5. Deducts the exact catalog price server-side.
-6. Records the spend in the gamification ledger.
-7. Creates the correct reward entitlement.
-8. Records the redemption.
-9. Returns the remaining Zap Point balance.
+### Critical anti-abuse rule
 
-The browser never gets permission to directly modify the wallet balances.
+**The browser must never be allowed to claim a rewarded ad merely by calling a client RPC.**
 
-### Chat Pass activation
+The database entitlement function is designed around a trusted provider event ID and duplicate protection. The final provider adapter must verify the provider's server-side reward callback/token before calling the grant operation.
 
-`activate_chat_pass` verifies that the requested pass belongs to the authenticated user and is still available before activating it.
+The client-side `src/lib/monetization.ts` therefore represents application helpers, not proof that an advertisement was watched.
 
-Activation establishes the server-side start/expiry state using the stored remaining allowance.
+### Chat Pass behavior
 
-**Important future integration requirement:** the chat session must consume the pass's remaining seconds server-side. A UI countdown must never be the authority for time remaining.
+A pass is session-level, not conversation-level.
 
-### Rewards UI
+For example:
 
-`/rewards` provides:
+- Chat #1: 8 minutes
+- Next
+- Chat #2: 4 minutes
+- Next
+- Chat #3: 12 minutes
+- Total used: 24 minutes
 
-- Region Credits wallet
-- available Chat Pass count
-- Streak Shield balance
-- rewards catalog
-- Zap Point prices
-- one-click secure redemption
-- active/available Chat Pass display
+The remaining allowance belongs to the user/pass, not to an individual conversation. fileciteturn245file4L690-L704
 
-The authenticated app should link to this page as the reward wallet becomes part of the main navigation.
+When the pass expires during an active conversation:
 
-## Economy boundaries
+- do **not** display an ad;
+- do **not** force-close the conversation;
+- let the current conversation continue;
+- request another pass before the next new matching session.
 
-Step 7 owns:
+This preserves the core ShahZap product promise. fileciteturn245file4L524-L550
 
-- XP
-- levels
-- streaks
-- quests
-- achievements
-- Zap Point earning
+### Premium
 
-Step 8 owns:
+Premium is designed around:
+
+- unlimited ad-free Chat Pass access;
+- premium country/region targeting;
+- future Premium perks without changing the subscription data model.
+
+The Premium screen is available at:
+
+`/premium`
+
+It reads plans and the user's current subscription from Supabase rather than hard-coding the subscription state.
+
+**Payment-provider checkout remains intentionally provider-bound.** The application must not mark a subscription active merely because a user clicked a checkout button. A trusted payment webhook/server event must establish the entitlement.
+
+### Country/region targeting
+
+The monetization targeting table allows commercial configuration to vary by:
+
+- country
+- region
+- Premium availability
+- rewarded-ad availability
+- frequency cap
+
+This is not the same thing as the matching engine's Region Credits. Region Credits remain a user-controlled gameplay resource; monetization targeting is an operator/business configuration layer.
+
+The source product discussion describes Premium as the primary monetization model for country/region targeting. fileciteturn245file9L1218-L1246
+
+## Monetization security
+
+- Premium status is determined server-side.
+- Subscription status must come from a trusted provider event/webhook.
+- Rewarded-ad grants must be tied to provider-verified events.
+- Provider event IDs are deduplicated.
+- Chat Pass creation is server-side.
+- Chat Pass ownership is enforced by RLS.
+- Premium subscriptions are private to their owner.
+- Monetization targeting is read-only to authenticated clients.
+- The client cannot directly edit Premium, ad-reward, or entitlement tables.
+
+## Provider integration boundary
+
+This repository contains the **provider-neutral monetization layer**. External payment/ad providers require their production credentials and provider-specific webhook/SDK configuration before real money or real ad inventory can be enabled.
+
+Required production configuration will include:
+
+- payment provider secret/webhook secret;
+- rewarded-ad provider application/ad-unit identifiers;
+- server-side provider verification credentials where applicable;
+- production currency/tax/business configuration;
+- approved country/region availability rules.
+
+Until those credentials are configured, the app must not pretend a payment or ad was completed.
+
+## Product boundaries
+
+### Step 8 owns
 
 - Region Credits
-- Chat Passes
+- Chat Pass inventory
 - Streak Shields
 - reward catalog
-- reward redemption
-- reward wallet
+- ZP redemption
 
-Step 9 owns:
+### Step 9 owns
 
-- rewarded advertisements
-- Premium
-- monetization
-- country/region commercial targeting
+- rewarded advertising
+- Premium plans/subscriptions
+- commercial targeting
+- trusted entitlement issuance from external providers
 
-Do not merge advertising implementation into Step 8. Step 8 provides the entitlement infrastructure that Step 9 can later grant through rewarded ads or Premium.
+### Step 10 will own
 
-## Product rules carried into Step 8
-
-### Never interrupt an active conversation
-
-The source product requirement is explicit: ads should not interrupt an active conversation. The reward model is intended to exchange an opt-in reward action for uninterrupted chat time. fileciteturn240file4L743-L759
-
-### Pass is session-level, not conversation-level
-
-A Chat Pass represents chat-time allowance that can span multiple conversations. The source design explicitly gives the example of using the same remaining allowance across Chat #1, Next, Chat #2, etc. fileciteturn240file5L784-L798
-
-### Reward alternatives
-
-The product design supports obtaining a Chat Pass through different channels:
-
-- free rewarded-ad flow — Step 9
-- Zap Point redemption — Step 8
-- Premium entitlement — Step 9
-- earned/referral/admin grants — Step 8 infrastructure
-
-The source discussion explicitly describes the free/reward/Premium hierarchy. fileciteturn240file5L799-L820
-
-## Security rules
-
-- Never mutate reward balances directly from browser code.
-- Keep Region Credits private to the owning profile.
-- Keep Chat Passes private to the owning profile.
-- Keep Streak Shields private to the owning profile.
-- Only active catalog rewards are publicly readable to authenticated users.
-- Reward redemption must be authenticated and server-side.
-- Every spend must be represented in the gamification ledger and redemption table.
-- Chat Pass timing must remain server-authoritative.
-- Later rewarded-ad and Premium grants must use trusted server-side entitlement issuance.
+- admin control over monetization configuration
+- revenue dashboards
+- Premium management
+- ad settings
+- fraud/referral abuse tooling
 
 ## Existing architecture
 
-### Steps 1–7
+Steps 1–8 are completed before Step 9.
 
-Foundation, onboarding, matching, real-time chat, safety, social, and gamification are completed before Step 8.
-
-Key existing systems include:
+Key systems:
 
 - Next.js + TypeScript + Tailwind
 - Supabase Auth/Postgres/Realtime
-- profile and privacy controls
-- match queue and compatibility RPC
-- real-time conversations/messages
-- report/block safety layer
+- profile/privacy system
+- compatibility matching
+- real-time messages
+- safety/report/block
 - friends/profile system
 - XP/ZP/levels/streaks/quests/achievements
+- Region Credits
+- Chat Passes
+- rewards catalog and redemption
 
 ## AI handoff instructions
 
@@ -214,12 +261,14 @@ If another AI takes over:
 
 1. Read this README completely.
 2. Inspect the current branch and latest commit.
-3. Check GitHub Actions for the latest commit.
-4. Inspect Supabase RLS and reward functions before modifying economy code.
-5. Treat server-side wallet state as authoritative.
-6. Do not implement Step 9 advertising/Premium as part of Step 8.
-7. Do not mark Step 8 complete until CI and acceptance checks are green.
-8. Update this README with every significant Step-8 change.
+3. Check GitHub Actions before changing code.
+4. Inspect the Step-8 reward tables/functions before changing monetization entitlements.
+5. Never grant a paid Premium entitlement from client input.
+6. Never grant an ad reward merely because the browser says an ad was watched.
+7. Keep payment-provider and ad-provider credentials out of Git.
+8. Treat Supabase entitlement state as authoritative only after trusted server/provider verification.
+9. Update this README after every meaningful Step-9 change.
+10. Do not mark Step 9 complete until implementation, CI, database/RLS checks, and production-provider configuration boundaries have been reviewed.
 
 CI/debug process:
 
@@ -234,8 +283,8 @@ CI/debug process:
 5. Safety — completed
 6. Social — completed
 7. Gamification — completed
-8. Rewards — **current**
-9. Monetization
+8. Rewards — completed
+9. Monetization — **current**
 10. Admin
 11. SEO
 12. PWA/mobile preparation
@@ -247,7 +296,9 @@ CI/debug process:
 - Generation is a discovery preference, never the primary safety boundary.
 - Interest matching has a configurable wait period and safe random fallback.
 - Interface language and chat language are independent.
-- Active conversations are never interrupted by advertisements.
+- **Never interrupt an active conversation with an advertisement.**
+- Rewarded ads are opt-in exchanges for useful entitlements.
+- Premium is a subscription entitlement, not a client-side flag.
 - Public SEO content is separate from private conversations.
 - Web is mobile-first and PWA-ready.
 - Rewards should encourage meaningful activity and resist abuse.
