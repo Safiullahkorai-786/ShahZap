@@ -195,6 +195,32 @@ alter table public.chat_passes enable row level security;
 alter table public.referrals enable row level security;
 alter table public.admin_settings enable row level security;
 
+create policy profiles_select on public.profiles for select to authenticated using (profile_visible = true or id = auth.uid());
+create policy profiles_insert on public.profiles for insert to authenticated with check (id = auth.uid());
+create policy profiles_update on public.profiles for update to authenticated using (id = auth.uid()) with check (id = auth.uid());
+create policy interests_select on public.interests for select to authenticated using (active = true);
+create policy profile_interests_select on public.profile_interests for select to authenticated using (profile_id = auth.uid() or exists (select 1 from public.profiles p where p.id = profile_interests.profile_id and p.profile_visible));
+create policy profile_interests_insert on public.profile_interests for insert to authenticated with check (profile_id = auth.uid());
+create policy profile_interests_delete on public.profile_interests for delete to authenticated using (profile_id = auth.uid());
+create policy match_preferences_owner on public.match_preferences for all to authenticated using (profile_id = auth.uid()) with check (profile_id = auth.uid());
+create policy blocks_owner_select on public.blocks for select to authenticated using (blocker_id = auth.uid());
+create policy blocks_owner_insert on public.blocks for insert to authenticated with check (blocker_id = auth.uid());
+create policy blocks_owner_delete on public.blocks for delete to authenticated using (blocker_id = auth.uid());
+create policy friend_requests_participant_select on public.friend_requests for select to authenticated using (sender_id = auth.uid() or receiver_id = auth.uid());
+create policy friend_requests_sender_insert on public.friend_requests for insert to authenticated with check (sender_id = auth.uid());
+create policy friend_requests_participant_update on public.friend_requests for update to authenticated using (sender_id = auth.uid() or receiver_id = auth.uid()) with check (sender_id = auth.uid() or receiver_id = auth.uid());
+create policy conversations_participant_select on public.conversations for select to authenticated using (exists (select 1 from public.conversation_participants cp where cp.conversation_id = conversations.id and cp.profile_id = auth.uid()));
+create policy participants_self_select on public.conversation_participants for select to authenticated using (profile_id = auth.uid());
+create policy participants_self_insert on public.conversation_participants for insert to authenticated with check (profile_id = auth.uid());
+create policy messages_participant_select on public.messages for select to authenticated using (exists (select 1 from public.conversation_participants cp where cp.conversation_id = messages.conversation_id and cp.profile_id = auth.uid()));
+create policy messages_participant_insert on public.messages for insert to authenticated with check (sender_id = auth.uid() and exists (select 1 from public.conversation_participants cp where cp.conversation_id = messages.conversation_id and cp.profile_id = auth.uid()));
+create policy reports_owner_insert on public.reports for insert to authenticated with check (reporter_id = auth.uid());
+create policy reports_owner_select on public.reports for select to authenticated using (reporter_id = auth.uid());
+create policy reward_ledger_owner_select on public.reward_ledger for select to authenticated using (profile_id = auth.uid());
+create policy chat_pass_owner_select on public.chat_passes for select to authenticated using (profile_id = auth.uid());
+create policy referrals_owner_select on public.referrals for select to authenticated using (referrer_id = auth.uid() or referred_id = auth.uid());
+create policy admin_settings_no_direct_access on public.admin_settings for select to authenticated using (false);
+
 insert into public.interests(slug,name,category) values
 ('gaming','Gaming','Entertainment'),('music','Music','Entertainment'),('movies','Movies','Entertainment'),('anime','Anime','Entertainment'),('books','Books','Learning'),('coding','Coding','Technology'),('art','Art','Creative'),('sports','Sports','Lifestyle'),('travel','Travel','Lifestyle'),('food','Food','Lifestyle'),('fitness','Fitness','Lifestyle'),('photography','Photography','Creative'),('memes','Memes','Entertainment'),('science','Science','Learning'),('technology','Technology','Technology'),('nature','Nature','Lifestyle')
 on conflict (slug) do nothing;
