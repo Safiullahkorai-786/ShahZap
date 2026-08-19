@@ -4,178 +4,81 @@ Anonymous social discovery, random chat, intelligent matching, translation, prog
 
 ## Build status
 
-| Step | Area | Status |
-|---|---|---|
-| 1 | Foundation | ✅ Completed |
-| 2 | Anonymous onboarding | ✅ Completed |
-| 3 | Matching | ✅ Completed |
-| 4 | Real-time chat | ✅ Completed |
-| 5 | Safety | ✅ Completed |
-| 6 | Social | ✅ Completed |
-| 7 | Gamification | ✅ Completed |
-| 8 | Rewards | ✅ Completed |
-| 9 | Monetization | ✅ Completed |
-| 10 | Admin | ✅ Completed |
-| 11 | SEO | ✅ Completed |
-| 12 | PWA/mobile preparation | 🔄 In progress |
+| Phase | Status |
+|---|---|
+| Steps 1–11 | ✅ Completed |
+| Step 12 — PWA/mobile preparation | ✅ Implemented; final CI validation carried into production hardening |
+| Phase 13A — Full-system audit | ✅ Completed security/hardening audit |
+| Phase 13B — Production infrastructure | 🟡 Final CI/deployment validation |
+| Phase 13C — Real ads & payments | 🔒 Not started |
 
-## Current branch
+## Phase 13B rules
 
-`feat/step-12-pwa`
+Phase 13B prepares ShahZap for production without activating real advertising or payment credentials. Provider credentials must remain deployment secrets and must never be committed to Git.
 
-## Step 12 — PWA / Mobile Preparation
+### Production stack
 
-Step 12 is the final roadmap phase in the original 12-step build plan. It prepares ShahZap to behave like a mobile-first installable web application without prematurely creating separate native iOS/Android applications.
+- Next.js 16.2.11
+- React 19.2.8
+- Supabase JS 2.112.1
+- Supabase SSR 0.12.4
+- TypeScript 5.9.3
+- ESLint 10.8.0
+- Node.js 24 in CI
 
-### Implemented
+Dependencies are pinned rather than using `latest`. CI generates a lockfile from the pinned manifest, then runs `npm ci`, lint, and the production build. A committed lockfile remains a release requirement once the first successful CI bootstrap has produced it.
 
-- `public/manifest.webmanifest`
-  - app name and short name
-  - standalone display mode
-  - portrait orientation
-  - theme/background colors
-  - installable web-app metadata
-- `src/app/icon.svg`
-  - ShahZap application icon
-- `src/app/layout.tsx`
-  - manifest metadata
-  - theme color
-  - application icon
-- `public/sw.js`
-  - minimal service worker
-  - install/activate lifecycle
-  - same-origin GET fallback
-  - offline fallback to cached homepage
-- `src/components/PwaRegister.tsx`
-  - browser-side service-worker registration
-  - HTTPS-only registration
+### CI gate
 
-### Security boundary
+`.github/workflows/ci.yml` validates every `main`/`feat/**` push and pull request with:
 
-The service worker must not cache private conversations, authenticated user data, tokens, admin data, or personalized API responses. The current implementation only provides a minimal shell fallback and does not turn private ShahZap data into an offline cache.
+1. Node 24
+2. lockfile generation from the pinned manifest
+3. `npm ci`
+4. `npm run lint`
+5. `npm run build`
 
-### Mobile-first rule
+The workflow is intentionally read-only with respect to repository contents.
 
-PWA work does not replace responsive web design. All existing application flows remain web-first and responsive. Native mobile applications should only be created later if product usage justifies them.
+### Supabase production hardening
 
-## Admin visibility rule
+Completed in the Phase 13A/13B database passes:
 
-The Admin area remains invisible to ordinary users:
+- exposed application tables use RLS;
+- server-owned economy/progression fields are protected from direct client mutation;
+- rewarded-ad entitlement grants are not client-callable;
+- privileged implementation functions are isolated from the public schema;
+- public wrappers use `SECURITY INVOKER` boundaries;
+- security-definer search paths are hardened;
+- duplicate RLS policies/indexes identified during the audit were cleaned up;
+- RLS `auth.uid()` policies were optimized with `(select auth.uid())` where applicable;
+- foreign-key indexing was reviewed/addressed.
 
-1. no normal navigation link/button;
-2. database staff authorization remains mandatory;
-3. `/admin` remains excluded from SEO/sitemap/crawling;
-4. manually entering `/admin` does not grant access.
+### Admin rule
 
-PWA installation does not change this rule.
+Ordinary users must never see an Admin button or navigation link. Database authorization remains mandatory and direct navigation must not grant access.
 
-## Provider credentials
+### PWA privacy rule
 
-Production ad/payment provider credentials are deliberately not committed to Git. They will be configured as deployment secrets when the complete product is ready for real monetization activation.
+The service worker must never cache private conversations, authenticated responses, tokens, admin data, or personalized API responses.
 
-## Validation requirements for Step 12
+### Provider credentials
 
-Before Step 12 is marked complete:
+**No real ad/payment credentials are configured in Phase 13B.** Phase 13C will add production provider secrets only after infrastructure validation is green.
 
-- TypeScript/build must pass.
-- CI must be green.
-- Manifest must be reachable.
-- Service worker must register only in a secure browser context.
-- No private/authenticated data may be added to the offline cache.
-- Existing authenticated routes must continue working normally.
-- Admin visibility/authorization must remain intact.
-- README must be updated with final implementation and handoff details.
+## Phase 13C — next
 
-## What comes after Step 12?
+After Phase 13B passes its final CI/deployment gates, Phase 13C will handle:
 
-The original 12-step implementation roadmap ends with Step 12. That means the next phase should **not** be another arbitrary feature number. It should be a **post-roadmap production hardening and launch phase**.
+- production ad provider configuration;
+- rewarded-ad server verification;
+- payment provider configuration;
+- Premium subscription webhooks;
+- payment reconciliation and entitlement verification;
+- secure production secrets.
 
-Recommended order after Step 12:
-
-### Phase 13A — Full-system audit
-
-- review Steps 1–12 together
-- verify database schema and RLS
-- test auth/session edge cases
-- test matching/safety/chat flows
-- test rewards/economy integrity
-- test monetization boundaries
-- test admin authorization
-- verify SEO/private-route separation
-- verify PWA behavior
-
-### Phase 13B — Production infrastructure
-
-- production domain/DNS
-- Cloudflare configuration
-- Supabase production configuration
-- environment variables/secrets
-- backups and recovery
-- logging/monitoring
-- rate limits and abuse protection
-- error tracking
-
-### Phase 13C — Real provider activation
-
-Only after the core product passes the audit:
-
-- production ad provider
-- rewarded-ad server verification
-- payment provider
-- subscription webhooks
-- payment reconciliation
-- App Store/Play Store accounts if native apps are later created
-
-### Phase 13D — Launch readiness
-
-- legal/privacy/terms review
-- age/safety policy review
-- moderation operations
-- support/contact flows
-- analytics
-- Search Console
-- production performance tests
-- staging-to-production release checklist
-
-### Phase 13E — Launch + iteration
-
-- controlled beta
-- monitor abuse and retention
-- balance rewards economy
-- monitor infrastructure costs
-- fix production issues
-- prioritize improvements from real usage
-
-## AI handoff instructions
-
-If another AI takes over:
-
-1. Read this README completely.
-2. Inspect `feat/step-12-pwa` and the latest CI result.
-3. Do not declare Step 12 complete until the validation requirements above are green.
-4. Do not start Phase 13 until Step 12 is complete.
-5. After Step 12, use the post-roadmap phases documented here rather than inventing a new feature roadmap.
-6. Never commit production credentials.
-7. Preserve the Admin visibility rule.
-8. Keep private data out of service-worker caches.
-9. Update this README after every major production-hardening decision.
-
-CI/debug process:
+## Handoff / debugging rule
 
 `identify exact failure → smallest correct fix → commit → wait for CI → inspect result → repeat until green.`
 
-## Roadmap
-
-1. Foundation — completed
-2. Anonymous onboarding — completed
-3. Matching — completed
-4. Real-time chat — completed
-5. Safety — completed
-6. Social — completed
-7. Gamification — completed
-8. Rewards — completed
-9. Monetization — completed
-10. Admin — completed
-11. SEO — completed
-12. PWA/mobile preparation — **current**
-13. Production hardening & launch — next after Step 12
+Never declare a phase green solely because code was written; the validation gate must pass.
