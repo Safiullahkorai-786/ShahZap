@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   },
   description: "ShahZap is a privacy-first social discovery experience for meeting someone new through intelligent random matching.",
   applicationName: "ShahZap",
-  metadataBase: new URL("https://shahzap.com"),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://shahzap.safiullahkorai.com"),
   manifest: "/manifest.webmanifest",
   themeColor: "#06b6d4",
   icons: { icon: "/icon.svg", apple: "/icon.svg" },
