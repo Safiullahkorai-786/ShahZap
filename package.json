@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:cloudflare": "opennextjs-cloudflare build",
     "start": "next start",
     "lint": "eslint ."
   },
@@ -17,11 +18,13 @@
     "react-dom": "19.2.8"
   },
   "devDependencies": {
+    "@opennextjs/cloudflare": "1.19.11",
     "@types/node": "24.10.1",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.4",
     "eslint": "10.8.0",
     "eslint-config-next": "16.2.11",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "wrangler": "4.86.0"
   }
 }
