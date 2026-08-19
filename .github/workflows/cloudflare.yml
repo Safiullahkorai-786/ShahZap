@@ -1,0 +1,23 @@
+name: Cloudflare
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: npm install --package-lock-only --ignore-scripts
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - run: npm run build:cloudflare
+      - run: npx wrangler deploy --dry-run
