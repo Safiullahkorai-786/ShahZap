@@ -14,6 +14,8 @@
  *   - Idempotent processing (dedup by provider event ID).
  */
 
+import crypto from 'crypto';
+
 // ── Paddle API base ──────────────────────────────────────────────────────────
 const PADDLE_API_BASE = 'https://api.paddle.com';
 
@@ -27,8 +29,9 @@ export type PaddleCreateCheckoutResponse = {
 
 export type PaddleWebhookEvent = {
   id: string; // provider event ID — used for idempotency dedup
-  type: 'purchase' | 'subscription_created' | 'subscription_updated' | // etc.
-  status: 'completed' | 'pending' | 'cancelled' | 'failed';
+  type: 'purchase' | 'subscription_created' | 'subscription_updated';
+  status: 'completed' | 'pending' | 'cancelled' | 'failed' | 'active';
+  custom?: Record<string, unknown>;
   // ... other Paddle fields
   // We map these to ShahZap internal entities in processWebhook()
 };
@@ -47,7 +50,7 @@ export type PaddleWebhookEvent = {
 export async function createCheckout(userId: string, product: 'premium_monthly' | 'premium_yearly'): Promise<{ url: string; sessionId: string }> {
   // Map ShahZap product names to Paddle price IDs.
   // These are configuration — not business logic — and should be
-  * set via environment variables or a remote config store.
+  // set via environment variables or a remote config store.
   const priceIdMap: Record<string, string> = {
     premium_monthly: process.env.PADDLE_PREMIUM_MONTHLY_PRICE_ID ?? '',
     premium_yearly: process.env.PADDLE_PREMIUM_YEARLY_PRICE_ID ?? '',
@@ -122,7 +125,6 @@ export function verifyWebhook(headers: Headers, rawBody: string): PaddleWebhookE
   const timestamp = headers.get('Paddle-Timestamp') || new Date().toISOString(); // Paddle provides this in headers; adjust as needed
   const signatureBase = `${timestamp}.${rawBody}`;
 
-  const crypto = require('crypto');
   const hmac = crypto.createHmac('sha256', secret);
   hmac.update(signatureBase);
   const expected = hmac.digest('hex');
@@ -181,8 +183,13 @@ export async function processWebhook(event: PaddleWebhookEvent, supabaseUrl: str
   // In production, consider a dedicated `paddle_webhook_events` table or
   // using the existing `reward_ledger` with a `reference_type` discriminator.
 
-  const { createClient } = await import('@supabase/ssr');
-  const supabase = createClient(supabaseUrl, serviceRoleKey ?? '');
+  const { createServerClient } = await import('@supabase/ssr');
+  const supabase = createServerClient(supabaseUrl, serviceRoleKey ?? '', {
+    cookies: {
+      getAll() { return []; },
+      setAll() { /* no-op in webhook context */ },
+    },
+  });
 
   // Look for an existing ledger entry with this Paddle event ID
   const { data: existing } = await supabase
@@ -230,8 +237,8 @@ export async function processWebhook(event: PaddleWebhookEvent, supabaseUrl: str
   // We compute starts_at = now(), ends_at = now() + duration based on the
   // product price mapping (e.g., monthly = 30 days, yearly = 365 days).
   const now = new Date();
-  const durationDays =
-    event.custom?.duration_days ?? // optional, override from Paddle
+  const durationDays: number =
+    (event.custom?.duration_days as number) ??
     (eventType === 'subscription_created' ? 30 : 30); // default: 30 days for monthly
 
   const { data, error: dbError } = await supabase
@@ -276,5 +283,3 @@ export async function processWebhook(event: PaddleWebhookEvent, supabaseUrl: str
     premiumId: data?.id,
   };
 }
-
-export type { PaddleWebhookEvent };

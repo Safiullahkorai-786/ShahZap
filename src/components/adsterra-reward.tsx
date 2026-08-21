@@ -27,7 +27,7 @@
 
 import { useEffect, useState } from 'react';
 import { grantReward, isRateLimited } from '@/lib/providers/adsterra';
-import { createClient } from '@/lib/supabase/server';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 const ADSTERRA_ZONE_ID =
   process.env.ADSTERRA_ZONE_ID ?? '';
@@ -36,36 +36,32 @@ export function AdsterraReward() {
   const [rateLimited, setRateLimited] = useState(false);
   const [granting, setGranting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showButton, setShowButton] = useState(false);
 
   // Check rate limit on mount
   useEffect(() => {
     async function checkRateLimit() {
       if (!ADSTERRA_ZONE_ID) {
-        setShowButton(true);
         return;
       }
-      const supabase = await createClient();
+      const supabase = await createSupabaseServerClient();
       const {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) {
-        setShowButton(true);
         return;
       }
       const limited = await isRateLimited(user.id);
       setRateLimited(limited);
-      if (!limited) setShowButton(true);
     }
     checkRateLimit();
-  }, [ADSTERRA_ZONE_ID]);
+  }, []);
 
   // Grant the reward — server-side function
   async function handleGrantReward() {
     setGranting(true);
     setError(null);
 
-    const supabase = await createClient();
+    const supabase = await createSupabaseServerClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();

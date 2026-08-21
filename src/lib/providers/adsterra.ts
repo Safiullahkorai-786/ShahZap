@@ -53,8 +53,8 @@ export type AdsterraRewardContext = {
  * later when reporting the ad completion.
  */
 export async function createRewardContext(
-  userId: string,
-  sessionId: string
+  _userId: string,
+  _sessionId: string
 ): Promise<{ referenceId: string; expiresAt: number }> {
   const now = Date.now();
   const expiresAt = now + 30 * 60 * 1000; // 30 minutes from now
@@ -63,7 +63,6 @@ export async function createRewardContext(
   // We use reference_type='adsterra_reward_context' and the event ID
   // as the reference_id. The expiry is checked server-side when
   // granting the reward.
-  const { supabase } = await import('@/lib/supabase/server');
   // We'll need a server client; for now, we use a direct REST/POSTgrest
   // approach. In a full impl, this would be a server action.
   //
@@ -95,7 +94,8 @@ export async function verifyReward(
   referenceId: string,
   userId: string
 ): Promise<{ valid: boolean; error?: string }> {
-  const { supabase } = await import('@/lib/supabase/server');
+  const { createSupabaseServerClient } = await import('@/lib/supabase/server');
+  const supabase = await createSupabaseServerClient();
 
   // 1. Check that the reward context exists and hasn't expired
   const { data: context, error: ctxError } = await supabase
@@ -116,7 +116,6 @@ export async function verifyReward(
   }
 
   // 2. Check expiry
-  const createdAt = new Date(context.created_at).getTime();
   const now = Date.now();
   if (now > context.expires_at) {
     // Context expired — we could clean it up, but for idempotency we
@@ -169,14 +168,15 @@ export async function grantReward(
   referenceId: string,
   userId: string
 ): Promise<{ granted: boolean; passId?: string; error?: string }> {
-  const { supabase } = await import('@/lib/supabase/server');
+  const { createSupabaseServerClient } = await import('@/lib/supabase/server');
+  const supabase = await createSupabaseServerClient();
 
   // 1. Verify the context one more time (double-check expiry and idempotency)
   const verified = await verifyReward(referenceId, userId);
   if (!verified.valid) {
     // If already_rewarded, we still consider the grant a no-op but success
     if (verified.error === 'already_rewarded') {
-      return { granted: true, passId: null, error: 'already_rewarded' };
+      return { granted: true, passId: undefined, error: 'already_rewarded' };
     }
     return { granted: false, error: verified.error };
   }
@@ -230,13 +230,13 @@ export async function grantReward(
     reason: 'adsterra_reward_granted',
     reference_type: 'adsterra_chat_pass',
     reference_id: data.id,
-    metadata: JSON.stringify({ reference_id }),
+    metadata: JSON.stringify({ reference_id: referenceId }),
   });
 
   return {
     granted: true,
     passId: data.id,
-    error: null,
+    error: undefined,
   };
 }
 
@@ -248,7 +248,8 @@ export async function grantReward(
  * in grantReward() via the chat_passes query.
  */
 export async function isRateLimited(userId: string): Promise<boolean> {
-  const { supabase } = await import('@/lib/supabase/server');
+  const { createSupabaseServerClient } = await import('@/lib/supabase/server');
+  const supabase = await createSupabaseServerClient();
 
   const { data, error } = await supabase
     .from('chat_passes')
@@ -264,7 +265,6 @@ export async function isRateLimited(userId: string): Promise<boolean> {
 
   // If the pass is still active (remaining_seconds > 0 or status='active')
   const now = Date.now();
-  const started = new Date(data.started_at ?? '').getTime();
   const expires = new Date(data.expires_at ?? '').getTime();
 
   // User has an active pass if:
@@ -274,5 +274,3 @@ export async function isRateLimited(userId: string): Promise<boolean> {
 
   return isActive;
 }
-
-export type { AdsterraRewardContext };

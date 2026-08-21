@@ -21,41 +21,22 @@
  */
 
 import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/navigation';
+import type { NextRequest } from 'next/server';
 
 // Import our Paddle adapter functions
 import { verifyWebhook, processWebhook } from '@/lib/providers/paddle';
-
-// Import Supabase server client for DB operations
-import { createClient } from '@supabase/ssr';
+import type { PaddleWebhookEvent } from '@/lib/providers/paddle';
 
 // ── Configuration ─────────────────────────────────────────────────────────────
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
-const SUPABASE_SERVICE_ROLE_KEY =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
-
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  throw new Error(
-    'Missing required environment variables: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY'
-  );
-}
-
-// Create a reusable Supabase server client
-function getSupabase() {
-  const { cookies } = require('next/headers');
-  // In a serverless function environment, we need to handle cookies carefully.
-  // For webhook handling, we typically don't need client cookies — we use
-  // the service role key for direct DB operations.
-  return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-    cookies: {
-      getAll() {
-        return [];
-      },
-      setAll() {
-        // no-op in webhook context
-      },
-    },
-  });
+function getConfig() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+  if (!url || !key) {
+    throw new Error(
+      'Missing required environment variables: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY'
+    );
+  }
+  return { url, key };
 }
 
 // ── POST handler ──────────────────────────────────────────────────────────────
@@ -63,9 +44,8 @@ export async function POST(request: NextRequest) {
   const body = await request.text();
   const headers = new Headers(request.headers);
 
-  let event: { [key:]: unknown };
   try {
-    event = JSON.parse(body);
+    JSON.parse(body);
   } catch (e) {
     console.error('Paddle webhook: invalid JSON body', e);
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
@@ -75,17 +55,18 @@ export async function POST(request: NextRequest) {
   let parsedEvent: Record<string, unknown>;
   try {
     parsedEvent = verifyWebhook(headers, body);
-  } catch (err: any) {
-    console.error('Paddle webhook: signature verification failed', err.message);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Paddle webhook: signature verification failed', message);
     return NextResponse.json(
-      { error: `Webhook signature verification failed: ${err.message}` },
+      { error: `Webhook signature verification failed: ${message}` },
       { status: 401 }
     );
   }
 
   // ── 2. Process the webhook idempotently ────────────────────────────────────
-  const supabase = getSupabase();
-  const result = await processWebhook(parsedEvent as any, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const { url, key } = getConfig();
+  const result = await processWebhook(parsedEvent as PaddleWebhookEvent, url, key);
 
   // ── 3. Respond to Paddle ──────────────────────────────────────────────────
   // Paddle expects a 200 OK response to acknowledge receipt.

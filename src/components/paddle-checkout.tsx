@@ -16,7 +16,7 @@
  */
 
 import { createCheckout } from '@/lib/providers/paddle';
-import { createClient } from '@/lib/supabase/server';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 
 type Product = 'premium_monthly' | 'premium_yearly';
@@ -34,7 +34,7 @@ export function PaddleCheckout({
 }: PaddleCheckoutProps) {
   async function handleClick() {
     // Get the current user from Supabase (server-side)
-    const supabase = await createClient();
+    const supabase = await createSupabaseServerClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -46,15 +46,14 @@ export function PaddleCheckout({
 
     // Create the Paddle checkout session
     try {
-      const { url, sessionId } = await createCheckout(user.id, product);
+      const { url } = await createCheckout(user.id, product);
 
       // Redirect the user to Paddle's hosted checkout
       redirect(url);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unable to create Paddle checkout session.';
       console.error('PaddleCheckout: error creating checkout', err);
-      throw new Error(
-        err.message ?? 'Unable to create Paddle checkout session.'
-      );
+      throw new Error(message);
     }
   }
 

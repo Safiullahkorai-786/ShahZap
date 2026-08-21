@@ -1,6 +1,10 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { PwaRegister } from "@/components/PwaRegister";
+
+export const viewport: Viewport = {
+  themeColor: "#06b6d4",
+};
 
 export const metadata: Metadata = {
   title: {
@@ -11,7 +15,6 @@ export const metadata: Metadata = {
   applicationName: "ShahZap",
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://shahzap.safiullahkorai.com"),
   manifest: "/manifest.webmanifest",
-  themeColor: "#06b6d4",
   icons: { icon: "/icon.svg", apple: "/icon.svg" },
 };
 
