@@ -35,22 +35,47 @@ export default function Home() {
       {/* Hero */}
       <section className="relative overflow-hidden">
         <div aria-hidden className="pointer-events-none absolute -top-40 left-1/2 h-[480px] w-[720px] -translate-x-1/2 rounded-full bg-cyan-500/10 blur-3xl" />
-        <div className="relative mx-auto max-w-6xl px-5 py-24 sm:py-32">
-          <span className="inline-flex items-center gap-2 rounded-full border border-cyan-800/60 bg-cyan-950/30 px-3 py-1 text-xs font-semibold text-cyan-300">Private session · no email needed</span>
-          <h1 className="mt-6 max-w-4xl text-4xl font-extrabold leading-tight tracking-tight sm:text-6xl sm:leading-tight">
-            Anonymous random chat.<br />
-            <span className="bg-gradient-to-r from-cyan-300 to-cyan-500 bg-clip-text text-transparent">Real people. New connections.</span>
-          </h1>
-          <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300">
-            Meet people around the world through anonymous, moderated conversations.
-            Choose who you want to meet, connect through shared interests, chat in your
-            own language — and stay in control of your privacy.
-          </p>
-          <div className="mt-10 flex flex-wrap items-center gap-3">
-            <Link href="/start" className="rounded-xl bg-gradient-to-r from-cyan-400 to-cyan-300 px-8 py-4 font-bold text-slate-950 shadow-xl shadow-cyan-950/50 transition hover:brightness-110">⚡ Start Random Chat</Link>
-            <Link href="/how-it-works" className="rounded-xl border border-slate-700 px-8 py-4 font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white">How it works</Link>
+        <div className="relative mx-auto grid max-w-6xl items-center gap-14 px-5 py-24 sm:py-32 lg:grid-cols-2">
+          <div>
+            <span className="inline-flex items-center gap-2 rounded-full border border-cyan-800/60 bg-cyan-950/30 px-3 py-1 text-xs font-semibold text-cyan-300">Private session · no email needed</span>
+            <h1 className="mt-6 text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl xl:text-6xl">
+              Anonymous random chat.<br />
+              <span className="bg-gradient-to-r from-cyan-300 via-sky-400 to-violet-400 bg-clip-text text-transparent">Real people. New connections.</span>
+            </h1>
+            <p className="mt-6 max-w-xl text-lg leading-8 text-slate-300">
+              Meet people around the world through anonymous, moderated conversations.
+              Choose who you want to meet, connect through shared interests, chat in your
+              own language — and stay in control of your privacy.
+            </p>
+            <div className="mt-10 flex flex-wrap items-center gap-3">
+              <Link href="/start" className="rounded-xl bg-gradient-to-r from-cyan-400 to-cyan-300 px-8 py-4 font-bold text-slate-950 shadow-xl shadow-cyan-950/50 transition hover:brightness-110">⚡ Start Random Chat</Link>
+              <a href="#how-it-works" className="rounded-xl border border-slate-700 px-8 py-4 font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white">How it works</a>
+            </div>
+            <p className="mt-5 text-xs text-slate-500">No account. No email. Just a nickname.</p>
           </div>
-          <p className="mt-5 text-xs text-slate-500">No account. No email. Just a nickname.</p>
+
+          {/* Match preview card */}
+          <aside className="relative mx-auto w-full max-w-sm" aria-label="Example ShahZap match card">
+            <div aria-hidden className="absolute -inset-4 rounded-[28px] bg-gradient-to-br from-cyan-500/20 via-transparent to-violet-500/10 blur-2xl" />
+            <div className="relative rounded-3xl border border-slate-700/80 bg-slate-900/80 p-6 shadow-2xl shadow-black/60 backdrop-blur">
+              <div className="flex items-center justify-between text-xs text-slate-400">
+                <span>ShahZap preview</span>
+                <span className="flex items-center gap-1.5 rounded-full border border-emerald-800/60 bg-emerald-950/40 px-2 py-0.5 text-emerald-300"><i className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> ready</span>
+              </div>
+              <div className="mt-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500/30 to-violet-500/20 text-3xl ring-1 ring-white/10">🌙</div>
+              <p className="mt-5 text-xl font-bold">Someone new</p>
+              <p className="mt-1 text-sm text-slate-400">Matched by shared interests</p>
+              <div className="mt-5 flex flex-wrap gap-2">
+                {['🎮 Gaming', '🎵 Music', '🌎 Language'].map((pill) => (
+                  <span key={pill} className="rounded-full border border-slate-700 bg-slate-950/70 px-3 py-1.5 text-xs font-medium text-slate-200">{pill}</span>
+                ))}
+              </div>
+              <div className="mt-6 flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-3">
+                <span className="text-xs text-slate-400">Translation ready</span>
+                <span className="text-xs font-semibold text-cyan-300">EN → UR</span>
+              </div>
+            </div>
+          </aside>
         </div>
       </section>
 

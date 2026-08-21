@@ -19,12 +19,14 @@
   },
   "devDependencies": {
     "@opennextjs/cloudflare": "1.19.11",
+    "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "24.10.1",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.4",
     "eslint": "^9.39.5",
     "eslint-config-next": "16.2.11",
     "eslint-plugin-react": "^7.37.5",
+    "tailwindcss": "^4.3.3",
     "typescript": "5.9.3",
     "wrangler": "4.86.0"
   }
