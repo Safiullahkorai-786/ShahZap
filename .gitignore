@@ -1,4 +1,7 @@
 node_modules/
 .next/
+.open-next/
 .env
 .env.local
+.env.*.local
+supabase/.temp/
