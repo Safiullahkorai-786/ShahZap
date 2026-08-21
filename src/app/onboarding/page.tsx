@@ -4,11 +4,52 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
-const ageBands = [['18_20', '18–20'], ['21_29', '21–29'], ['30_44', '30–44'], ['45_59', '45–59'], ['60_plus', '60+']]
-const languages = [['en','English'],['ur','Urdu'],['hi','Hindi'],['ar','Arabic'],['es','Spanish'],['fr','French'],['de','German'],['tr','Turkish']]
-const generations = [['gen_z','Gen Z'],['millennial','Millennial'],['gen_x','Gen X'],['boomer','Boomer']]
-const genders = ['woman','man','non_binary','prefer_not_to_say']
-const interests = ['music','movies','gaming','anime','sports','technology','books','travel','food','art','fitness','memes']
+const STEPS = ['You', 'About you', 'Interests', 'Language & privacy'] as const
+const AGE_BANDS = [['18_20', '18–20'], ['21_29', '21–29'], ['30_44', '30–44'], ['45_59', '45–59'], ['60_plus', '60+']] as const
+const LANGUAGES = [['en', 'English'], ['ur', 'Urdu'], ['hi', 'Hindi'], ['ar', 'Arabic'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German'], ['tr', 'Turkish']] as const
+const GENERATIONS = [['gen_z', 'Gen Z'], ['millennial', 'Millennial'], ['gen_x', 'Gen X'], ['boomer', 'Boomer']] as const
+const GENDERS = [['woman', 'Woman'], ['man', 'Man'], ['non_binary', 'Non-binary'], ['prefer_not_to_say', 'Prefer not to say']] as const
+const INTERESTS = [
+  ['music', 'Music'], ['movies', 'Movies'], ['gaming', 'Gaming'], ['anime', 'Anime'],
+  ['sports', 'Sports'], ['technology', 'Technology'], ['books', 'Books'], ['travel', 'Travel'],
+  ['food', 'Food'], ['art', 'Art'], ['fitness', 'Fitness'], ['memes', 'Memes'],
+] as const
+
+function Toggle({ checked, onChange, label, hint }: { checked: boolean; onChange: (v: boolean) => void; label: string; hint: string }) {
+  return (
+    <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)}
+      className={`flex w-full items-center justify-between gap-4 rounded-2xl border p-4 text-left transition ${checked ? 'border-cyan-500/40 bg-cyan-950/20' : 'border-slate-800 bg-slate-950 hover:border-slate-600'}`}>
+      <span>
+        <span className="block text-sm font-semibold text-white">{label}</span>
+        <span className="mt-0.5 block text-xs leading-relaxed text-slate-400">{hint}</span>
+      </span>
+      <span className={`relative h-6 w-11 flex-none rounded-full transition ${checked ? 'bg-cyan-400' : 'bg-slate-700'}`}>
+        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${checked ? 'left-[22px]' : 'left-0.5'}`} />
+      </span>
+    </button>
+  )
+}
+
+function Pill({ selected, onClick, children }: { selected: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button type="button" onClick={onClick}
+      className={`rounded-xl border px-4 py-2.5 text-sm font-medium transition ${selected ? 'border-cyan-400 bg-cyan-400/10 text-cyan-200 ring-1 ring-cyan-400/50' : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-500'}`}>
+      {children}
+    </button>
+  )
+}
+
+function Select({ value, onChange, label, options }: { value: string; onChange: (v: string) => void; label: string; options: readonly (readonly [string, string])[] }) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-semibold text-white">{label}</span>
+      <select value={value} onChange={(e) => onChange(e.target.value)}
+        className="w-full appearance-none rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20">
+        {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      </select>
+    </label>
+  )
+}
 
 export default function OnboardingPage() {
   const router = useRouter()
@@ -73,18 +114,147 @@ export default function OnboardingPage() {
     setError(''); setStep((value) => Math.min(4, value + 1))
   }
 
-  return <main className="min-h-screen bg-slate-950 px-4 py-8 text-white sm:px-6">
-    <div className="mx-auto max-w-2xl">
-      <div className="mb-8 flex items-center justify-between"><div><p className="text-sm font-semibold text-cyan-300">⚡ ShahZap</p><h1 className="mt-1 text-2xl font-bold">Set up your profile</h1></div><span className="text-sm text-slate-400">Step {step} of 4</span></div>
-      <div className="mb-8 h-2 overflow-hidden rounded-full bg-slate-800"><div className="h-full rounded-full bg-cyan-400 transition-all" style={{width:`${step*25}%`}} /></div>
-      <section className="rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-2xl sm:p-8">
-        {step === 1 && <div><h2 className="text-xl font-semibold">How should people see you?</h2><p className="mt-2 text-sm text-slate-400">Use a nickname. Your exact age is never shown.</p><label className="mt-6 block text-sm font-medium">Display name<input value={name} onChange={e=>setName(e.target.value)} maxLength={32} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-400" placeholder="BlueSpark" /></label><label className="mt-5 block text-sm font-medium">Age band<select value={ageBand} onChange={e=>setAgeBand(e.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3"><option value="">Select</option>{ageBands.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label><p className="mt-4 rounded-xl bg-amber-950/40 p-3 text-xs text-amber-200">ShahZap uses age bands for privacy and safety. Exact birth dates are not collected here.</p></div>}
-        {step === 2 && <div><h2 className="text-xl font-semibold">Tell us a little more</h2><p className="mt-2 text-sm text-slate-400">These settings help ShahZap make better matches.</p><label className="mt-6 block text-sm font-medium">Gender<select value={gender} onChange={e=>setGender(e.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3"><option value="">Select</option>{genders.map(v=><option key={v} value={v}>{v.replaceAll('_',' ')}</option>)}</select></label><label className="mt-5 block text-sm font-medium">Orientation (optional)<input value={orientation} onChange={e=>setOrientation(e.target.value.slice(0,32))} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3" placeholder="Optional" /></label><label className="mt-5 block text-sm font-medium">Generation preference<select value={generation} onChange={e=>setGeneration(e.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3"><option value="">No preference</option>{generations.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label></div>}
-        {step === 3 && <div><h2 className="text-xl font-semibold">What are you into?</h2><p className="mt-2 text-sm text-slate-400">Pick 3–8 interests. They help with discovery, not safety.</p><div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">{interests.map(value=><button type="button" key={value} onClick={()=>toggleInterest(value)} className={`rounded-xl border px-4 py-3 text-sm capitalize transition ${selectedInterests.includes(value)?'border-cyan-400 bg-cyan-400/10 text-cyan-200':'border-slate-700 bg-slate-950 hover:border-slate-500'}`}>{value}</button>)}</div><p className="mt-4 text-xs text-slate-500">{selectedInterests.length}/8 selected</p></div>}
-        {step === 4 && <div><h2 className="text-xl font-semibold">Language & privacy</h2><p className="mt-2 text-sm text-slate-400">Your app language and chat language can be different.</p><div className="mt-6 grid gap-5 sm:grid-cols-2"><label className="text-sm">Interface language<select value={interfaceLanguage} onChange={e=>setInterfaceLanguage(e.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3">{languages.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label><label className="text-sm">Chat language<select value={chatLanguage} onChange={e=>setChatLanguage(e.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3">{languages.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label></div><div className="mt-7 space-y-3"><label className="flex items-center justify-between rounded-xl border border-slate-800 p-4"><span><span className="block text-sm font-medium">Show me online</span><span className="text-xs text-slate-500">Optional online directory visibility.</span></span><input type="checkbox" checked={onlineVisible} onChange={e=>setOnlineVisible(e.target.checked)} /></label><label className="flex items-center justify-between rounded-xl border border-slate-800 p-4"><span><span className="block text-sm font-medium">Profile discoverable</span><span className="text-xs text-slate-500">Let compatible users see your profile.</span></span><input type="checkbox" checked={profileVisible} onChange={e=>setProfileVisible(e.target.checked)} /></label></div></div>}
-        {error && <p className="mt-6 rounded-xl border border-red-900 bg-red-950/40 p-3 text-sm text-red-200">{error}</p>}
-        <div className="mt-8 flex gap-3"><button type="button" disabled={busy} onClick={()=>step===1?router.replace('/'):setStep(step-1)} className="rounded-xl border border-slate-700 px-5 py-3 text-sm font-semibold">Back</button>{step<4?<button type="button" onClick={next} className="ml-auto rounded-xl bg-cyan-400 px-6 py-3 text-sm font-bold text-slate-950">Continue</button>:<button type="button" disabled={busy} onClick={finish} className="ml-auto rounded-xl bg-cyan-400 px-6 py-3 text-sm font-bold text-slate-950 disabled:opacity-50">{busy?'Saving…':'Enter ShahZap'}</button>}</div>
-      </section>
-    </div>
-  </main>
+  const canContinue = step === 1 ? Boolean(name.trim() && ageBand) : step === 2 ? Boolean(gender) : step === 3 ? selectedInterests.length >= 3 : true
+
+  return (
+    <main className="flex min-h-screen flex-col bg-slate-950 text-white">
+      {/* Header */}
+      <header className="border-b border-slate-800/80 bg-slate-950/90 px-4 py-4 backdrop-blur sm:px-6">
+        <div className="mx-auto flex max-w-2xl items-center justify-between">
+          <p className="text-sm font-bold tracking-tight text-cyan-300">⚡ ShahZap</p>
+          <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Step {step} of 4</p>
+        </div>
+        <div className="mx-auto mt-3 flex max-w-2xl gap-1.5">
+          {STEPS.map((label, i) => (
+            <div key={label} className="flex-1">
+              <div className={`h-1 rounded-full transition-colors ${i < step ? 'bg-cyan-400' : 'bg-slate-800'}`} />
+              <p className={`mt-1.5 hidden text-[11px] font-medium sm:block ${i < step ? 'text-cyan-300' : 'text-slate-600'}`}>{label}</p>
+            </div>
+          ))}
+        </div>
+      </header>
+
+      {/* Card */}
+      <div className="mx-auto w-full max-w-2xl flex-1 px-4 py-8 sm:px-6">
+        <section className="rounded-3xl border border-slate-800 bg-slate-900/70 p-6 shadow-2xl shadow-black/40 sm:p-10">
+          {step === 1 && (
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">How should people see you?</h1>
+              <p className="mt-2 text-sm leading-relaxed text-slate-400">Pick a nickname — your real identity stays private.</p>
+              <div className="mt-8 space-y-7">
+                <div>
+                  <div className="mb-2 flex items-baseline justify-between">
+                    <span className="text-sm font-semibold">Display name</span>
+                    <span className="text-xs tabular-nums text-slate-500">{name.length}/32</span>
+                  </div>
+                  <input value={name} onChange={(e) => setName(e.target.value)} maxLength={32}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3.5 text-base outline-none transition placeholder:text-slate-600 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
+                    placeholder="BlueSpark" />
+                </div>
+                <div>
+                  <span className="mb-3 block text-sm font-semibold">Age band</span>
+                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+                    {AGE_BANDS.map(([v, l]) => <Pill key={v} selected={ageBand === v} onClick={() => setAgeBand(v)}>{l}</Pill>)}
+                  </div>
+                </div>
+                <p className="rounded-xl border border-amber-900/50 bg-amber-950/30 p-3.5 text-xs leading-relaxed text-amber-200/90">
+                  Age bands keep things safe and private. Your exact birth date is never collected.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {step === 2 && (
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Tell us a little more</h1>
+              <p className="mt-2 text-sm leading-relaxed text-slate-400">These help ShahZap find people you&apos;ll actually click with.</p>
+              <div className="mt-8 space-y-7">
+                <div>
+                  <span className="mb-3 block text-sm font-semibold">Gender</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    {GENDERS.map(([v, l]) => <Pill key={v} selected={gender === v} onClick={() => setGender(v)}>{l}</Pill>)}
+                  </div>
+                </div>
+                <div>
+                  <span className="mb-3 block text-sm font-semibold">Generation preference <span className="font-normal text-slate-500">(optional)</span></span>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <Pill selected={generation === ''} onClick={() => setGeneration('')}>Any</Pill>
+                    {GENERATIONS.map(([v, l]) => <Pill key={v} selected={generation === v} onClick={() => setGeneration(v)}>{l}</Pill>)}
+                  </div>
+                </div>
+                <label className="block">
+                  <span className="mb-2 block text-sm font-semibold">Orientation <span className="font-normal text-slate-500">(optional)</span></span>
+                  <input value={orientation} onChange={(e) => setOrientation(e.target.value.slice(0, 32))}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3.5 text-base outline-none transition placeholder:text-slate-600 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
+                    placeholder="Share only if you want to" />
+                </label>
+              </div>
+            </div>
+          )}
+
+          {step === 3 && (
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">What are you into?</h1>
+              <p className="mt-2 text-sm leading-relaxed text-slate-400">Pick 3–8 interests — they power discovery, never safety decisions.</p>
+              <div className="mt-8 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                {INTERESTS.map(([v, l]) => (
+                  <button type="button" key={v} onClick={() => toggleInterest(v)}
+                    className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm font-medium transition ${selectedInterests.includes(v) ? 'border-cyan-400 bg-cyan-400/10 text-cyan-100 ring-1 ring-cyan-400/50' : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-500'}`}>
+                    {l}
+                    <span className={`ml-2 flex h-5 w-5 flex-none items-center justify-center rounded-full border text-[11px] font-bold ${selectedInterests.includes(v) ? 'border-cyan-400 bg-cyan-400 text-slate-950' : 'border-slate-600 text-transparent'}`}>✓</span>
+                  </button>
+                ))}
+              </div>
+              <p className="mt-5 text-xs font-medium text-slate-500"><span className={selectedInterests.length >= 3 ? 'text-cyan-300' : ''}>{selectedInterests.length}</span> of 8 selected · minimum 3</p>
+            </div>
+          )}
+
+          {step === 4 && (
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Language &amp; privacy</h1>
+              <p className="mt-2 text-sm leading-relaxed text-slate-400">Your app language and chat language can be different.</p>
+              <div className="mt-8 space-y-7">
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <Select label="Interface language" value={interfaceLanguage} onChange={setInterfaceLanguage} options={LANGUAGES} />
+                  <Select label="Chat language" value={chatLanguage} onChange={setChatLanguage} options={LANGUAGES} />
+                </div>
+                <div className="space-y-3">
+                  <Toggle checked={onlineVisible} onChange={setOnlineVisible} label="Show me online" hint="Appear in the optional online directory." />
+                  <Toggle checked={profileVisible} onChange={setProfileVisible} label="Profile discoverable" hint="Let compatible users see your profile." />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <p className="mt-7 flex items-start gap-2.5 rounded-xl border border-red-900/60 bg-red-950/40 p-3.5 text-sm text-red-200">
+              <span className="mt-0.5 flex h-4 w-4 flex-none items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">!</span>
+              {error}
+            </p>
+          )}
+        </section>
+      </div>
+
+      {/* Footer nav */}
+      <footer className="sticky bottom-0 border-t border-slate-800/80 bg-slate-950/95 px-4 py-4 backdrop-blur sm:px-6">
+        <div className="mx-auto flex max-w-2xl gap-3">
+          <button type="button" disabled={busy} onClick={() => step === 1 ? router.replace('/') : setStep(step - 1)}
+            className="rounded-xl border border-slate-700 px-6 py-3.5 text-sm font-semibold text-slate-300 transition hover:border-slate-500 hover:text-white disabled:opacity-50">
+            Back
+          </button>
+          {step < 4 ? (
+            <button type="button" onClick={next} disabled={!canContinue}
+              className="ml-auto flex-1 rounded-xl bg-gradient-to-r from-cyan-400 to-cyan-300 px-6 py-3.5 text-sm font-bold text-slate-950 shadow-lg shadow-cyan-950/50 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none sm:px-12">
+              Continue
+            </button>
+          ) : (
+            <button type="button" onClick={finish} disabled={busy}
+              className="ml-auto flex-1 rounded-xl bg-gradient-to-r from-cyan-400 to-cyan-300 px-6 py-3.5 text-sm font-bold text-slate-950 shadow-lg shadow-cyan-950/50 transition hover:brightness-110 disabled:opacity-50 sm:flex-none sm:px-12">
+              {busy ? 'Saving…' : 'Enter ShahZap'}
+            </button>
+          )}
+        </div>
+      </footer>
+    </main>
+  )
 }
