@@ -5,5 +5,13 @@
   "compatibility_date": "2026-08-19",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
+  // Public values only — safe to commit (protected by Supabase RLS).
+  // NEXT_PUBLIC_* are inlined at build time via .env.production;
+  // these vars make them available server-side at runtime on the Worker.
+  "vars": {
+    "NEXT_PUBLIC_SUPABASE_URL": "https://dgwotipwrfgliusiudux.supabase.co",
+    "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_jNIFuKo0dznaNV-ikg1KvA_Fw0MTSFQ",
+    "NEXT_PUBLIC_SITE_URL": "https://shahzap.safiullahkorai.com"
+  },
   "assets": { "directory": ".open-next/assets", "binding": "ASSETS" }
 }
