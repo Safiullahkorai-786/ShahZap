@@ -12,6 +12,37 @@ Anonymous social discovery, random chat, intelligent matching, translation, prog
 | Phase 13B — Production infrastructure | ✅ Build & lint passing |
 | Phase 13C-1 — Provider architecture | ✅ Complete |
 | Phase 13C-2 — Production secrets/provider configuration | 🟡 Implemented (see Phase 13C Implementation section) |
+| Cloudflare deploy pipeline (`build:cloudflare` + `wrangler deploy --dry-run`) | ✅ Verified passing |
+
+## Cloudflare Deploy Fixes (by opencode/mimo-v2-free)
+
+The Cloudflare build/deploy was failing. Root causes found and fixed:
+
+### Before (broken)
+1. **`open-next.config.ts` rejected by `@opennextjs/cloudflare@1.x`** — it used a raw config
+   (`{ default: { incremental: true } }`) that fails the adapter's config validation, which
+   requires the full Cloudflare override set (`cloudflare-node` wrapper, `edge` converter,
+   `fetch` proxy, caches/queue, `edgeExternals`, external edge middleware).
+   Error: `The open-next.config.ts should have a default export like this: …`
+2. **Missing `next.config.ts`** — OpenNext requires a Next.js config file to exist.
+   Error: `next.config.js not found. Please make sure you are running this command inside a Next.js app.`
+3. **Node.js proxy not supported on Workers** — Next.js 16's `src/proxy.ts` always runs on the
+   Node.js runtime, but OpenNext Cloudflare only supports Edge middleware.
+   Error: `Node.js middleware is not currently supported. Consider switching to Edge Middleware.`
+4. **ESLint scanned `.open-next/` build output** (15k+ false problems) after any local
+   Cloudflare build because the directory wasn't in `globalIgnores`.
+
+### After (fixed)
+1. `open-next.config.ts` now uses the official `defineCloudflareConfig()` helper, which emits
+   exactly the overrides the adapter validates for (dummy cache by default; see
+   https://opennext.js.org/cloudflare/caching to enable R2 caching later with an R2 binding).
+2. Added a minimal `next.config.ts`.
+3. Renamed `src/proxy.ts` → `src/middleware.ts` (with a `middleware` export) so the auth
+   session-refresh middleware runs on the Edge runtime, as required by Workers/OpenNext.
+4. Added `.open-next/**` to ESLint `globalIgnores`.
+
+Verified locally: `npm run lint` ✅ · `npm run build` ✅ · `npm run build:cloudflare` ✅ ·
+`npx wrangler deploy --dry-run` ✅ (Worker saved to `.open-next/worker.js`).
 
 ## Fixes Applied (by opencode/mimo-v2-free)
 
