@@ -118,7 +118,7 @@ export async function verifyReward(
   // 2. Check expiry
   const createdAt = new Date(context.created_at).getTime();
   const now = Date.now();
-  if (now > context.expires_at || now > context.expires_at) {
+  if (now > context.expires_at) {
     // Context expired — we could clean it up, but for idempotency we
     // still reject new grants from an expired context.
     return { valid: false, error: 'Reward context has expired' };

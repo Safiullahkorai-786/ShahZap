@@ -119,7 +119,7 @@ export function verifyWebhook(headers: Headers, rawBody: string): PaddleWebhookE
   //   - Construct the signature base string (typically timestamp + body)
   //   - Use HMAC-SHA256 with the webhook secret to generate the expected signature
   //   - Compare against the header value
-  const timestamp = new Date().toISOString(); // Paddle provides this in headers; adjust as needed
+  const timestamp = headers.get('Paddle-Timestamp') || new Date().toISOString(); // Paddle provides this in headers; adjust as needed
   const signatureBase = `${timestamp}.${rawBody}`;
 
   const crypto = require('crypto');
