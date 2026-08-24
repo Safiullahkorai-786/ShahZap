@@ -41,7 +41,6 @@ a { color: inherit; text-decoration: none; }
 
 .hero { width:min(1180px, calc(100% - 32px)); margin:auto; padding:70px 0 90px; display:grid; grid-template-columns:1.15fr .85fr; gap:60px; align-items:center; }
 .eyebrow { color:var(--accent-2); font-weight:700; text-transform:uppercase; letter-spacing:.13em; font-size:.75rem; }
-h1 { margin:14px 0 18px; font-size:clamp(3rem, 7vw, 6.5rem); line-height:.92; letter-spacing:-.065em; max-width:850px; }
 .gradientText { background:linear-gradient(100deg,#fff 15%,#bdb0ff 55%,#76f4e5); -webkit-background-clip:text; background-clip:text; color:transparent; }
 .lead { max-width:650px; color:var(--muted); font-size:1.16rem; line-height:1.75; }
 .actions { display:flex; gap:12px; margin-top:30px; flex-wrap:wrap; }
@@ -75,4 +74,125 @@ h1 { margin:14px 0 18px; font-size:clamp(3rem, 7vw, 6.5rem); line-height:.92; le
   h1 { font-size:clamp(3rem, 16vw, 5rem); }
   .features { grid-template-columns:1fr; }
   .section { padding:60px 0; }
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   THEME ENGINE v3 — <html data-base="dark|white" data-accent="…">
+   Base flips the whole slate ramp; accents retint every cyan slot
+   and paint a soft glow. Dark & White are permanent plain modes;
+   the 7 accents work beautifully on either base.
+   ═══════════════════════════════════════════════════════════════ */
+
+
+/* ── App frame: phone-width column on desktop ── */
+body { background: #020617; }
+html[data-base='white'] body { background: #e8edf5; }
+
+/* ── Chrome surfaces (top bars + dock), high-contrast per base ── */
+:root {
+  --chrome-bg: rgba(8,12,24,.78);
+  --chrome-border: rgba(71,85,105,.55);
+  --chrome-shadow: 0 12px 32px rgb(0 0 0 / .38);
+  --tab-idle: #94a3b8;
+  --tab-active: #22d3ee;
+  --tab-hover: #e2e8f0;
+}
+html[data-base='white'] {
+  --chrome-bg: rgba(255,255,255,.88);
+  --chrome-border: rgba(100,116,139,.45);
+  --chrome-shadow: 0 12px 28px rgb(15 23 42 / .14);
+}
+.app-chrome {
+  background: var(--chrome-bg);
+  border-color: var(--chrome-border);
+  box-shadow: var(--chrome-shadow);
+  backdrop-filter: blur(16px);
+}
+/* Dock tab colors — explicit tokens, guaranteed visible on every base */
+.app-dock a { color: var(--tab-idle); }
+.app-dock a:hover { color: var(--tab-hover); background: color-mix(in srgb, var(--tab-idle) 12%, transparent); }
+.app-dock a.active { color: var(--tab-active); background: color-mix(in srgb, var(--tab-active) 14%, transparent); }
+.app-dock a.active .nav-dot { background: var(--tab-active); }
+
+/* ── Base ramps ── */
+html[data-base='dark'] { color-scheme: dark; }
+
+html[data-base='white'] {
+  --tab-idle: #475569;
+  --tab-active: #0369a1;
+  --tab-hover: #0f172a;
+  --color-slate-950: #f8fafc;
+  --color-slate-900: #f1f5f9;
+  --color-slate-800: #e2e8f0;
+  --color-slate-700: #cbd5e1;
+  --color-slate-600: #94a3b8;
+  --color-slate-500: #64748b;
+  --color-slate-400: #475569;
+  --color-slate-300: #334155;
+  --color-slate-200: #1e293b;
+  --color-slate-100: #0f172a;
+  --color-cyan-300: #0369a1;
+  --color-cyan-200: #075985;
+  --color-emerald-300: #047857;
+  --color-emerald-200: #065f46;
+  --color-red-300: #b91c1c;
+  --color-red-200: #991b1b;
+  --color-amber-300: #b45309;
+  --color-violet-300: #6d28d9;
+  color-scheme: light;
+}
+html[data-base='white'] .text-white { color: #0f172a; }
+html[data-base='white'] .text-slate-950 { color: #0c1929; }
+
+/* ── Accent palettes (hue triplets + glow pair) ── */
+html[data-accent='pink']    { --a1:#f9a8d4; --a2:#f472b6; --a3:#db2777; --g1:#f472b6; --g2:#c026d3; }
+html[data-accent='emerald'] { --a1:#6ee7b7; --a2:#34d399; --a3:#059669; --g1:#10b981; --g2:#0d9488; }
+html[data-accent='purple']  { --a1:#c4b5fd; --a2:#a78bfa; --a3:#7c3aed; --g1:#8b5cf6; --g2:#6d28d9; }
+html[data-accent='yellow']  { --a1:#fde047; --a2:#facc15; --a3:#ca8a04; --g1:#fbbf24; --g2:#f59e0b; }
+html[data-accent='sunset']  { --a1:#f0abfc; --a2:#e879f9; --a3:#c026d3; --g1:#7e22ce; --g2:#db2777; --g3:#f59e0b; }
+html[data-accent='ocean']   { --a1:#7dd3fc; --a2:#38bdf8; --a3:#0284c7; --g1:#0369a1; --g2:#06b6d4; }
+html[data-accent='aurora']  { --a1:#5eead4; --a2:#2dd4bf; --a3:#0d9488; --g1:#10b981; --g2:#8b5cf6; }
+
+/* Slot mapping: dark bases get bright accents; light bases get deeper,
+   readable ones. Plain Dark / White (accent=none) keep stock cyan. */
+html[data-accent]:not([data-accent='none']) {
+  --color-cyan-300: var(--a3, #7dd3fc);
+  --color-cyan-400: var(--a2, #38bdf8);
+  --color-cyan-500: var(--a1, #0ea5e9);
+  --tab-active: var(--a3, #22d3ee);
+  --theme-gradient: linear-gradient(140deg,
+    color-mix(in srgb, var(--g1, #334155) 30%, transparent),
+    color-mix(in srgb, var(--g2, #475569) 26%, transparent));
+}
+html[data-base='dark'][data-accent]:not([data-accent='none']) {
+  --color-cyan-300: var(--a1, #7dd3fc);
+  --color-cyan-400: var(--a2, #38bdf8);
+  --color-cyan-500: var(--a3, #0ea5e9);
+  --tab-active: var(--a1, #22d3ee);
+}
+html[data-accent='sunset']:not([data-accent='none']),
+html[data-base='dark'][data-accent='sunset'] {
+  --theme-gradient: linear-gradient(140deg,
+    color-mix(in srgb, var(--g1, #7e22ce) 30%, transparent),
+    color-mix(in srgb, var(--g2, #db2777) 28%, transparent),
+    color-mix(in srgb, var(--g3, #f59e0b) 22%, transparent));
+}
+
+/* Soft fixed glow layer behind everything */
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: -1;
+  pointer-events: none;
+  background: var(--theme-gradient, none);
+}
+
+/* ── Floating dock (bottom app bar) ── */
+.app-dock {
+  border-radius: 999px;
+  box-shadow: var(--chrome-shadow), 0 0 0 1px rgb(255 255 255 / .04) inset;
 }

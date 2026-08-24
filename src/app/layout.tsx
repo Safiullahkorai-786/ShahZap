@@ -1,9 +1,14 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { PwaRegister } from "@/components/PwaRegister";
+import { BottomNav } from "@/components/bottom-nav";
 
 export const viewport: Viewport = {
   themeColor: "#06b6d4",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  interactiveWidget: "resizes-content",
 };
 
 export const metadata: Metadata = {
@@ -20,8 +25,19 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
-      <body><PwaRegister />{children}</body>
+    <html lang="en" suppressHydrationWarning>
+      <body>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: "try{var s=JSON.parse(localStorage.getItem('shahzap:theme')||'{}');var b=s.base==='white'?'white':'dark';document.documentElement.dataset.base=b;document.documentElement.dataset.accent=s.accent||'none'}catch(e){}",
+          }}
+        />
+        <div className="w-full min-h-dvh bg-slate-950">
+          <PwaRegister />
+          {children}
+          <BottomNav />
+        </div>
+      </body>
     </html>
   );
 }

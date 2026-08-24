@@ -1,0 +1,18 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Cloudflare Workers Static Assets header rules for ShahZap.
+# Copied to .open-next/assets/_headers by scripts/cf-cache.mjs before deploy.
+# Docs: https://developers.cloudflare.com/workers/static-assets/headers/
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Immutable, content-hashed build output (JS/CSS/fonts hashed by Next.js).
+# Safe to cache for a year — a new deploy produces new filenames.
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Service worker must always revalidate so updates ship promptly.
+/sw.js
+  Cache-Control: no-cache
+
+# PWA manifest changes rarely but must not be pinned forever.
+/manifest.webmanifest
+  Cache-Control: public, max-age=86400

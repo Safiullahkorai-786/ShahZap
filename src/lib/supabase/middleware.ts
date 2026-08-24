@@ -3,6 +3,10 @@ import { NextResponse, type NextRequest } from "next/server";
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
+  // Page HTML must always revalidate — prevents stale cached shells from
+  // referencing outdated builds (the "huge title" bug was cached 0.5px text
+  // being inflated by mobile font-boosting).
+  response.headers.set('Cache-Control', 'no-cache, must-revalidate');
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 

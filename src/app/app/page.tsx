@@ -1,6 +1,9 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { PresenceHeartbeat } from '@/components/presence-heartbeat'
+import { NotificationBell } from '@/components/notification-bell'
+import { ZapChatButton } from '@/components/zap-chat-button'
 
 export const dynamic = 'force-dynamic'
 
@@ -8,6 +11,7 @@ const QUICK_LINKS = [
   ['/progression', 'Progression', 'Level, XP and streaks'],
   ['/friends', 'Friends', 'People you connected with'],
   ['/rewards', 'Rewards', 'Redeem your Zap Points'],
+  ['/online', 'Online now', 'Members active right now'],
 ] as const
 
 export default async function AppPage() {
@@ -16,6 +20,12 @@ export default async function AppPage() {
   if (!user) redirect('/')
   const { data: profile } = await supabase.from('profiles').select('display_name, interface_language, chat_language, xp, zap_points, region_credits, level, streak_days').eq('id', user.id).maybeSingle()
   if (!profile) redirect('/onboarding')
+  await supabase.from('profiles').update({ last_active_at: new Date().toISOString() }).eq('id', user.id)
+  const { data: conversations } = await supabase
+    .from('conversations')
+    .select('id, started_at')
+    .order('started_at', { ascending: false })
+    .limit(8)
 
   const initial = profile.display_name?.charAt(0)?.toUpperCase() ?? '?'
 
@@ -40,12 +50,14 @@ export default async function AppPage() {
           </div>
           <div className="flex items-center gap-2.5">
             <span className="hidden rounded-full border border-slate-700 px-3 py-1 text-xs font-medium text-slate-300 sm:inline">Level {profile.level ?? 1}</span>
-            <span className="rounded-full border border-cyan-900/60 bg-cyan-950/30 px-3 py-1 text-xs font-medium text-cyan-300">Private session</span>
+            <Link href="/private-session" className="rounded-full border border-cyan-900/60 bg-cyan-950/30 px-3 py-1 text-xs font-medium text-cyan-300 transition hover:border-cyan-400 hover:text-cyan-200">Private session ℹ️</Link>
+            <NotificationBell />
+            <Link href="/settings" aria-label="Settings" className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-700 text-sm transition hover:border-slate-500 hover:text-white">⚙️</Link>
           </div>
         </div>
       </header>
 
-      <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+      <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6">
         {/* Stats */}
         <section aria-label="Your progression" className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
           {stats.map(([label, value]) => (
@@ -70,14 +82,35 @@ export default async function AppPage() {
             <Link href="/match" className="rounded-xl bg-gradient-to-r from-cyan-400 to-cyan-300 px-8 py-4 text-sm font-bold text-slate-950 shadow-xl shadow-cyan-950/50 transition hover:brightness-110">
               Start matching
             </Link>
+            <ZapChatButton label="⚡ Practice chat" />
+            <ZapChatButton guide label="🧭 Ask ZapGuide" />
             <Link href={`/profile/${user.id}`} className="rounded-xl border border-slate-700 px-6 py-4 text-sm font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white">
               My profile
             </Link>
           </div>
         </section>
 
+        {/* Recent conversations */}
+        {(conversations?.length ?? 0) > 0 && (
+          <section aria-label="Your conversations" className="mt-6">
+            <h2 className="text-lg font-semibold">Your conversations</h2>
+            <p className="mt-1 text-xs text-slate-400">Jump back into a chat you already started.</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {conversations!.map((conversation) => (
+                <Link key={conversation.id} href={`/chat/${conversation.id}`} className="group flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900/70 p-4 transition hover:border-cyan-900/60 hover:bg-slate-900">
+                  <span>
+                    <span className="block text-sm font-semibold">💬 Conversation</span>
+                    <span className="mt-0.5 block text-xs text-slate-500">Started {new Date(conversation.started_at).toLocaleString()}</span>
+                  </span>
+                  <span className="text-slate-600 transition group-hover:translate-x-0.5 group-hover:text-cyan-300">→</span>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Quick links */}
-        <section className="mt-6 grid gap-4 sm:grid-cols-3">
+        <section className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {QUICK_LINKS.map(([href, title, hint]) => (
             <Link key={href} href={href} className="group rounded-2xl border border-slate-800 bg-slate-900/70 p-5 transition hover:border-cyan-900/60 hover:bg-slate-900">
               <div className="flex items-center justify-between">
@@ -89,6 +122,7 @@ export default async function AppPage() {
           ))}
         </section>
       </div>
+      <PresenceHeartbeat />
     </main>
   )
 }

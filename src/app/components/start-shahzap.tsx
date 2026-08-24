@@ -14,12 +14,23 @@ export function StartShahZap() {
     setError('')
     try {
       const supabase = createClient()
-      const { data } = await supabase.auth.getSession()
+      let { data } = await supabase.auth.getSession()
       if (!data.session) {
         const { error: signInError } = await supabase.auth.signInAnonymously()
         if (signInError) {
           setError('We could not start your private session. Please try again.')
           setBusy(false)
+          return
+        }
+        data = (await supabase.auth.getSession()).data
+      }
+      // Returning member? Their profile already exists — skip onboarding and
+      // land straight in the app. Changes live in Settings from there.
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: profile } = await supabase.from('profiles').select('id').eq('id', user.id).maybeSingle()
+        if (profile) {
+          router.replace('/app')
           return
         }
       }

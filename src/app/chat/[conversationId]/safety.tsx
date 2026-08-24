@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { friendlyError } from '@/lib/errors'
 
 const reasons = ['harassment','spam','hate_speech','sexual_content','scam','impersonation','underage_concern','threatening_behavior','other']
 
@@ -17,8 +18,8 @@ export default function SafetyActions({ conversationId, otherProfileId }: { conv
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setStatus('Your session expired.'); setBusy(false); return }
-    const { error } = await supabase.from('reports').insert({ reporter_id: user.id, reported_id: otherProfileId, conversation_id: conversationId, reason, details: details.trim().slice(0, 1000) || null })
-    setStatus(error ? error.message : 'Report submitted. Thank you for helping keep ShahZap safe.')
+    const { error } = await supabase.from('reports').insert({ reporter_id: user.id, reported_profile_id: otherProfileId, conversation_id: conversationId, reason, details: details.trim().slice(0, 1000) || null })
+    setStatus(error ? friendlyError(error, 'Could not submit the report. Please try again.') : 'Report submitted. Thank you for helping keep ShahZap safe.')
     if (!error) { setDetails(''); setOpen(false) }
     setBusy(false)
   }
@@ -29,7 +30,7 @@ export default function SafetyActions({ conversationId, otherProfileId }: { conv
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setStatus('Your session expired.'); setBusy(false); return }
     const { error } = await supabase.from('blocks').upsert({ blocker_id: user.id, blocked_id: otherProfileId }, { onConflict: 'blocker_id,blocked_id' })
-    setStatus(error ? error.message : 'User blocked. They will not be matched with you again.')
+    setStatus(error ? friendlyError(error, 'Could not block this user. Please try again.') : 'User blocked. They will not be matched with you again.')
     setBusy(false)
   }
 

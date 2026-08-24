@@ -11,7 +11,13 @@
   "vars": {
     "NEXT_PUBLIC_SUPABASE_URL": "https://dgwotipwrfgliusiudux.supabase.co",
     "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_jNIFuKo0dznaNV-ikg1KvA_Fw0MTSFQ",
-    "NEXT_PUBLIC_SITE_URL": "https://shahzap.safiullahkorai.com"
+    "NEXT_PUBLIC_SITE_URL": "https://shahzap.safiullahkorai.com",
+    // Adsterra (public values — account 3436789, website 6001372):
+    "NEXT_PUBLIC_ADSTERRA_728X90": "5c8597ab83f246476e006bfb0146b5ea",
+    "NEXT_PUBLIC_ADSTERRA_300X250": "60c67d6facfea2048a5a7c45be05b541",
+    "NEXT_PUBLIC_ADSTERRA_160X600": "079fc3d49517794bd4da514f8b4e76fc"
+    // Rewards: store the service key as a secret (never commit it):
+    //   npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
   },
   "assets": { "directory": ".open-next/assets", "binding": "ASSETS" }
 }

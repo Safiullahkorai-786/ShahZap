@@ -23,6 +23,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+const NO_STORE = { 'Cache-Control': 'no-store' } as const;
+
 // Import our Paddle adapter functions
 import { verifyWebhook, processWebhook } from '@/lib/providers/paddle';
 import type { PaddleWebhookEvent } from '@/lib/providers/paddle';
@@ -48,7 +50,7 @@ export async function POST(request: NextRequest) {
     JSON.parse(body);
   } catch (e) {
     console.error('Paddle webhook: invalid JSON body', e);
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400, headers: NO_STORE });
   }
 
   // ── 1. Verify webhook signature ────────────────────────────────────────────
@@ -60,7 +62,7 @@ export async function POST(request: NextRequest) {
     console.error('Paddle webhook: signature verification failed', message);
     return NextResponse.json(
       { error: `Webhook signature verification failed: ${message}` },
-      { status: 401 }
+      { status: 401, headers: NO_STORE }
     );
   }
 
@@ -77,16 +79,19 @@ export async function POST(request: NextRequest) {
     ...(result.error && { error: result.error }),
   };
 
-  return NextResponse.json(responseBody, { status: 200 });
+  return NextResponse.json(responseBody, { status: 200, headers: NO_STORE });
 }
 
 // ── Optional: GET for healthcheck / verification ──────────────────────────────
 // Paddle may ping the webhook URL with a GET during configuration.
 // We return 200 with a simple payload to confirm the endpoint is live.
 export async function GET() {
-  return NextResponse.json({
-    status: 'ok',
-    message: 'Paddle webhook endpoint is active',
-    endpoint: '/api/webhooks/paddle',
-  });
+  return NextResponse.json(
+    {
+      status: 'ok',
+      message: 'Paddle webhook endpoint is active',
+      endpoint: '/api/webhooks/paddle',
+    },
+    { headers: NO_STORE }
+  );
 }

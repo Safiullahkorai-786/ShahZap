@@ -1,0 +1,5 @@
+{"rules":[
+ {"action":"set_cache_settings","action_parameters":{"cache":false},"description":"Bypass cache: dynamic APIs (auth, Supabase data, webhooks)","enabled":true,"expression":"(starts_with(http.request.uri.path, \"/api/\"))"},
+ {"action":"set_cache_settings","action_parameters":{"cache":true,"edge_ttl":{"mode":"override_origin","default":2592000},"browser_ttl":{"mode":"override_origin","default":172800}},"description":"Cache Everything: hashed Next.js build assets · Edge TTL 30d · Browser 2d min","enabled":true,"expression":"(starts_with(http.request.uri.path, \"/_next/static/\"))"},
+ {"action":"set_cache_settings","action_parameters":{"cache":true,"edge_ttl":{"mode":"override_origin","default":604800},"browser_ttl":{"mode":"override_origin","default":172800}},"description":"Cache static assets by extension · Edge TTL 7d · Browser 2d min","enabled":true,"expression":"(http.request.uri.path matches \"\\\\.(png|jpg|jpeg|gif|webp|avif|svg|ico|woff2?|ttf|css|js)$\" and not starts_with(http.request.uri.path, \"/api/\"))"}
+]}

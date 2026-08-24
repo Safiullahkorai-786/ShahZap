@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { friendlyError } from '@/lib/errors'
 
 const STEPS = ['You', 'About you', 'Interests', 'Language & privacy'] as const
 const AGE_BANDS = [['18_20', '18–20'], ['21_29', '21–29'], ['30_44', '30–44'], ['45_59', '45–59'], ['60_plus', '60+']] as const
@@ -64,7 +65,7 @@ export default function OnboardingPage() {
   const [interfaceLanguage, setInterfaceLanguage] = useState('en')
   const [chatLanguage, setChatLanguage] = useState('en')
   const [selectedInterests, setSelectedInterests] = useState<string[]>([])
-  const [onlineVisible, setOnlineVisible] = useState(false)
+  const [onlineVisible, setOnlineVisible] = useState(true)
   const [profileVisible, setProfileVisible] = useState(true)
 
   useEffect(() => {
@@ -82,7 +83,6 @@ export default function OnboardingPage() {
     if (step === 1 && !name.trim()) return 'Choose a display name.'
     if (step === 1 && !ageBand) return 'Select your age band.'
     if (step === 2 && !gender) return 'Select a gender option or choose prefer not to say.'
-    if (step === 3 && selectedInterests.length < 3) return 'Choose at least 3 interests.'
     return ''
   }
 
@@ -96,16 +96,17 @@ export default function OnboardingPage() {
       orientation: orientation || null, generation: generation || null, interface_language: interfaceLanguage,
       chat_language: chatLanguage, online_visible: onlineVisible, profile_visible: profileVisible, last_active_at: new Date().toISOString(),
     })
-    if (profileError) { setError(profileError.message); setBusy(false); return }
+    if (profileError) { setError(friendlyError(profileError, 'Could not save your profile. Please try again.')); setBusy(false); return }
     const { error: preferenceError } = await supabase.from('match_preferences').upsert({ profile_id: user.id, preferred_languages: [chatLanguage] })
-    if (preferenceError) { setError(preferenceError.message); setBusy(false); return }
+    if (preferenceError) { setError(friendlyError(preferenceError, 'Could not save your preferences. Please try again.')); setBusy(false); return }
     const { data: rows, error: interestError } = await supabase.from('interests').select('id,slug').in('slug', selectedInterests)
-    if (interestError) { setError(interestError.message); setBusy(false); return }
+    if (interestError) { setError(friendlyError(interestError, 'Could not load interests. Please try again.')); setBusy(false); return }
     await supabase.from('profile_interests').delete().eq('profile_id', user.id)
     if (rows?.length) {
       const { error: insertError } = await supabase.from('profile_interests').insert(rows.map((row) => ({ profile_id: user.id, interest_id: row.id })))
-      if (insertError) { setError(insertError.message); setBusy(false); return }
+      if (insertError) { setError(friendlyError(insertError, 'Could not save your interests. Please try again.')); setBusy(false); return }
     }
+    try { localStorage.setItem('shahzap:onboarded', '1') } catch {}
     router.replace('/app')
   }
 
@@ -114,7 +115,7 @@ export default function OnboardingPage() {
     setError(''); setStep((value) => Math.min(4, value + 1))
   }
 
-  const canContinue = step === 1 ? Boolean(name.trim() && ageBand) : step === 2 ? Boolean(gender) : step === 3 ? selectedInterests.length >= 3 : true
+  const canContinue = step === 1 ? Boolean(name.trim() && ageBand) : step === 2 ? Boolean(gender) : true
 
   return (
     <main className="flex min-h-screen flex-col bg-slate-950 text-white">
@@ -195,7 +196,7 @@ export default function OnboardingPage() {
           {step === 3 && (
             <div>
               <h1 className="text-2xl font-bold tracking-tight">What are you into?</h1>
-              <p className="mt-2 text-sm leading-relaxed text-slate-400">Pick 3–8 interests — they power discovery, never safety decisions.</p>
+              <p className="mt-2 text-sm leading-relaxed text-slate-400">Optional — pick up to 8 so we can try to pair you with people who share your interests. Skip and you&apos;ll be connected instantly with anyone compatible.</p>
               <div className="mt-8 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
                 {INTERESTS.map(([v, l]) => (
                   <button type="button" key={v} onClick={() => toggleInterest(v)}
@@ -205,7 +206,7 @@ export default function OnboardingPage() {
                   </button>
                 ))}
               </div>
-              <p className="mt-5 text-xs font-medium text-slate-500"><span className={selectedInterests.length >= 3 ? 'text-cyan-300' : ''}>{selectedInterests.length}</span> of 8 selected · minimum 3</p>
+              <p className="mt-5 text-xs font-medium text-slate-500"><span className="text-cyan-300">{selectedInterests.length}</span> of 8 selected · {selectedInterests.length === 0 ? 'skipping is fine' : 'nice picks!'}</p>
             </div>
           )}
 

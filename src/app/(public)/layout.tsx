@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { JsonLd } from '@/components/seo/JsonLd'
+import { AdsterraBanner } from '@/components/adsterra-banner'
 
 export const metadata: Metadata = {
   title: { default: 'ShahZap — Anonymous Random Chat With People Worldwide', template: '%s | ShahZap' },
@@ -12,5 +13,17 @@ export const metadata: Metadata = {
 export default function PublicLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const website = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'ShahZap', url: 'https://shahzap.com/' }
   const app = { '@context': 'https://schema.org', '@type': 'WebApplication', name: 'ShahZap', applicationCategory: 'SocialNetworkingApplication', operatingSystem: 'Web', url: 'https://shahzap.com/' }
-  return <><JsonLd data={website} /><JsonLd data={app} />{children}</>
+  const bannerConfigured = Boolean(process.env.NEXT_PUBLIC_ADSTERRA_728X90)
+  return (
+    <>
+      <JsonLd data={website} />
+      <JsonLd data={app} />
+      {children}
+      {bannerConfigured && (
+        <footer className="border-t border-slate-800/60 bg-slate-950 px-4 py-6">
+          <AdsterraBanner />
+        </footer>
+      )}
+    </>
+  )
 }
