@@ -184,10 +184,8 @@ export default function SettingsPage() {
       preferred_genders: prefs.preferred_genders,
       preferred_orientations: prefs.preferred_orientations,
       preferred_generations: prefs.preferred_generations,
-      preferred_languages: prefs.preferred_languages,
       preferred_continents: prefs.preferred_continents,
       preferred_interests: prefs.preferred_interests,
-      language_filter_enabled: prefs.language_filter_enabled,
       interest_wait_seconds: prefs.interest_wait_seconds,
       country_targeting_enabled: prefs.country_targeting_enabled,
     })
@@ -209,7 +207,7 @@ export default function SettingsPage() {
       <AppHeader title="Settings" icon="settings" />
       <div className="mx-auto max-w-2xl w-full px-4 pb-24 pt-4 md:pb-10 lg:max-w-4xl">
         <p className="text-xs leading-relaxed text-slate-500">
-          Privacy, matching and appearance. Your name, photo details and languages are edited under <b>Profile</b>.
+          Matching preferences and appearance. Your name, languages, privacy and interests are edited under <b>Profile</b>.
         </p>
 
         {error && <p className="mt-4 rounded-xl bg-red-950/40 p-3 text-sm text-red-200">{error}</p>}
@@ -282,13 +280,6 @@ export default function SettingsPage() {
               onToggle={(v) => setPrefs((c) => ({ ...c, preferred_continents: toggleIn(c.preferred_continents, v) }))} />
             <MultiSelect label="Interests" hint="Prioritize people who share these interests." options={INTEREST_OPTIONS} values={prefs.preferred_interests}
               onToggle={(v) => setPrefs((c) => ({ ...c, preferred_interests: toggleIn(c.preferred_interests, v) }))} />
-          </Section>
-
-          <Section title="Languages" description="Pick every language you know, then decide whether matching should use them.">
-            <MultiSelect label="Languages I know" hint="Example: Urdu, Sindhi, English, Hindi, Punjabi…" options={LANGUAGES} values={prefs.preferred_languages}
-              onToggle={(v) => setPrefs((c) => ({ ...c, preferred_languages: toggleIn(c.preferred_languages, v) }))} />
-            <Toggle checked={prefs.language_filter_enabled} onChange={(v2) => setPrefs((c) => ({ ...c, language_filter_enabled: v2 }))}
-              label="Only match people I can understand" hint="When ON, you'll only be paired with people whose chat language is one of the languages above. When OFF, languages are just listed — everyone is fair game." />
           </Section>
 
           <Section title="Matching timing & region" description="Fine-tune how the queue pairs you.">
