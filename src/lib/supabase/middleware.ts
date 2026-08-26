@@ -4,9 +4,11 @@ import { NextResponse, type NextRequest } from "next/server";
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
   // Page HTML must always revalidate — prevents stale cached shells from
-  // referencing outdated builds (the "huge title" bug was cached 0.5px text
-  // being inflated by mobile font-boosting).
-  response.headers.set('Cache-Control', 'no-cache, must-revalidate');
+  // referencing outdated builds. RSC/data payloads are left untouched so
+  // client-side navigations stay cheap on slow connections.
+  const accept = request.headers.get('accept') ?? ''
+  const isHtmlDoc = accept.includes('text/html')
+  if (isHtmlDoc) response.headers.set('Cache-Control', 'no-cache, must-revalidate');
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 

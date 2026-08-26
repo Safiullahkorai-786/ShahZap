@@ -1,35 +1,70 @@
 'use client'
 
-/*
- * Keeps profiles.last_active_at fresh while the tab is visible so the
- * online directory can show who is actually online. Renders nothing.
- */
-
 import { useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
-export function PresenceHeartbeat({ intervalSeconds = 45 }: { intervalSeconds?: number }) {
+/*
+ * Global presence heartbeat.
+ *
+ * While any ShahZap tab/PWA view is VISIBLE and the user is signed in,
+ * this bumps profiles.last_active_at every 10s — plus immediately on
+ * tab focus / returning from background. Close or background the app
+ * and heartbeats stop, so partners see "last seen …" within 20s;
+ * come back and the green dot returns in near real time (Realtime
+ * broadcasts the profile update to anyone viewing the chat).
+ *
+ * Auth is resolved once on mount. Subsequent beats call touch_presence()
+ * directly — no getUser() round-trip every 25s. On error the session
+ * is re-resolved and the beat retries once.
+ */
+
+const HEARTBEAT_MS = 10_000
+
+export function PresenceHeartbeat() {
   useEffect(() => {
     const supabase = createClient()
-    let stopped = false
-    async function ping() {
-      if (document.visibilityState !== 'visible' || stopped) return
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-      await supabase
-        .from('profiles')
-        .update({ last_active_at: new Date().toISOString() })
-        .eq('id', user.id)
+    let active = true
+    let iv: number | null = null
+
+    async function resolveAuth(): Promise<boolean> {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        return !!user
+      } catch { return false }
     }
-    void ping()
-    const timer = setInterval(() => void ping(), intervalSeconds * 1000)
-    const onVisible = () => void ping()
-    document.addEventListener('visibilitychange', onVisible)
+
+    async function beat() {
+      if (!active || document.visibilityState !== 'visible') return
+      try { if (window.localStorage.getItem('shahzap:onlineMode') === 'off') return } catch {}
+
+      const { error } = await supabase.rpc('touch_presence')
+      if (error) {
+        // Session may have expired — re-resolve and retry once.
+        const ok = await resolveAuth()
+        if (ok && active) await supabase.rpc('touch_presence')
+      }
+    }
+
+    function onVisChange() { void beat() }
+    function onFocus() { void beat() }
+
+    document.addEventListener('visibilitychange', onVisChange)
+    window.addEventListener('focus', onFocus)
+
+    // First beat immediately, then every 10s.
+    void resolveAuth().then((ok) => {
+      if (!active || !ok) return
+      void beat()
+      iv = window.setInterval(() => void beat(), HEARTBEAT_MS)
+    })
+
     return () => {
-      stopped = true
-      clearInterval(timer)
-      document.removeEventListener('visibilitychange', onVisible)
+      active = false
+      if (iv) window.clearInterval(iv)
+      document.removeEventListener('visibilitychange', onVisChange)
+      window.removeEventListener('focus', onFocus)
     }
-  }, [intervalSeconds])
+  }, [])
+
   return null
 }

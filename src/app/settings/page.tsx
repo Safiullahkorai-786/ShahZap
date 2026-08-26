@@ -5,7 +5,9 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { friendlyError } from '@/lib/errors'
 import { ACCENTS, getSelection, applySelection, type Selection } from '@/lib/theme'
+import { getSoundPrefs, setSoundBundle, setSoundMode, notify, type SoundPrefs } from '@/lib/notification-sound'
 import { AppHeader } from '@/components/app-header'
+import { Shimmer } from '@/components/shimmer'
 
 const LANGUAGES = [
   ['en', 'English'], ['ur', 'Urdu'], ['sd', 'Sindhi'], ['hi', 'Hindi'], ['pa', 'Punjabi'],
@@ -16,6 +18,13 @@ const LANGUAGES = [
 const GENDER_OPTIONS = [['woman', 'Women'], ['man', 'Men'], ['non_binary', 'Non-binary'], ['prefer_not_to_say', 'Prefer not to say']] as const
 const GENERATION_OPTIONS = [['gen_alpha', 'Gen Alpha'], ['gen_z', 'Gen Z'], ['millennial', 'Millennial'], ['gen_x', 'Gen X'], ['boomer', 'Boomer']] as const
 const AGE_BAND_OPTIONS = [['18_20', '18–20'], ['21_29', '21–29'], ['30_44', '30–44'], ['45_59', '45–59'], ['60_plus', '60+']] as const
+const CONTINENTS = [['africa', 'Africa'], ['asia', 'Asia'], ['europe', 'Europe'], ['north_america', 'N. America'], ['south_america', 'S. America'], ['oceania', 'Oceania']] as const
+const INTEREST_OPTIONS = [
+  ['music', 'Music'], ['movies', 'Movies'], ['gaming', 'Gaming'], ['anime', 'Anime'],
+  ['sports', 'Sports'], ['technology', 'Technology'], ['books', 'Books'], ['travel', 'Travel'],
+  ['food', 'Food'], ['art', 'Art'], ['fitness', 'Fitness'], ['memes', 'Memes'],
+  ['photography', 'Photography'], ['science', 'Science'], ['nature', 'Nature'], ['coding', 'Coding'],
+] as const
 const WAIT_TIMES = [[5, '5 seconds'], [10, '10 seconds'], [15, '15 seconds'], [30, '30 seconds'], [45, '45 seconds'], [60, '60 seconds']] as const
 
 type Visibility = {
@@ -34,6 +43,8 @@ type Prefs = {
   preferred_orientations: string[]
   preferred_generations: string[]
   preferred_languages: string[]
+  preferred_continents: string[]
+  preferred_interests: string[]
   language_filter_enabled: boolean
   interest_wait_seconds: number
   country_targeting_enabled: boolean
@@ -104,6 +115,33 @@ function Section({ title, description, children }: { title: string; description:
   )
 }
 
+function SettingsSkeleton() {
+  return (
+    <div aria-busy="true" className="mt-4 space-y-4">
+      {[0,1,2].map((i) => (
+        <div key={i} className="rounded-3xl border border-slate-800 bg-slate-900/70 p-4 sm:p-6">
+          <Shimmer className="h-4 w-40 rounded sm:w-48" />
+          <div className="mt-4 space-y-3">
+            <Shimmer className="h-11 w-full rounded-xl" />
+            <Shimmer className="h-11 w-3/4 rounded-xl" />
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <Shimmer className="h-9 rounded-lg" />
+              <Shimmer className="h-9 rounded-lg" />
+              <Shimmer className="hidden sm:block h-9 rounded-lg" />
+            </div>
+            <div className="hidden md:grid md:grid-cols-4 md:gap-2">
+              <Shimmer className="h-8 rounded-lg" />
+              <Shimmer className="h-8 rounded-lg" />
+              <Shimmer className="h-8 rounded-lg" />
+              <Shimmer className="h-8 rounded-lg" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function SettingsPage() {
   const router = useRouter()
   const supabase = createClient()
@@ -118,11 +156,14 @@ export default function SettingsPage() {
     preferred_orientations: [],
     preferred_generations: [],
     preferred_languages: [],
+    preferred_continents: [],
+    preferred_interests: [],
     language_filter_enabled: false,
     interest_wait_seconds: 5,
     country_targeting_enabled: false,
   })
   const [sel, setSel] = useState<Selection>({ base: 'dark', accent: 'none' })
+  const [sound, setSound] = useState<SoundPrefs>({ mode: 'sound', bundle: 'classic' })
 
   useEffect(() => {
     let active = true
@@ -130,9 +171,10 @@ export default function SettingsPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.replace('/'); return }
       setSel(getSelection())
+      setSound(getSoundPrefs())
       const [{ data: v }, { data: p }] = await Promise.all([
         supabase.from('profiles').select('online_visible,profile_visible,generation_visible,country_visible,gender_visible,age_band_visible,interests_visible').eq('id', user.id).maybeSingle(),
-        supabase.from('match_preferences').select('preferred_age_bands,preferred_genders,preferred_orientations,preferred_generations,preferred_languages,language_filter_enabled,interest_wait_seconds,country_targeting_enabled').eq('profile_id', user.id).maybeSingle(),
+        supabase.from('match_preferences').select('preferred_age_bands,preferred_genders,preferred_orientations,preferred_generations,preferred_languages,preferred_continents,preferred_interests,language_filter_enabled,interest_wait_seconds,country_targeting_enabled').eq('profile_id', user.id).maybeSingle(),
       ])
       if (!active) return
       if (v) setVis(v as Visibility)
@@ -169,6 +211,8 @@ export default function SettingsPage() {
       preferred_orientations: prefs.preferred_orientations,
       preferred_generations: prefs.preferred_generations,
       preferred_languages: prefs.preferred_languages,
+      preferred_continents: prefs.preferred_continents,
+      preferred_interests: prefs.preferred_interests,
       language_filter_enabled: prefs.language_filter_enabled,
       interest_wait_seconds: prefs.interest_wait_seconds,
       country_targeting_enabled: prefs.country_targeting_enabled,
@@ -224,11 +268,44 @@ export default function SettingsPage() {
             </div>
           </Section>
 
+          <Section title="Sounds & vibration" description="Pick how ShahZap gets your attention — a sound, a buzz, or nothing. The pack changes every alert in the app.">
+            <div>
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Alert mode</p>
+              <div className="grid grid-cols-3 gap-2">
+                {([['sound','🔔 Sound'],['buzz','📳 Buzz'],['mute','🔕 Mute']] as const).map(([m,label]) => (
+                  <button key={m} onClick={() => setSound(setSoundMode(m))}
+                    className={`rounded-xl border px-3 py-2.5 text-sm font-semibold transition ${sound.mode === m ? 'border-cyan-400 bg-cyan-400/10 text-cyan-200 ring-1 ring-cyan-400/50' : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-500'}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {sound.mode === 'buzz' && <p className="mt-2 text-xs text-slate-500">Vibrates where your device supports it; elsewhere you get a soft low buzz tone instead.</p>}
+              {sound.mode === 'mute' && <p className="mt-2 text-xs text-slate-500">Everything is silent — messages still arrive normally.</p>}
+            </div>
+            <div>
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Sound packs</p>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {([['classic','✨ Classic','Bright pings and warm chimes — the original ShahZap set.'],['pop','🎈 Pop','Playful arcade blips with bouncy little boings.'],['zen','🍃 Zen','Soft bells and calm tones for quiet chatting.']] as const).map(([b,label,hint]) => (
+                  <button key={b} onClick={() => { const n = setSoundBundle(b); setSound(n); if (n.mode === 'sound') notify('message') }}
+                    className={`rounded-2xl border p-4 text-left transition ${sound.bundle === b ? 'border-cyan-400 bg-cyan-400/10 ring-1 ring-cyan-400/40' : 'border-slate-800 bg-slate-950 hover:border-slate-600'}`}>
+                    <span className="block text-sm font-bold">{label}</span>
+                    <span className="mt-1 block text-xs leading-relaxed text-slate-400">{hint}</span>
+                    <span className="mt-2 block text-[10px] font-semibold uppercase tracking-wide text-cyan-300/80">{sound.bundle === b ? 'Selected · tap to preview' : 'Tap to preview'}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </Section>
+
           <Section title="Privacy & visibility" description="You decide what others can discover about you. Names follow these rules everywhere — notifications, lists and profiles.">
             <Toggle checked={vis.profile_visible} onChange={(v2) => setVis({ ...vis, profile_visible: v2 })}
               label="Profile discoverable" hint="Let compatible users see your profile at all." />
-            <Toggle checked={vis.online_visible} onChange={(v2) => setVis({ ...vis, online_visible: v2 })}
-              label="Show me online" hint="Appear in the online directory." />
+            <Toggle checked={vis.online_visible} onChange={(v2) => {
+              const next = { ...vis, online_visible: v2 }
+              try { localStorage.setItem('shahzap:onlineMode', v2 ? 'on' : 'off') } catch {}
+              setVis(next)
+            }}
+              label="Online mode" hint="Appear online in real time while you're here — the green dot and “last seen” update live. Turn off to browse invisibly; random matching keeps working either way." />
             <Toggle checked={vis.age_band_visible} onChange={(v2) => setVis({ ...vis, age_band_visible: v2 })}
               label="Show age band" hint="Display your age band on your profile." />
             <Toggle checked={vis.gender_visible} onChange={(v2) => setVis({ ...vis, gender_visible: v2 })}
@@ -248,6 +325,10 @@ export default function SettingsPage() {
               onToggle={(v) => setPrefs((c) => ({ ...c, preferred_generations: toggleIn(c.preferred_generations, v) }))} />
             <MultiSelect label="Age bands" options={AGE_BAND_OPTIONS} values={prefs.preferred_age_bands}
               onToggle={(v) => setPrefs((c) => ({ ...c, preferred_age_bands: toggleIn(c.preferred_age_bands, v) }))} />
+            <MultiSelect label="Continents" hint="Only match people from these regions." options={CONTINENTS} values={prefs.preferred_continents}
+              onToggle={(v) => setPrefs((c) => ({ ...c, preferred_continents: toggleIn(c.preferred_continents, v) }))} />
+            <MultiSelect label="Interests" hint="Prioritize people who share these interests." options={INTEREST_OPTIONS} values={prefs.preferred_interests}
+              onToggle={(v) => setPrefs((c) => ({ ...c, preferred_interests: toggleIn(c.preferred_interests, v) }))} />
           </Section>
 
           <Section title="Languages" description="Pick every language you know, then decide whether matching should use them.">

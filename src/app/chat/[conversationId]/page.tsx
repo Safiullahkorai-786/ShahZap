@@ -1,16 +1,18 @@
 'use client'
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
-import { MoreVertical, Send, UserPlus, ShieldAlert, Ban, Languages, UserCircle2, CornerUpLeft, Pencil, Trash2, X, Check, ArrowDown, SunMoon, Clock, UserCheck, UserMinus } from 'lucide-react'
+import { MoreVertical, Send, UserPlus, ShieldAlert, Ban, Languages, UserCircle2, CornerUpLeft, Pencil, Trash2, X, Check, CheckCheck, ArrowDown, SunMoon, Clock, UserCheck, UserMinus, Smile, SmilePlus, BellRing, Vibrate, VolumeX, Type, ChevronDown, Plus, Minus, Cake, Sparkles, User, Globe, Copy, Image as ImageIcon } from 'lucide-react'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
-import { playFriendRequestSound, playMessageSound, playUnfriendSound } from '@/lib/notification-sound'
+import { getSoundPrefs, setSoundBundle, setSoundMode, notify, playFriendRequestSound, playMessageSound, playSentSound, playUnfriendSound, type SoundPrefs } from '@/lib/notification-sound'
 import { friendlyError } from '@/lib/errors'
 import { getBotPersona, isBotProfile } from '@/lib/bot'
 import { AdsterraBanner } from '@/components/adsterra-banner'
 import { resolveIdentity, type Identity } from '@/lib/identity'
+import { Shimmer } from '@/components/shimmer'
+import { RichText } from '@/components/rich-text'
+import { EmojiPicker } from '@/components/emoji-picker'
 import { ACCENTS, getSelection, applySelection, type Selection } from '@/lib/theme'
 
 type Reactions = Record<string, string[]> | null
@@ -24,6 +26,7 @@ type Message = {
   edited_at?: string | null
   deleted_at?: string | null
   reply_to_message_id?: string | null
+  deleted_by_receiver_at?: string | null
 }
 type OtherProfile = {
   id: string
@@ -32,6 +35,12 @@ type OtherProfile = {
   gender_visible?: boolean
   age_band: string | null
   age_band_visible: boolean
+  generation?: string | null
+  generation_visible?: boolean
+  country_code?: string | null
+  country_visible?: boolean
+  chat_language?: string | null
+  profile_visible?: boolean
   last_active_at: string | null
 }
 
@@ -41,9 +50,16 @@ const AGE_BAND_LABELS: Record<string, string> = {
 }
 const REPORT_REASONS = ['harassment','spam','hate_speech','sexual_content','scam','impersonation','underage_concern','threatening_behavior','other']
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '😘', '💦', '🤡', '🌚', '🌝']
-const ONLINE_WINDOW_MS = 5 * 60 * 1000
+// Presence flips to offline 20s after the last heartbeat. The global
+// PresenceHeartbeat beats every 10s while the tab/PWA is visible, and
+// instantly on focus — so closing/backgrounding shows "last seen" within
+// 20s, and returning goes green again in near real time.
+const ONLINE_WINDOW_MS = 20 * 1000
 const EDIT_WINDOW_MS = 15 * 60 * 1000
-const MESSAGE_COLUMNS = 'id,sender_id,original_message,translated_message,created_at,reactions,edited_at,deleted_at,reply_to_message_id'
+const MESSAGE_COLUMNS = 'id,sender_id,original_message,translated_message,created_at,reactions,edited_at,deleted_at,reply_to_message_id,deleted_by_receiver_at'
+
+type WallpaperPrefs = { mode: 'wallpaper' | 'solid'; solid: string; dim: number }
+const SOLID_COLORS = ['#020617', '#0f172a', '#1e293b', '#083344', '#134e4a', '#1e1b4b', '#450a0a', '#052e16']
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -80,6 +96,7 @@ export default function ChatPage() {
 
   const [messages, setMessages] = useState<Message[]>([])
   const [text, setText] = useState('')
+  const [emojiOpen, setEmojiOpen] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
   const [otherId, setOtherId] = useState<string | null>(null)
   const [other, setOther] = useState<OtherProfile | null>(null)
@@ -103,6 +120,22 @@ export default function ChatPage() {
   }
   const [autoTranslate, setAutoTranslate] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [cardOpen, setCardOpen] = useState(false)
+  const [reqBlocked, setReqBlocked] = useState(false)
+  const [virtualKb, setVirtualKb] = useState(false)
+  const kbTouchRef = useRef(false)
+  const [fmtOpen, setFmtOpen] = useState(false)
+  // Accent dots collapse to the first 6 until "+" is tapped.
+  const [allAccents, setAllAccents] = useState(false)
+
+  // Chat wallpaper: ShahZap image or a solid color, with an intensity
+  // slider ("dim" = how much dark scrim sits over it).
+  const [wallpaper, setWallpaperState] = useState<WallpaperPrefs>({ mode: 'wallpaper', solid: '#0f172a', dim: 0.55 })
+  function setWallpaper(next: WallpaperPrefs) {
+    setWallpaperState(next)
+    try { localStorage.setItem('shahzap:wallpaper', JSON.stringify(next)) } catch {}
+  }
+  const [soundPrefs, setSoundPrefs] = useState<SoundPrefs>({ mode: 'sound', bundle: 'classic' })
   const [reportOpen, setReportOpen] = useState(false)
   const [reason, setReason] = useState('harassment')
   const [details, setDetails] = useState('')
@@ -115,6 +148,10 @@ export default function ChatPage() {
   const lastLocalFriendChange = useRef<number>(0)
   const [otherOnline, setOtherOnline] = useState(false)
   const [presenceLabel, setPresenceLabel] = useState('')
+  const [otherLastActiveAt, setOtherLastActiveAt] = useState<string | null>(null)
+  // Partner's read receipt: when they last had this chat open. Drives the
+  // coloured "seen" double tick on my own messages.
+  const [partnerReadAt, setPartnerReadAt] = useState<string | null>(null)
   const [showScrollDown, setShowScrollDown] = useState(false)
   const [reactorInfo, setReactorInfo] = useState<{ emoji: string; names: string[] } | null>(null)
   const [sel, setSel] = useState<Selection>({ base: 'dark', accent: 'none' })
@@ -122,12 +159,14 @@ export default function ChatPage() {
   const prevMsgCount = useRef(0)
 
   const [actionsMsg, setActionsMsg] = useState<{ msg: Message; canEdit: boolean } | null>(null)
+  const [reactFor, setReactFor] = useState<string | null>(null)
   const [replyTo, setReplyTo] = useState<Message | null>(null)
   const [editing, setEditing] = useState<Message | null>(null)
   const [drag, setDrag] = useState<{ id: string; dx: number } | null>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const formRef = useRef<HTMLFormElement>(null)
   const channelRef = useRef<RealtimeChannel | null>(null)
   const lastTypingSent = useRef(0)
   const typingStopTimer = useRef<number | undefined>(undefined)
@@ -136,7 +175,17 @@ export default function ChatPage() {
   const chipPressTimer = useRef<number | undefined>(undefined)
   const didInitialScroll = useRef(false)
   const userIdRef2 = useRef<string | null>(null)
-  const gesture = useRef<{ id: string | null; startX: number; dx: number; moved: boolean; pressed: boolean; pointerType: string; mode: 'press' | 'rdrag' }>({ id: null, startX: 0, dx: 0, moved: false, pressed: false, pointerType: 'mouse', mode: 'press' })
+  const gesture = useRef<{ id: string | null; startX: number; dx: number; moved: boolean; pressed: boolean; pointerType: string; mode: 'press' | 'rdrag'; startT: number }>({ id: null, startX: 0, dx: 0, moved: false, pressed: false, pointerType: 'mouse', mode: 'press', startT: 0 })
+  // When the ⋮ menu is open and the user taps somewhere to close it, both
+  // the document pointerdown (which closes the menu) AND the message bubble's
+  // onPointerDown fire on the same event. This guard prevents the gesture
+  // system from treating that closing-tap as a message interaction (which
+  // would accidentally open the action sheet / emoji reaction picker).
+  const menuCloseGuard = useRef(false)
+  // Message IDs with an in-flight RPC toggle (reaction, edit, delete).
+  // The 3-second poll skips these so stale server data doesn't overwrite
+  // the optimistic update before the RPC completes.
+  const togglingMessages = useRef(new Set<string>())
 
   const persona = getBotPersona(otherId)
   const otherName = persona ? persona.name : other?.display_name || 'ShahZap user'
@@ -149,20 +198,34 @@ export default function ChatPage() {
     const otherRef: { current: OtherProfile | null } = { current: null }
     const otherIdRef: { current: string | null } = { current: null }
 
-    function refreshPresence() {
+    function refreshPresence(ts?: string | null) {
       const p = getBotPersona(otherIdRef.current)
       if (p) { setOtherOnline(true); setPresenceLabel('always here'); return }
       const op = otherRef.current
       if (!op) return
-      const online = !!op.last_active_at && Date.now() - new Date(op.last_active_at).getTime() < ONLINE_WINDOW_MS
+      // Prefer the freshest timestamp we were handed; fall back to the ref.
+      const iso = ts !== undefined ? ts : op.last_active_at
+      if (ts !== undefined) { op.last_active_at = ts; setOtherLastActiveAt(ts) }
+      const online = !!iso && Date.now() - new Date(iso).getTime() < ONLINE_WINDOW_MS
       setOtherOnline(online)
-      setPresenceLabel(online ? 'online' : lastSeen(op.last_active_at))
+      setPresenceLabel(online ? 'online' : lastSeen(iso))
     }
 
     async function load() {
       didInitialScroll.current = false
       setAutoTranslate(localStorage.getItem('shahzap:autoTranslate') === '1')
-      setSel(getSelection())
+      try {
+        const raw = localStorage.getItem('shahzap:wallpaper')
+        if (raw) {
+          const parsed = JSON.parse(raw) as WallpaperPrefs
+          if (parsed && (parsed.mode === 'wallpaper' || parsed.mode === 'solid') && typeof parsed.dim === 'number') setWallpaperState(parsed)
+        }
+      } catch {}
+      const sel0 = getSelection()
+      setSel(sel0)
+      // If the chosen accent lives in the collapsed zone, start expanded.
+      setAllAccents(ACCENTS.findIndex((a) => a.id === sel0.accent) >= 6)
+      setSoundPrefs(getSoundPrefs())
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.replace('/'); return }
       setUserId(user.id)
@@ -174,8 +237,14 @@ export default function ChatPage() {
       setOtherId(otherProfileId)
 
       if (otherProfileId && !isBotProfile(otherProfileId)) {
-        const { data: op } = await supabase.from('profiles').select('id,display_name,gender,gender_visible,age_band,age_band_visible,last_active_at').eq('id', otherProfileId).maybeSingle()
-        if (active && op) { setOther(op as OtherProfile); otherRef.current = op as OtherProfile; refreshPresence() }
+        const { data: op } = await supabase.from('profiles').select('id,display_name,gender,gender_visible,age_band,age_band_visible,generation,generation_visible,country_code,country_visible,chat_language,profile_visible,last_active_at').eq('id', otherProfileId).maybeSingle()
+        if (active && op) { setOther(op as OtherProfile); otherRef.current = op as OtherProfile; setOtherLastActiveAt(op.last_active_at ?? null); refreshPresence(op.last_active_at ?? null) }
+        // Partner's read receipt for the coloured "seen" tick.
+        const { data: cp } = await supabase.from('conversation_participants').select('last_read_at').eq('conversation_id', conversationId).eq('profile_id', otherProfileId).maybeSingle()
+        if (active && cp) setPartnerReadAt(cp.last_read_at ?? null)
+        // Did they decline our friend request 3 times? Then requests are off.
+        const { count: declinedCount } = await supabase.from('friend_requests').select('id', { count: 'exact', head: true }).eq('sender_id', user.id).eq('receiver_id', otherProfileId).eq('status', 'declined')
+        if (active) setReqBlocked((declinedCount ?? 0) >= 3)
         const [{ data: blockRow }, { data: blockRowIn }, { data: fr }] = await Promise.all([
           supabase.from('blocks').select('blocker_id').eq('blocker_id', user.id).eq('blocked_id', otherProfileId).maybeSingle(),
           supabase.from('blocks').select('blocker_id').eq('blocker_id', otherProfileId).eq('blocked_id', user.id).maybeSingle(),
@@ -210,6 +279,11 @@ export default function ChatPage() {
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload) => {
           const updated = payload.new as Message
           setMessages((current) => current.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)))
+        })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${otherProfileId}` }, (payload) => {
+          // Partner's heartbeat arrived → flip their dot/label in real time.
+          const row = payload.new as { last_active_at?: string | null }
+          refreshPresence(row.last_active_at ?? null)
         })
         .on('broadcast', { event: 'typing' }, ({ payload }) => {
           const p = payload as { typing: boolean; from: string }
@@ -308,16 +382,46 @@ export default function ChatPage() {
             updateFriendState('none')
           }
         })
-.subscribe().subscribe()
+.subscribe()
       channelRef.current = channel
 
       // Safety net if Realtime drops.
       poll = window.setInterval(async () => {
         const { data: fresh } = await supabase.from('messages').select(MESSAGE_COLUMNS).eq('conversation_id', conversationId).order('created_at', { ascending: true })
         if (!fresh || !active) return
-        setMessages((prev) => (prev.length !== fresh.length || fresh[fresh.length - 1]?.id !== prev[prev.length - 1]?.id ? (fresh as Message[]) : prev))
+        // Replace state only when something actually changed — including
+        // reaction/edited/deleted deltas that Realtime may have dropped.
+        // Skip messages with an in-flight toggle so stale server data doesn't
+        // overwrite the optimistic update before the RPC completes.
+        const toggling = togglingMessages.current
+        setMessages((prev) => {
+          // When a reaction/edit/delete toggle is in flight, only update
+          // non-toggling messages. This prevents the 3s poll from reverting
+          // the optimistic update with stale server data.
+          if (toggling.size > 0) {
+            const next = prev.map((m) => toggling.has(m.id) ? m : (fresh.find((f) => f.id === m.id) as Message) ?? m)
+            return next.length === prev.length && next.every((m, i) => m === prev[i]) ? prev : next
+          }
+          const changed = prev.length !== fresh.length || fresh[fresh.length - 1]?.id !== prev[prev.length - 1]?.id ||
+            fresh.some((fm, i) => {
+              const pm = prev[i]
+              return !pm || pm.id !== fm.id || pm.edited_at !== fm.edited_at || pm.deleted_at !== fm.deleted_at || pm.deleted_by_receiver_at !== fm.deleted_by_receiver_at ||
+                JSON.stringify(pm.reactions ?? {}) !== JSON.stringify(fm.reactions ?? {})
+            })
+          return changed ? (fresh as Message[]) : prev
+        })
         const latest = fresh[fresh.length - 1]
         if (latest && latest.sender_id !== user.id) setBotTyping(false)
+        // Keep the partner's presence + read receipt fresh EVERY tick (3s)
+        // so the dot and ticks stay live even if Realtime hiccups.
+        if (otherProfileId && !isBotProfile(otherProfileId)) {
+          const { data: op } = await supabase.from('profiles').select('last_active_at').eq('id', otherProfileId).maybeSingle()
+          if (op && active) refreshPresence(op.last_active_at ?? null)
+          const { data: cp } = await supabase.from('conversation_participants').select('last_read_at').eq('conversation_id', conversationId).eq('profile_id', otherProfileId).maybeSingle()
+          if (cp && active) setPartnerReadAt(cp.last_read_at ?? null)
+        }
+        // Recompute label/online from the latest known timestamp every tick,
+        // so "last seen 1m ago" counts up and flips offline right on time.
         refreshPresence()
       }, 3000)
     }
@@ -335,6 +439,50 @@ export default function ChatPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId, router])
 
+  // Read receipts: while THIS chat is open and the tab/PWA is visible,
+  // stamp my participant row so my partner's ticks turn "seen". Re-stamps
+  // when new messages arrive or I come back to the tab.
+  useEffect(() => {
+    if (!userId || !conversationId || loading) return
+    const mark = () => {
+      if (document.visibilityState !== 'visible') return
+      // Server-authoritative stamp — cannot be silently dropped.
+      void createClient().rpc('mark_conversation_read', { p_conversation_id: conversationId })
+    }
+    mark()
+    document.addEventListener('visibilitychange', mark)
+    window.addEventListener('focus', mark)
+    return () => {
+      document.removeEventListener('visibilitychange', mark)
+      window.removeEventListener('focus', mark)
+    }
+  }, [userId, conversationId, loading, messages.length])
+
+  // Grow the composer with its content (up to ~5 lines), then scroll inside.
+  useEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 132)}px`
+  }, [text])
+
+  // Laptop convenience: start typing anywhere on the page and the composer
+  // wakes up and receives your keystrokes — no click into the field needed.
+  useEffect(() => {
+    if (blockedAny) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      const ae = document.activeElement as HTMLElement | null
+      if (ae && (ae.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(ae.tagName))) return
+      // Never steal Space/Enter from a focused button or link.
+      if (ae && ['BUTTON', 'A', 'SUMMARY'].includes(ae.tagName) && (e.key === ' ' || e.key === 'Enter')) return
+      if (e.key.length !== 1) return
+      inputRef.current?.focus({ preventScroll: true })
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [blockedAny])
+
   // Close the ⋮ menu the moment anything else on the page is pressed.
   useEffect(() => {
     if (!menuOpen) return
@@ -343,6 +491,9 @@ export default function ChatPage() {
       if (!t) return
       if (menuRef.current?.contains(t)) return // clicks inside the panel keep it open
       if (t.closest('button[aria-label="More options"]')) return // let the ⋮ button toggle itself
+      // Flag prevents the message gesture system from treating this same
+      // pointerdown (which closes the menu) as a tap/hold on the message.
+      menuCloseGuard.current = true
       setMenuOpen(false)
       setReportOpen(false)
       setUnfriendArm(false)
@@ -362,6 +513,14 @@ export default function ChatPage() {
     return () => window.clearTimeout(timer)
   }, [botTyping])
 
+  // Transient status lines ("You are now friends! 🎉", "Friend request was
+  // withdrawn.", "Blocked." …) disappear on their own after 10 seconds.
+  useEffect(() => {
+    if (!statusLine) return
+    const timer = window.setTimeout(() => setStatusLine(''), 10_000)
+    return () => window.clearTimeout(timer)
+  }, [statusLine])
+
   // Scroll of the message list: cancels pending gestures, drives the
   // jump-to-latest button visibility, and clears unread when reaching bottom.
   useEffect(() => {
@@ -371,7 +530,7 @@ export default function ChatPage() {
       if (!el) return
       window.clearTimeout(pressTimer.current)
       window.clearTimeout(chipPressTimer.current)
-      gesture.current = { id: null, startX: 0, dx: 0, moved: false, pressed: false, pointerType: 'mouse', mode: 'press' }
+      gesture.current = { id: null, startX: 0, dx: 0, moved: false, pressed: false, pointerType: 'mouse', mode: 'press', startT: 0 }
       setDrag((cur) => (cur ? null : cur))
       const distance = el.scrollHeight - el.scrollTop - el.clientHeight
       setShowScrollDown(distance > 240)
@@ -423,6 +582,8 @@ export default function ChatPage() {
     const ch = channelRef.current
     if (!ch) return
     void ch.send({ type: 'broadcast', event: 'typing', payload: { typing, from: userId } })
+    // Also persist to DB so friends list can show typing indicator
+    void createClient().rpc('set_typing', { p_conversation_id: conversationId, p_typing: typing })
   }
 
   function onTextChange(value: string) {
@@ -458,6 +619,7 @@ export default function ChatPage() {
       return
     }
     setMessages((current) => (current.some((item) => item.id === inserted.id) ? current : [...current, inserted as Message]))
+    playSentSound()
     setReplyTo(null)
     inputRef.current?.focus()
     setUnreadCount(0)
@@ -491,13 +653,29 @@ export default function ChatPage() {
     if (e) { setStatusLine(friendlyError(e, 'Could not delete the message.')); setMessages((prev) => prev.map((x) => (x.id === m.id ? m : x))) }
   }
 
+  // Receiver-side delete: hides THEIR copy only. The sender keeps the message
+  // and just sees a small "deleted by receiver" tag beside the timestamp.
+  // Column-level DB grant makes every other field untouchable.
+  async function deleteForMe(m: Message) {
+    setActionsMsg(null)
+    if (!userId || m.sender_id === userId) return
+    const optimistic = { ...m, deleted_by_receiver_at: new Date().toISOString() }
+    setMessages((prev) => prev.map((x) => (x.id === m.id ? optimistic : x)))
+    const supabase = createClient()
+    const { error: e } = await supabase.from('messages').update({ deleted_by_receiver_at: optimistic.deleted_by_receiver_at }).eq('id', m.id).is('deleted_by_receiver_at', null)
+    if (e) {
+      setStatusLine(friendlyError(e, 'Could not delete this message from your side.'))
+      setMessages((prev) => prev.map((x) => (x.id === m.id ? m : x)))
+    }
+  }
+
   async function toggleReaction(m: Message, emoji: string) {
     if (!userId || m.deleted_at || blockedAny) return
     setActionsMsg(null)
-    const before = m.reactions
-    // Optimistic toggle with WhatsApp's one-reaction-per-person rule:
-    // reacting with a new emoji replaces your previous one.
-    const cur: Record<string, string[]> = { ...(m.reactions ?? {}) }
+    setReactFor(null)
+    const before = messages.find((x) => x.id === m.id)?.reactions ?? m.reactions
+    // Optimistic: build what reactions should look like after the toggle.
+    const cur: Record<string, string[]> = { ...(before ?? {}) }
     const alreadyMine = cur[emoji]?.includes(userId) ?? false
     const nextAll: Record<string, string[]> = {}
     for (const [k, v] of Object.entries(cur)) {
@@ -507,16 +685,22 @@ export default function ChatPage() {
     if (!alreadyMine) {
       nextAll[emoji] = [...(nextAll[emoji] ?? []), userId]
     }
-    const optimistic = nextAll
-    setMessages((prev) => prev.map((x) => (x.id === m.id ? { ...x, reactions: optimistic } : x)))
-    const supabase = createClient()
-    const { data, error: e } = await supabase.rpc('toggle_message_reaction', { p_message_id: m.id, p_emoji: emoji })
-    if (e || typeof data !== 'object' || data === null) {
-      setStatusLine(friendlyError(e, 'Could not save the reaction.'))
-      setMessages((prev) => prev.map((x) => (x.id === m.id ? { ...x, reactions: before } : x)))
-      return
+    setMessages((prev) => prev.map((x) => (x.id === m.id ? { ...x, reactions: nextAll } : x)))
+    togglingMessages.current.add(m.id)
+    try {
+      const supabase = createClient()
+      const { data, error: e } = await supabase.rpc('toggle_message_reaction', { p_message_id: m.id, p_emoji: emoji })
+      if (e) {
+        setStatusLine(friendlyError(e, 'Could not save the reaction.'))
+        setMessages((prev) => prev.map((x) => (x.id === m.id ? { ...x, reactions: before } : x)))
+        return
+      }
+      setMessages((prev) => prev.map((x) => (x.id === m.id ? { ...x, reactions: data as Record<string, string[]> } : x)))
+    } finally {
+      // Defer guard removal until AFTER React commits the setMessages update.
+      // Removing immediately lets the 3s poll fire first and overwrite with stale data.
+      requestAnimationFrame(() => togglingMessages.current.delete(m.id))
     }
-    setMessages((prev) => prev.map((x) => (x.id === m.id ? { ...x, reactions: data as Record<string, string[]> } : x)))
   }
 
   async function friendAction(action: 'send' | 'cancel' | 'unfriend') {
@@ -591,7 +775,7 @@ export default function ChatPage() {
       reason, details: details.trim().slice(0, 1000) || null,
     })
     if (e) { setStatusLine(friendlyError(e, 'Could not submit the report.')); return }
-    setDetails(''); setReportOpen(false); setMenuOpen(false)
+    setDetails(''); setReportOpen(false); setMenuOpen(false); setCardOpen(false)
     setStatusLine('Report submitted. Thank you for helping keep ShahZap safe.')
   }
 
@@ -599,23 +783,39 @@ export default function ChatPage() {
     setAutoTranslate((v) => { localStorage.setItem('shahzap:autoTranslate', v ? '0' : '1'); return !v })
   }
 
-  // ── Gesture handlers: long-press → action sheet, horizontal drag → reply ──
+  function copyMessage(m: Message) {
+    void navigator.clipboard.writeText(m.original_message).then(() => {
+      setActionsMsg(null)
+      setStatusLine('Copied to clipboard.')
+    }).catch(() => setStatusLine('Could not copy — long-press the message text to select it instead.'))
+  }
+
+  // ── Gesture handlers: tap → action sheet, horizontal drag → reply,
+  //    HOLD → native OS text selection so any word can be copied ──
   function endPress() { window.clearTimeout(pressTimer.current) }
   function startPress(m: Message, e: React.PointerEvent) {
     if (m.deleted_at || blockedAny) return
+    // If the ⋮ menu was just closed by this same pointerdown, skip gesture
+    // tracking entirely — otherwise a quick tap accidentally opens the
+    // action sheet or emoji reaction picker.
+    if (menuCloseGuard.current) { menuCloseGuard.current = false; return }
     // DESKTOP: two-finger / right-button click starts a drag session instead of
     // the touch-style hold. Plain right-click (no drag) opens the sheet.
     if (e.pointerType === 'mouse' && e.button === 2) {
-      gesture.current = { id: m.id, startX: e.clientX, dx: 0, moved: false, pressed: true, pointerType: e.pointerType, mode: 'rdrag' }
+      gesture.current = { id: m.id, startX: e.clientX, dx: 0, moved: false, pressed: true, pointerType: e.pointerType, mode: 'rdrag', startT: Date.now() }
       endPress()
       return
     }
-    gesture.current = { id: m.id, startX: e.clientX, dx: 0, moved: false, pressed: false, pointerType: e.pointerType, mode: 'press' }
+    // Touch / pen / mouse-left: track for swipe-to-reply AND the classic
+    // HOLD → options sheet (450ms, like WhatsApp). Text stays non-selectable
+    // so holding always opens the menu instead of selecting words.
+    gesture.current = { id: m.id, startX: e.clientX, dx: 0, moved: false, pressed: false, pointerType: e.pointerType, mode: 'press', startT: Date.now() }
     endPress()
     pressTimer.current = window.setTimeout(() => {
       gesture.current.pressed = true
       if (navigator.vibrate) navigator.vibrate(25)
       setDrag(null)
+      setReactFor(null)
       setActionsMsg({ msg: m, canEdit: m.sender_id === userId && Date.now() - new Date(m.created_at).getTime() < EDIT_WINDOW_MS })
     }, 450)
   }
@@ -638,25 +838,32 @@ export default function ChatPage() {
     if (Math.abs(dx) > 10) setDrag({ id: m.id, dx: Math.max(-40, Math.min(40, dx)) })
     else if (drag) setDrag(null)
   }
-  function finishPress(m: Message, now: number) {
+  function finishPress(m: Message, now: number, cancelled = false) {
     const g = gesture.current
     endPress()
     setDrag(null)
     if (g.id !== m.id) return
     if (g.mode === 'rdrag') {
-      if (g.moved && Math.abs(g.dx) >= 26) {
+      if (!cancelled && g.moved && Math.abs(g.dx) >= 26) {
         // Dragged far enough → quote-reply, same as touch swipe.
         setReplyTo(m)
         setEditing(null)
-      } else if (!g.moved) {
+        // Still inside the pointerup gesture → mobile keyboards allow this.
+        inputRef.current?.focus({ preventScroll: true })
+      } else if (!cancelled && !g.moved) {
         // Plain two-finger / right click → message options sheet.
         setActionsMsg({ msg: m, canEdit: m.sender_id === userId && now - new Date(m.created_at).getTime() < EDIT_WINDOW_MS })
       }
-    } else if (!g.pressed && g.moved && Math.abs(g.dx) >= 26) {
+    } else if (!cancelled && !g.pressed && !g.moved && g.pointerType !== 'mouse' && now - g.startT < 350) {
+      // Quick touch TAP → options sheet. pointercancel (browser stealing the
+      // gesture to SCROLL) and slow presses never open it.
+      setActionsMsg({ msg: m, canEdit: m.sender_id === userId && now - new Date(m.created_at).getTime() < EDIT_WINDOW_MS })
+    } else if (!cancelled && !g.pressed && g.moved && Math.abs(g.dx) >= 26) {
       setReplyTo(m)
       setEditing(null)
+      inputRef.current?.focus({ preventScroll: true })
     }
-    gesture.current = { id: null, startX: 0, dx: 0, moved: false, pressed: false, pointerType: 'mouse', mode: 'press' }
+    gesture.current = { id: null, startX: 0, dx: 0, moved: false, pressed: false, pointerType: 'mouse', mode: 'press', startT: 0 }
   }
 
   async function showReactors(m: Message, emoji: string) {
@@ -699,16 +906,61 @@ export default function ChatPage() {
     setReplyTo(null)
     setEditing(m)
     setText(m.original_message)
+    inputRef.current?.focus({ preventScroll: true })
+  }
+
+  // WhatsApp-style delivery state for my own messages:
+  //   single tick      → partner offline when the message landed;
+  //   white double tick → partner has been online since (even unread);
+  //   blue double tick  → partner opened this chat (seen).
+  function isDelivered(m: Message): boolean {
+    if (persona) return true
+    const t = otherLastActiveAt ? new Date(otherLastActiveAt).getTime() : 0
+    if (!t) return false
+    if (t >= new Date(m.created_at).getTime()) return true
+    // Display-only clock read; presence refreshes re-render anyway.
+    // eslint-disable-next-line react-hooks/purity
+    return Date.now() - t < ONLINE_WINDOW_MS
+  }
+
+  function isSeen(m: Message): boolean {
+    if (persona) return true
+    if (!partnerReadAt) return false
+    return new Date(partnerReadAt).getTime() >= new Date(m.created_at).getTime()
+  }
+
+  // Insert an emoji/emoticon at the cursor and keep the caret right after it.
+  function insertNewline() {
+    const el = inputRef.current
+    if (!el) return
+    const start = el.selectionStart ?? text.length
+    const end = el.selectionEnd ?? text.length
+    setText(text.slice(0, start) + '\n' + text.slice(end))
+    requestAnimationFrame(() => {
+      el.focus({ preventScroll: true })
+      const pos = start + 1
+      el.setSelectionRange(pos, pos)
+    })
+  }
+
+  function insertEmoji(item: string) {
+    const el = inputRef.current
+    if (!el) { setText((t) => t + item); return }
+    const start = el.selectionStart ?? text.length
+    const end = el.selectionEnd ?? text.length
+    setText(text.slice(0, start) + item + text.slice(end))
+    requestAnimationFrame(() => {
+      el.focus({ preventScroll: true })
+      const pos = start + item.length
+      el.setSelectionRange(pos, pos)
+    })
   }
 
   const subtitle = useMemo(() => {
     if (persona) return partnerTyping || botTyping ? 'typing…' : persona.role
     if (partnerTyping) return 'typing…'
     if (!other) return ''
-    const parts: string[] = []
-    if (other.age_band_visible && other.age_band) parts.push(AGE_BAND_LABELS[other.age_band] ?? other.age_band)
-    parts.push(presenceLabel || 'offline')
-    return parts.join(' · ')
+    return presenceLabel || 'offline'
   }, [persona, partnerTyping, botTyping, other, presenceLabel])
 
   const composerQuote = editing ?? replyTo
@@ -729,20 +981,43 @@ export default function ChatPage() {
             <MoreVertical size={20} />
           </button>
 
-          <Link href={otherId && !persona ? `/profile/${otherId}` : '#'} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1 py-1 transition hover:bg-slate-800/60">
+          <button type="button" aria-label="View profile" onClick={() => persona ? undefined : setCardOpen(true)}
+            className={`flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1 py-1 text-left transition ${persona ? '' : 'hover:bg-slate-800/60'}`}>
             <span aria-hidden><Avatar name={otherName} online={otherOnline} large /></span>
             <span className="min-w-0">
               <span className="block truncate text-sm font-semibold">{otherName}</span>
               <span className={`block truncate text-xs ${subtitle === 'typing…' ? 'animate-pulse text-cyan-300' : 'text-slate-400'}`}>{subtitle}</span>
             </span>
-          </Link>
+          </button>
 
           <button onClick={() => router.push('/match')} className="mr-1 flex-none rounded-full bg-cyan-400/10 px-4 py-2 text-xs font-bold text-cyan-300 transition hover:bg-cyan-400/20">Next</button>
         </div>
 
         {menuOpen && (
           <>
-            <div ref={menuRef} className="absolute left-2 top-full z-20 mt-1 w-72 overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl shadow-black/60">
+            <div ref={menuRef} className="absolute left-2 top-full z-20 mt-1 max-h-[calc(100dvh-4.5rem)] w-72 overflow-y-auto overscroll-contain overflow-x-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl shadow-black/60 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div className="px-3 pb-3 pt-2.5">
+                <p className="mb-2 flex items-center gap-3 text-sm"><BellRing size={17} className="text-cyan-300" /> Sounds</p>
+                <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-slate-950 p-1">
+                  {([['sound','On',BellRing],['buzz','Buzz',Vibrate],['mute','Mute',VolumeX]] as const).map(([m,label,Icon]) => (
+                    <button key={m} onClick={() => setSoundPrefs(setSoundMode(m))}
+                      className={`flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold transition ${soundPrefs.mode === m ? 'bg-cyan-400 text-slate-950' : 'text-slate-400 hover:text-white'}`}>
+                      <Icon size={13} /> {label}
+                    </button>
+                  ))}
+                </div>
+                <p className="mb-1.5 mt-2.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">Sound pack</p>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(['classic','pop','zen'] as const).map((b) => (
+                    <button key={b} onClick={() => { const n = setSoundBundle(b); setSoundPrefs(n); notify('message') }}
+                      className={`rounded-lg px-2 py-1.5 text-xs font-semibold capitalize transition ${soundPrefs.bundle === b ? 'bg-cyan-400/15 text-cyan-200 ring-1 ring-cyan-400/50' : 'bg-slate-950 text-slate-400 hover:text-white ring-1 ring-slate-800'}`}>
+                      {b === 'classic' ? '✨ Classic' : b === 'pop' ? '🎈 Pop' : '🍃 Zen'}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-1.5 text-[10px] leading-relaxed text-slate-500">{soundPrefs.mode === 'buzz' ? 'Vibration where supported, else a soft low buzz.' : soundPrefs.mode === 'mute' ? 'All chat sounds are off.' : 'Tap a pack to hear a preview.'}</p>
+              </div>
+              <div className="border-t border-slate-800" />
               <div className="px-3 pb-3 pt-2.5">
                 <p className="mb-2 flex items-center gap-3 text-sm"><SunMoon size={17} className="text-cyan-300" /> Theme</p>
                 <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">Base</p>
@@ -756,12 +1031,69 @@ export default function ChatPage() {
                 </div>
                 <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">Accent</p>
                 <div className="flex flex-wrap items-center gap-2">
-                  {ACCENTS.map((a) => (
+                  {(allAccents ? ACCENTS : ACCENTS.slice(0, 6)).map((a) => (
                     <button key={a.id} title={a.label} aria-label={a.label}
                       onClick={() => { const n = { ...sel, accent: a.id }; setSel(n); applySelection(n) }}
                       className={`h-7 w-7 rounded-full border-2 transition hover:scale-110 ${sel.accent === a.id ? 'border-cyan-400 ring-2 ring-cyan-400/40' : 'border-slate-600'}`}
                       style={{ background: a.preview }} />
                   ))}
+                  <button onClick={() => setAllAccents((v) => !v)}
+                    title={allAccents ? 'Show fewer colors' : `Show ${ACCENTS.length - 6} more colors`}
+                    aria-label={allAccents ? 'Show fewer colors' : `Show ${ACCENTS.length - 6} more colors`}
+                    className="flex h-7 w-7 items-center justify-center rounded-full border border-dashed border-slate-500 text-slate-400 transition hover:border-cyan-400 hover:text-cyan-300">
+                    {allAccents ? <Minus size={13} /> : <Plus size={13} />}
+                  </button>
+                </div>
+              </div>
+              <div className="border-t border-slate-800" />
+              <div className="px-3 pb-3 pt-2.5">
+                <p className="mb-2 flex items-center gap-3 text-sm"><ImageIcon size={17} className="text-cyan-300" /> Wallpaper</p>
+                <div className="mb-1.5 grid grid-cols-2 gap-1.5 rounded-xl bg-slate-950 p-1">
+                  {(['wallpaper', 'solid'] as const).map((m) => (
+                    <button key={m} onClick={() => setWallpaper({ ...wallpaper, mode: m })}
+                      className={`rounded-lg px-2 py-1.5 text-xs font-semibold transition ${wallpaper.mode === m ? 'bg-cyan-400 text-slate-950' : 'text-slate-400 hover:text-white'}`}>
+                      {m === 'wallpaper' ? '🖼 ShahZap' : '🎨 Solid'}
+                    </button>
+                  ))}
+                </div>
+                {wallpaper.mode === 'solid' && (
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    {SOLID_COLORS.map((c) => (
+                      <button key={c} title={c} aria-label={`Solid ${c}`}
+                        onClick={() => setWallpaper({ ...wallpaper, solid: c })}
+                        className={`h-7 w-7 rounded-full border-2 transition hover:scale-110 ${wallpaper.solid.toLowerCase() === c.toLowerCase() ? 'border-cyan-400 ring-2 ring-cyan-400/40' : 'border-slate-600'}`}
+                        style={{ background: c }} />
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Intensity</span>
+                  <input type="range" min={10} max={90} step={5} aria-label="Wallpaper intensity"
+                    value={Math.round((1 - wallpaper.dim) * 100)}
+                    onChange={(e) => setWallpaper({ ...wallpaper, dim: (100 - Number(e.target.value)) / 100 })}
+                    className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-slate-700 accent-cyan-400" />
+                </div>
+                <p className="mt-1 text-[10px] leading-relaxed text-slate-500">{wallpaper.mode === 'wallpaper' ? 'Slide right for a more vivid wallpaper.' : 'Slide right to soften the solid color.'}</p>
+              </div>
+              <div className="border-t border-slate-800" />
+              <div className="pb-3 pt-1.5">
+                <button onClick={() => setFmtOpen((v) => !v)} aria-expanded={fmtOpen}
+                  className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-sm transition hover:bg-slate-800">
+                  <span className="flex items-center gap-3"><Type size={17} className="text-cyan-300" /> Text formatting</span>
+                  <ChevronDown size={16} className={`text-slate-400 transition-transform duration-200 ${fmtOpen ? 'rotate-180' : ''}`} />
+                </button>
+                <div className={`grid transition-[grid-template-rows] duration-200 ease-out ${fmtOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
+                  <div className="overflow-hidden">
+                    <div className="grid grid-cols-2 gap-1 px-4 pb-1 pt-0.5 text-[11px] leading-relaxed text-slate-400">
+                      <span><code className="rounded bg-slate-950 px-1 font-mono">*hi*</code> <b className="text-slate-200">bold</b></span>
+                      <span><code className="rounded bg-slate-950 px-1 font-mono">_hi_</code> <i className="text-slate-200">italic</i></span>
+                      <span><code className="rounded bg-slate-950 px-1 font-mono">~hi~</code> <s className="text-slate-200">strike</s></span>
+                      <span><code className="rounded bg-slate-950 px-1 font-mono">`hi`</code> <span className="font-mono text-slate-200">mono</span></span>
+                      <span className="col-span-2"><code className="rounded bg-slate-950 px-1 font-mono">#</code> <b className="text-slate-200">Heading</b> · <code className="rounded bg-slate-950 px-1 font-mono">##</code> smaller · <code className="rounded bg-slate-950 px-1 font-mono">###</code> smallest</span>
+                      <span className="col-span-2"><code className="rounded bg-slate-950 px-1 font-mono">-</code> or <code className="rounded bg-slate-950 px-1 font-mono">*</code> dot list · <code className="rounded bg-slate-950 px-1 font-mono">1.</code> numbered · <code className="rounded bg-slate-950 px-1 font-mono">&gt;</code> quote</span>
+                    </div>
+                    <p className="px-4 text-[10px] text-slate-500">New lines: Shift+Enter on desktop, the Enter key on phones. Separate list items with a line break.</p>
+                  </div>
                 </div>
               </div>
               <button onClick={toggleAutoTranslate} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-sm transition hover:bg-slate-800">
@@ -775,7 +1107,12 @@ export default function ChatPage() {
               {!persona && (
                 <>
                   <div className="border-t border-slate-800" />
-                  {!blockedAny && friendState === 'none' && (
+                  {!blockedAny && reqBlocked && friendState === 'none' && (
+                    <div className="flex w-full cursor-not-allowed items-center gap-3 px-4 py-3 text-sm text-slate-500">
+                      <UserPlus size={17} className="text-slate-600" /> Requests unavailable (declined 3×)
+                    </div>
+                  )}
+                  {!blockedAny && !reqBlocked && friendState === 'none' && (
                     <button onClick={() => void friendAction('send')} className="flex w-full items-center gap-3 px-4 py-3 text-sm transition hover:bg-slate-800">
                       <UserPlus size={17} className="text-cyan-300" /> Add friend
                     </button>
@@ -843,8 +1180,89 @@ export default function ChatPage() {
         )}
       </header>
 
+      {/* ── User card (tap partner name/avatar) ─────────────── */}
+      {cardOpen && !persona && other && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={() => setCardOpen(false)}>
+          <div role="dialog" aria-label={`${otherName} profile`} onClick={(e) => e.stopPropagation()}
+            className="max-h-[calc(100dvh-2rem)] w-full max-w-sm overflow-y-auto overscroll-contain overflow-x-hidden rounded-3xl border border-slate-700 bg-slate-900 shadow-2xl shadow-black/60 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="flex items-center gap-4 border-b border-slate-800 bg-slate-950/60 p-5">
+              <Avatar name={otherName} online={otherOnline} large />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-lg font-bold">{otherName}</p>
+                <p className={`text-xs ${otherOnline ? 'text-emerald-300' : 'text-slate-500'}`}>{otherOnline ? 'Online' : presenceLabel || 'Offline'}</p>
+              </div>
+              <button aria-label="Close" onClick={() => setCardOpen(false)} className="flex h-8 w-8 flex-none items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-800 hover:text-white"><X size={17} /></button>
+            </div>
+            {other.profile_visible === false ? (
+              <p className="p-5 text-sm text-slate-400">This profile is private.</p>
+            ) : (
+              <div className="grid gap-2 p-5">
+                {!!other.age_band_visible && !!other.age_band && (
+                  <div className="flex items-center gap-3 rounded-xl bg-slate-950 px-4 py-2.5 text-sm"><Cake size={16} className="flex-none text-cyan-300" /> Age band: {AGE_BAND_LABELS[other.age_band] ?? other.age_band}</div>
+                )}
+                {!!other.generation_visible && !!other.generation && (
+                  <div className="flex items-center gap-3 rounded-xl bg-slate-950 px-4 py-2.5 text-sm"><Sparkles size={16} className="flex-none text-cyan-300" /> Generation: {other.generation}</div>
+                )}
+                {!!other.gender_visible && !!other.gender && (
+                  <div className="flex items-center gap-3 rounded-xl bg-slate-950 px-4 py-2.5 text-sm"><User size={16} className="flex-none text-cyan-300" /> Gender: {other.gender}</div>
+                )}
+                {!!other.country_visible && !!other.country_code && (
+                  <div className="flex items-center gap-3 rounded-xl bg-slate-950 px-4 py-2.5 text-sm"><Globe size={16} className="flex-none text-cyan-300" /> Country: {other.country_code}</div>
+                )}
+                {!!other.chat_language && (
+                  <div className="flex items-center gap-3 rounded-xl bg-slate-950 px-4 py-2.5 text-sm"><Languages size={16} className="flex-none text-cyan-300" /> Chat language: {other.chat_language}</div>
+                )}
+              </div>
+            )}
+            <div className="flex flex-wrap gap-2 border-t border-slate-800 p-5 pt-4">
+              {!blockedAny && reqBlocked && friendState === 'none' && (
+                <span className="flex cursor-not-allowed items-center gap-2 rounded-xl border border-slate-800 px-4 py-2.5 text-sm text-slate-500"><UserPlus size={15} className="text-slate-600" /> Requests off (3× declined)</span>
+              )}
+              {!blockedAny && !reqBlocked && friendState === 'none' && (
+                <button onClick={() => void friendAction('send')} className="flex items-center gap-2 rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-semibold transition hover:border-cyan-400 hover:text-cyan-200"><UserPlus size={15} /> Add friend</button>
+              )}
+              {!blockedAny && friendState === 'outgoing' && (
+                <button onClick={() => void friendAction('cancel')} className="flex items-center gap-2 rounded-xl border border-amber-700/60 bg-amber-950/30 px-4 py-2.5 text-sm font-semibold text-amber-200 transition hover:bg-amber-900/40"><Clock size={15} /> Cancel request</button>
+              )}
+              {!blockedAny && friendState === 'incoming' && (
+                <button onClick={() => void friendAction('send')} className="flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-400"><UserCheck size={15} /> Accept request</button>
+              )}
+              {!blockedAny && friendState === 'friends' && (
+                <button onClick={() => void friendAction('unfriend')} className="flex items-center gap-2 rounded-xl border border-red-800/60 bg-red-950/30 px-4 py-2.5 text-sm font-semibold text-red-300 transition hover:bg-red-900/40"><UserMinus size={15} /> Unfriend</button>
+              )}
+              <button onClick={() => { setCardOpen(false); inputRef.current?.focus() }} className="rounded-xl bg-cyan-400 px-4 py-2.5 text-sm font-bold text-slate-950 transition hover:brightness-110">💬 Chat</button>
+              <button onClick={onBlockRowClick} className={`flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition ${blockedByMe ? 'border-emerald-700/60 bg-emerald-950/30 text-emerald-300 hover:bg-emerald-900/40' : 'border-red-800/60 bg-red-950/30 text-red-300 hover:bg-red-900/40'}`}>
+                <Ban size={15} /> {blockedByMe ? 'Unblock' : 'Block'}
+              </button>
+              <button onClick={() => setReportOpen((v) => !v)} className="flex items-center gap-2 rounded-xl border border-red-800/60 bg-red-950/30 px-4 py-2.5 text-sm font-semibold text-red-300 transition hover:bg-red-900/40">
+                <ShieldAlert size={15} /> Report
+              </button>
+            </div>
+            {reportOpen && (
+              <div className="space-y-2 border-t border-slate-800 bg-slate-950/60 p-4">
+                <select value={reason} onChange={(e) => setReason(e.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-xs">
+                  {REPORT_REASONS.map((r) => <option key={r} value={r}>{r.replaceAll('_', ' ')}</option>)}
+                </select>
+                <textarea value={details} onChange={(e) => setDetails(e.target.value)} maxLength={1000} placeholder="Optional details" className="h-16 w-full resize-none rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-xs" />
+                <button onClick={() => void submitReport()} className="w-full rounded-lg bg-red-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-red-400">Submit report</button>
+              </div>
+            )}
+            {blockChoiceOpen && (
+              <div className="border-t border-slate-800 bg-slate-950/60 p-4">
+                <p className="mb-2 text-xs text-slate-300">You are friends with {otherName}. Block and also remove them as a friend?</p>
+                <div className="flex gap-2">
+                  <button onClick={() => void doBlock(true)} className="flex-1 rounded-lg bg-red-500 px-3 py-2 text-xs font-bold text-white hover:bg-red-400">Block & unfriend</button>
+                  <button onClick={() => void doBlock(false)} className="flex-1 rounded-lg border border-slate-600 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800">Just block</button>
+                  <button onClick={() => setBlockChoiceOpen(false)} className="rounded-lg px-3 py-2 text-xs font-semibold text-slate-400 hover:text-white">Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {incomingReq && (
-        <div className="relative z-10 w-full px-4 pt-3">
+        <div className="relative z-10 mx-auto w-full max-w-3xl px-3 pt-3">
           <div className="flex items-center gap-3 rounded-2xl border border-cyan-500/40 bg-cyan-950/40 p-3.5 shadow-lg">
             <span className="flex h-9 w-9 flex-none items-center justify-center rounded-xl bg-cyan-400/15 text-cyan-300"><UserPlus size={18} /></span>
             <span className="min-w-0 flex-1 text-sm">
@@ -868,15 +1286,31 @@ export default function ChatPage() {
       </div>
 
       {(statusLine || blockedByMe) && (
-        <p className={`w-full px-4 pt-2 text-xs ${blockedByMe ? 'text-red-300' : 'text-emerald-300'}`}>
-          {blockedByMe ? 'You blocked this user. Use the ⋮ menu to unblock.' : statusLine}
-        </p>
+        <div className="mx-auto w-full max-w-3xl px-3">
+          <p className={`pt-2 text-xs ${blockedByMe ? 'text-red-300' : 'text-emerald-300'}`}>
+            {blockedByMe ? 'You blocked this user. Use the ⋮ menu to unblock.' : statusLine}
+          </p>
+        </div>
       )}
 
       {/* ── Messages ───────────────────────────────────────── */}
-      <div ref={scrollRef} className="relative mx-auto min-h-0 mx-auto max-w-3xl flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-4"
-        style={{ backgroundImage: 'radial-gradient(rgba(148,163,184,0.05) 1px, transparent 1px)', backgroundSize: '22px 22px' }}>
-        {loading && <p className="pt-10 text-center text-sm text-slate-500">Loading conversation…</p>}
+      <div ref={scrollRef} className="relative mx-auto min-h-0 w-full max-w-3xl flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-4 text-left"
+        style={{
+          // Wallpaper (or solid color) under a scrim — intensity is user-controlled.
+          backgroundColor: wallpaper.solid,
+          backgroundImage: `linear-gradient(rgba(2,6,23,${wallpaper.dim}), rgba(2,6,23,${wallpaper.dim}))${wallpaper.mode === 'wallpaper' ? ', url(/ShahZap_Bg.png)' : ''}`,
+          backgroundSize: wallpaper.mode === 'wallpaper' ? 'cover' : 'auto',
+          backgroundPosition: 'center',
+        }}>
+        {loading && (
+            <div aria-busy="true" className="space-y-3 pt-2">
+              {[['62%','justify-end'],['45%','justify-start'],['68%','justify-end'],['40%','justify-start'],['56%','justify-end']].map(([w,side],i)=>(
+                <div key={i} className={`flex ${side}`}>
+                  <Shimmer className={`h-11 rounded-2xl ${side==='justify-end'?'rounded-br-md':'rounded-bl-md'}`} style={{width:w}} />
+                </div>
+              ))}
+            </div>
+          )}
         {!loading && messages.length === 0 && (
           <div className="pt-10 text-center">
             <p className="text-sm text-slate-500">Say hello 👋</p>
@@ -888,6 +1322,8 @@ export default function ChatPage() {
           const prev = messages[i - 1]
           const showDay = !prev || dayLabel(prev.created_at) !== dayLabel(m.created_at)
           const deleted = !!m.deleted_at
+          // Receiver hid their own copy → tombstone on their side only.
+          const hiddenForMe = !mine && !!m.deleted_by_receiver_at && !deleted
           const body = autoTranslate && m.translated_message ? m.translated_message : m.original_message
           const translatedShown = autoTranslate && !!m.translated_message
           const replied = m.reply_to_message_id ? messages.find((x) => x.id === m.reply_to_message_id) : null
@@ -903,44 +1339,86 @@ export default function ChatPage() {
                 </div>
               )}
               <div className={`flex w-full px-1 ${mine ? 'justify-end' : 'justify-start'}`}>
-                <div className={`flex w-fit max-w-[86%] flex-col ${mine ? 'items-end' : 'items-start'}`}>
+                <div className={`group relative flex w-fit max-w-[86%] flex-col ${mine ? 'items-end' : 'items-start'} ${reactions.length > 0 ? 'min-w-[13rem]' : ''}`}>
                   <div
-                    role="button" tabIndex={0} aria-label="Message options"
-                    onPointerDown={(e) => startPress(m, e)}
-                    onPointerMove={(e) => movePress(m, e)}
+                    role={hiddenForMe ? undefined : 'button'} tabIndex={hiddenForMe ? -1 : 0} aria-label="Message options"
+                    onPointerDown={(e) => { if (!hiddenForMe) startPress(m, e) }}
+                    onPointerMove={(e) => { if (!hiddenForMe) movePress(m, e) }}
                     onPointerUp={() => finishPress(m, Date.now())}
-                    onPointerCancel={() => finishPress(m, Date.now())}
-                    onKeyDown={(e) => { if (e.key === 'Enter') setActionsMsg({ msg: m, canEdit: m.sender_id === userId }) }}
+                    onPointerCancel={() => finishPress(m, Date.now(), true)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !hiddenForMe) setActionsMsg({ msg: m, canEdit: m.sender_id === userId }) }}
                     onContextMenu={(e) => e.preventDefault()}
                     style={{ transform: `translateX(${dragDx}px)`, touchAction: 'pan-y' }}
-                    className={`relative w-fit max-w-full select-none rounded-2xl px-3.5 py-2 shadow-sm ${mine ? 'rounded-br-md bg-gradient-to-br from-cyan-500 to-cyan-400 text-slate-950' : 'rounded-bl-md bg-slate-800 text-slate-100'} ${deleted ? 'italic opacity-70' : ''} ${dragging ? '' : 'transition-transform duration-150 ease-out'}`}
+                    className={`relative w-fit max-w-full select-none rounded-2xl px-3.5 py-2 shadow-sm ${mine ? 'rounded-br-md bg-gradient-to-br from-cyan-500 to-cyan-400 text-slate-950' : 'rounded-bl-md bg-slate-800 text-slate-100'} ${deleted || hiddenForMe ? 'italic opacity-70' : ''} ${dragging ? '' : 'transition-transform duration-150 ease-out'}`}
                   >
                     {replied && (
                       <div className={`mb-1.5 rounded-lg border-l-[3px] px-2 py-1 ${mine ? 'border-slate-900/40 bg-black/10' : 'border-cyan-400/70 bg-black/20'}`}>
                         <p className={`text-[11px] font-semibold ${mine ? 'text-slate-900/80' : 'text-cyan-300'}`}>{labelFor(replied)}</p>
-                        <p className={`line-clamp-2 text-xs ${mine ? 'text-slate-900/70' : 'text-slate-400'}`}>{replied.deleted_at ? 'This message was deleted' : replied.original_message}</p>
+                        <p className={`line-clamp-2 text-left text-xs ${mine ? 'text-slate-900/70' : 'text-slate-400'}`}>{replied.deleted_at ? 'This message was deleted' : replied.original_message}</p>
                       </div>
                     )}
-                    {deleted ? (
+                    {/* Laptop-only hover affordances (like WhatsApp Web): a
+                        smile button that opens ONLY the reaction emojis, and
+                        a chevron that opens the full options sheet. Touch
+                        devices keep tap = sheet / hold = select text. */}
+                    <div className={`absolute top-1/2 z-10 hidden -translate-y-1/2 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 [@media(hover:hover)]:flex ${mine ? '-left-[4.6rem]' : '-right-[4.6rem]'}`}>
+                      {!deleted && !hiddenForMe && (
+                        <button type="button" aria-label="React" onClick={(e) => { e.stopPropagation(); setReactFor(reactFor === m.id ? null : m.id); setActionsMsg(null) }}
+                          className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-800 text-slate-300 shadow ring-1 ring-slate-700 transition hover:text-cyan-200 hover:ring-cyan-400/50">
+                          <SmilePlus size={15} />
+                        </button>
+                      )}
+                      <button type="button" aria-label="Message options" onClick={(e) => { e.stopPropagation(); setReactFor(null); setActionsMsg({ msg: m, canEdit: m.sender_id === userId && Date.now() - new Date(m.created_at).getTime() < EDIT_WINDOW_MS }) }}
+                        className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-800 text-slate-300 shadow ring-1 ring-slate-700 transition hover:text-cyan-200 hover:ring-cyan-400/50">
+                        <ChevronDown size={15} />
+                      </button>
+                    </div>
+                    {/* Reaction-only picker for the smile hover button. */}
+                    {reactFor === m.id && (
+                      <>
+                        <div className="fixed inset-0 z-20" onClick={() => setReactFor(null)} />
+                        <div className={`absolute bottom-full z-30 mb-1 grid grid-cols-6 gap-0.5 rounded-2xl border border-slate-700 bg-slate-900 p-1.5 shadow-xl ${mine ? 'right-0' : 'left-0'}`}>
+                          {QUICK_EMOJIS.map((emoji) => {
+                            const mineAlready = m.reactions?.[emoji]?.includes(userId ?? '') ?? false
+                            return (
+                              <button key={emoji} type="button" onClick={(e) => { e.stopPropagation(); void toggleReaction(m, emoji) }}
+                                title={mineAlready ? 'Remove your reaction' : 'React'}
+                                className={`flex h-9 w-9 items-center justify-center rounded-full text-lg transition hover:scale-110 ${mineAlready ? 'bg-cyan-400/25 ring-2 ring-cyan-400' : ''}`}>
+                                {emoji}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </>
+                    )}
+                    {deleted || hiddenForMe ? (
                       <p className="flex items-center gap-1.5 text-[14px] text-slate-400">
-                        <Ban size={14} /> This message was deleted
+                        <Ban size={14} /> {hiddenForMe ? 'You deleted this message' : 'This message was deleted'}
                       </p>
                     ) : (
-                      <p className="whitespace-pre-wrap text-[15px] leading-relaxed [overflow-wrap:anywhere]">{body}</p>
+                      <RichText text={body} className="text-[15px] leading-relaxed [overflow-wrap:anywhere]" />
                     )}
                     <p className={`mt-0.5 flex items-center justify-end gap-1 text-right text-[10px] ${mine ? 'text-slate-900/60' : 'text-slate-500'}`}>
-                      {!deleted && translatedShown && <span className="italic">translated ·</span>}
-                      {!deleted && m.edited_at && <span className="italic">edited ·</span>}
-                      <span>{formatTime(m.created_at)}</span>
+                      {!deleted && !hiddenForMe && translatedShown && <span className="italic">translated ·</span>}
+                      {!deleted && !hiddenForMe && m.edited_at && <span className="italic">edited ·</span>}
+                      {mine && m.deleted_by_receiver_at && !deleted && <span className="italic">deleted by receiver ·</span>}
+                      {!hiddenForMe && <span>{formatTime(m.created_at)}</span>}
+                      {mine && !deleted && (
+                        isSeen(m)
+                          ? <CheckCheck size={13} strokeWidth={2.5} className="self-center text-sky-300 drop-shadow-[0_1px_1px_rgba(15,23,42,0.6)]" aria-label="Seen" />
+                          : isDelivered(m)
+                            ? <CheckCheck size={13} strokeWidth={2.5} className="self-center text-white drop-shadow-[0_1px_1px_rgba(15,23,42,0.6)]" aria-label="Delivered" />
+                            : <Check size={13} strokeWidth={2.5} className="self-center opacity-50" aria-label="Sent" />
+                      )}
                     </p>
                   </div>
 
-                  {reactions.length > 0 && (
+                  {!hiddenForMe && reactions.length > 0 && (
                     <div className={`mt-1 flex flex-wrap items-center gap-1 ${mine ? 'justify-end pr-1' : 'justify-start pl-1'}`}>
                       {reactions.map(([emoji, users]) => (
                         <button key={emoji}
                           onClick={() => void toggleReaction(m, emoji)}
-                          onPointerDown={() => { endPress(); chipPressTimer.current = window.setTimeout(() => void showReactors(m, emoji), 420) }}
+                          onPointerDown={(e) => { e.stopPropagation(); endPress(); chipPressTimer.current = window.setTimeout(() => void showReactors(m, emoji), 420) }}
                           onPointerUp={() => window.clearTimeout(chipPressTimer.current)}
                           onPointerLeave={() => window.clearTimeout(chipPressTimer.current)}
                           onPointerCancel={() => window.clearTimeout(chipPressTimer.current)}
@@ -969,10 +1447,10 @@ export default function ChatPage() {
         )}
       </div>
 
-      {error && <p className="w-full px-4 pb-2 text-xs text-red-300">{error}</p>}
+      {error && <p className="mx-auto w-full max-w-3xl px-3 pb-2 text-xs text-red-300">{error}</p>}
 
       {/* ── Composer ───────────────────────────────────────── */}
-      <form onSubmit={send} className="flex-none border-t border-slate-800 bg-slate-900 px-3 pt-2"
+      <form ref={formRef} onSubmit={send} className="flex-none border-t border-slate-800 bg-slate-900 px-3 pt-2"
         style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
         <div className="mx-auto max-w-3xl">
           {composerQuote && (
@@ -994,16 +1472,37 @@ export default function ChatPage() {
               </button>
             </div>
           )}
-          <div className="flex items-center gap-2">
+          {emojiOpen && !blockedAny && <EmojiPicker onPick={insertEmoji} />}
+          <div className="flex items-end gap-2">
             {blockedAny ? (
               <p className="w-full py-2 text-center text-sm text-slate-500">
                 {blockedByMe ? 'You blocked this user — unblock from the ⋮ menu to chat again.' : 'You cannot message this user.'}
               </p>
             ) : (
               <>
-                <input ref={inputRef} value={text} onChange={(e) => onTextChange(e.target.value)} maxLength={2000} autoFocus
+                <button type="button" aria-label="Emoji" aria-expanded={emojiOpen}
+                  onPointerDown={(e) => e.preventDefault()}
+                  onClick={() => setEmojiOpen((v) => !v)}
+                  className={`flex h-11 w-11 flex-none items-center justify-center rounded-full transition active:scale-95 ${emojiOpen ? 'bg-cyan-400/20 text-cyan-300' : 'text-slate-400 hover:bg-cyan-400/10 hover:text-cyan-200'}`}>
+                  <Smile size={22} />
+                </button>
+                <textarea ref={inputRef} value={text} onChange={(e) => onTextChange(e.target.value)} maxLength={2000} autoFocus rows={1}
+                  onTouchStart={() => { kbTouchRef.current = true; setVirtualKb(true) }}
+                  onKeyDown={(e) => {
+                    // Enter sends on desktop · Shift+Enter adds a line.
+                    // On touch devices the keyboard's Enter IS the newline
+                    // key (virtual keyboards have no Shift+Enter) — sending
+                    // happens via the Send button.
+                    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                      e.preventDefault()
+                      if (e.shiftKey || kbTouchRef.current) insertNewline()
+                      else formRef.current?.requestSubmit()
+                    }
+                  }}
+                  name="message" autoComplete="off" inputMode="text" enterKeyHint={virtualKb ? 'enter' : 'send'}
+                  data-1p-ignore data-lpignore="true" data-bwignore data-form-fill-ignore
                   placeholder={composerMode === 'edit' ? 'Edit your message…' : 'Type a message…'}
-                  className="min-w-0 flex-1 rounded-full border border-slate-700 bg-slate-950 px-5 py-3 text-[15px] outline-none transition placeholder:text-slate-600 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20" />
+                  className="min-w-0 flex-1 resize-none overflow-y-auto rounded-3xl border border-slate-700 bg-slate-950 px-5 py-3 text-[15px] leading-relaxed outline-none transition placeholder:text-slate-600 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" />
                 <button type="submit" aria-label={composerMode === 'edit' ? 'Save edit' : 'Send'} disabled={!text.trim()}
                   onPointerDown={(e) => e.preventDefault()}
                   className="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-cyan-400 text-slate-950 shadow-lg shadow-cyan-950/40 transition hover:brightness-110 active:scale-95 disabled:opacity-40">
@@ -1016,9 +1515,9 @@ export default function ChatPage() {
       </form>
 
       {/* ── Jump to latest ─────────────────────────────────── */}
-      {showScrollDown && !composerQuote && (
+      {showScrollDown && !composerQuote && !emojiOpen && (
         <button onClick={scrollToLatest} aria-label={`Scroll to latest${unreadCount ? `, ${unreadCount} new` : ''}`}
-          className="absolute bottom-[86px] right-4 z-10 flex h-11 w-11 items-center justify-center rounded-full border border-slate-700 bg-slate-800/95 shadow-xl transition hover:bg-slate-700 active:scale-95">
+          className="absolute bottom-[86px] right-[max(16px,calc(50%-24rem+16px))] z-10 flex h-11 w-11 items-center justify-center rounded-full border border-slate-700 bg-slate-800/95 shadow-xl transition hover:bg-slate-700 active:scale-95">
           <ArrowDown size={19} className="text-cyan-300" />
           {unreadCount > 0 && (
             <span className="absolute -right-1 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-cyan-400 px-1 text-[11px] font-bold text-slate-950 shadow">
@@ -1083,10 +1582,16 @@ export default function ChatPage() {
               })}
             </div>
             <div className="space-y-1">
-              <button onClick={() => { setReplyTo(actionsMsg.msg); setEditing(null); setActionsMsg(null) }}
+              <button onClick={() => { setReplyTo(actionsMsg.msg); setEditing(null); setActionsMsg(null); inputRef.current?.focus({ preventScroll: true }) }}
                 className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm transition hover:bg-slate-800">
                 <CornerUpLeft size={17} className="text-cyan-300" /> Reply
               </button>
+              {!actionsMsg.msg.deleted_at && (
+                <button onClick={() => copyMessage(actionsMsg.msg)}
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm transition hover:bg-slate-800">
+                  <Copy size={17} className="text-cyan-300" /> Copy text
+                </button>
+              )}
               {actionsMsg.canEdit && (
                 <button onClick={() => beginEdit(actionsMsg.msg)}
                   className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm transition hover:bg-slate-800">
@@ -1097,6 +1602,12 @@ export default function ChatPage() {
                 <button onClick={() => void deleteMessage(actionsMsg.msg)}
                   className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-red-300 transition hover:bg-red-950/40">
                   <Trash2 size={17} /> Delete for everyone
+                </button>
+              )}
+              {actionsMsg.msg.sender_id !== userId && !actionsMsg.msg.deleted_at && !actionsMsg.msg.deleted_by_receiver_at && (
+                <button onClick={() => void deleteForMe(actionsMsg.msg)}
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-red-300 transition hover:bg-red-950/40">
+                  <Trash2 size={17} /> Delete for me
                 </button>
               )}
             </div>

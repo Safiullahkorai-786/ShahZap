@@ -2,6 +2,39 @@ import { createClient } from '@/lib/supabase/client'
 
 export type MatchResult = { conversationId: string; matchedProfileId: string } | { error: string }
 
+export type MatchFilterOverrides = {
+  preferred_genders?: string[]
+  preferred_generations?: string[]
+  preferred_age_bands?: string[]
+  preferred_continents?: string[]
+  preferred_languages?: string[]
+  preferred_orientations?: string[]
+  preferred_interests?: string[]
+}
+
+export async function getMatchPreferences() {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+  const { data } = await supabase
+    .from('match_preferences')
+    .select('preferred_age_bands,preferred_genders,preferred_orientations,preferred_generations,preferred_languages,preferred_continents,preferred_interests,interest_wait_seconds,country_targeting_enabled')
+    .eq('profile_id', user.id)
+    .maybeSingle()
+  return data as {
+    preferred_age_bands?: string[]; preferred_genders?: string[]; preferred_orientations?: string[];
+    preferred_generations?: string[]; preferred_languages?: string[]; preferred_continents?: string[];
+    preferred_interests?: string[]; interest_wait_seconds?: number; country_targeting_enabled?: boolean;
+  } | null
+}
+
+export async function updateMatchPreferences(overrides: MatchFilterOverrides) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+  await supabase.from('match_preferences').upsert({ profile_id: user.id, ...overrides }, { onConflict: 'profile_id' })
+}
+
 export async function joinMatchQueue() {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()

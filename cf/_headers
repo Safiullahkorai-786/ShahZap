@@ -16,3 +16,15 @@
 # PWA manifest changes rarely but must not be pinned forever.
 /manifest.webmanifest
   Cache-Control: public, max-age=86400
+
+# Static media & fonts (present or future) — month-long browser cache
+/*.svg
+  Cache-Control: public, max-age=2592000
+/*.png
+  Cache-Control: public, max-age=2592000
+/*.jpg
+  Cache-Control: public, max-age=2592000
+/*.webp
+  Cache-Control: public, max-age=2592000
+/*.woff2
+  Cache-Control: public, max-age=31536000, immutable

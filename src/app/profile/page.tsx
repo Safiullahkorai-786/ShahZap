@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { friendlyError } from '@/lib/errors'
 import { AppHeader } from '@/components/app-header'
+import { Shimmer } from '@/components/shimmer'
 
 const AGE_BANDS = [['18_20', '18–20'], ['21_29', '21–29'], ['30_44', '30–44'], ['45_59', '45–59'], ['60_plus', '60+']] as const
 const LANGUAGES = [['en', 'English'], ['ur', 'Urdu'], ['sd', 'Sindhi'], ['hi', 'Hindi'], ['pa', 'Punjabi'], ['ar', 'Arabic'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German'], ['tr', 'Turkish']] as const
@@ -190,7 +191,17 @@ export default function MyProfilePage() {
             </div>
           </div>
         )}
-        {loading && <p className="mt-6 text-sm text-slate-500">Loading your profile…</p>}
+        {loading && (
+          <div aria-busy="true" className="mt-6 space-y-4">
+            <Shimmer className="h-5 w-44 rounded" />
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {Array.from({length:8}).map((_,i)=><Shimmer key={i} className="h-11 rounded-xl" />)}
+            </div>
+            <Shimmer className="h-11 w-full rounded-xl" />
+            <Shimmer className="h-11 w-full rounded-xl" />
+            <Shimmer className="h-14 w-full rounded-3xl" />
+          </div>
+        )}
       </div>
     </main>
   )

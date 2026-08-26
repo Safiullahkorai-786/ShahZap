@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { PwaRegister } from "@/components/PwaRegister";
+import { PresenceHeartbeat } from "@/components/presence-heartbeat";
 import { BottomNav } from "@/components/bottom-nav";
 
 export const viewport: Viewport = {
@@ -34,6 +35,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         />
         <div className="w-full min-h-dvh bg-slate-950">
           <PwaRegister />
+          <PresenceHeartbeat />
           {children}
           <BottomNav />
         </div>

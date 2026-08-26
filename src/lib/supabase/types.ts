@@ -37,6 +37,8 @@ export type MatchPreferences = {
   preferred_orientations: string[];
   preferred_generations: Generation[];
   preferred_languages: string[];
+  preferred_continents: string[];
+  preferred_interests: string[];
   preferred_countries: string[];
   interest_wait_seconds: 5 | 10 | 15 | 30 | 45 | 60;
   country_targeting_enabled: boolean;
