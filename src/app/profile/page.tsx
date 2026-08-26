@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { friendlyError } from '@/lib/errors'
 import { AppHeader } from '@/components/app-header'
 import { Shimmer } from '@/components/shimmer'
+import { CONTINENTS, getCountriesForRegion, getRegionForCountry, getCountryName } from '@/lib/regions'
 
 const AGE_BANDS = [['18_20', '18–20'], ['21_29', '21–29'], ['30_44', '30–44'], ['45_59', '45–59'], ['60_plus', '60+']] as const
 const LANGUAGES = [['en', 'English'], ['ur', 'Urdu'], ['sd', 'Sindhi'], ['hi', 'Hindi'], ['pa', 'Punjabi'], ['ar', 'Arabic'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German'], ['tr', 'Turkish']] as const
@@ -50,6 +51,8 @@ export default function MyProfilePage() {
   const [interfaceLanguage, setInterfaceLanguage] = useState('en')
   const [chatLanguage, setChatLanguage] = useState('en')
   const [interests, setInterests] = useState<string[]>([])
+  const [selectedRegion, setSelectedRegion] = useState('')
+  const [countryCode, setCountryCode] = useState('')
 
   function toggleInterest(v: string) {
     setInterests((cur) => (cur.includes(v) ? cur.filter((x) => x !== v) : cur.length >= 8 ? cur : [...cur, v]))
@@ -62,7 +65,7 @@ export default function MyProfilePage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { window.location.href = '/'; return }
       const [{ data: profile }, { data: mine }, { data: catalog }] = await Promise.all([
-        supabase.from('profiles').select('display_name,age_band,gender,orientation,generation,interface_language,chat_language').eq('id', user.id).maybeSingle(),
+        supabase.from('profiles').select('display_name,age_band,gender,orientation,generation,interface_language,chat_language,country_code').eq('id', user.id).maybeSingle(),
         supabase.from('profile_interests').select('interest_id').eq('profile_id', user.id),
         supabase.from('interests').select('id,slug').eq('active', true),
       ])
@@ -75,6 +78,9 @@ export default function MyProfilePage() {
         setGeneration(profile.generation ?? '')
         setInterfaceLanguage(profile.interface_language ?? 'en')
         setChatLanguage(profile.chat_language ?? 'en')
+        const cc = (profile as { country_code?: string | null }).country_code
+        setCountryCode(cc ?? '')
+        setSelectedRegion(cc ? getRegionForCountry(cc) ?? '' : '')
       }
       if (mine && catalog) {
         const idToSlug = new Map(catalog.map((c) => [c.id, c.slug]))
@@ -98,6 +104,7 @@ export default function MyProfilePage() {
       gender: gender || null,
       orientation: orientation.trim().slice(0, 32) || null,
       generation: generation || null,
+      country_code: countryCode || null,
       interface_language: interfaceLanguage,
       chat_language: chatLanguage,
     }).eq('id', user.id)
@@ -157,6 +164,29 @@ export default function MyProfilePage() {
                     <Pill selected={generation === ''} onClick={() => setGeneration('')}>Any</Pill>
                     {GENERATIONS.map(([v, l]) => <Pill key={v} selected={generation === v} onClick={() => setGeneration(v)}>{l}</Pill>)}
                   </div>
+                </div>
+                <div>
+                  <span className="mb-2 block text-sm font-semibold">Region <span className="font-normal text-slate-500">(optional)</span></span>
+                  <p className="mb-3 text-xs text-slate-500">Your continent and country help people near you find you.</p>
+                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                    {CONTINENTS.map(([v, l]) => (
+                      <Pill key={v} selected={selectedRegion === v} onClick={() => { setSelectedRegion(v); setCountryCode('') }}>{l}</Pill>
+                    ))}
+                  </div>
+                  {selectedRegion && (
+                    <div className="mt-3">
+                      <select value={countryCode} onChange={(e) => setCountryCode(e.target.value)}
+                        className="w-full appearance-none rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20">
+                        <option value="">Select your country…</option>
+                        {getCountriesForRegion(selectedRegion).map(([code, name]) => (
+                          <option key={code} value={code}>{name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  {!selectedRegion && countryCode && (
+                    <p className="mt-2 text-xs text-slate-500">Current: {getCountryName(countryCode)}</p>
+                  )}
                 </div>
               </div>
             </section>

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { friendlyError } from '@/lib/errors'
+import { CONTINENTS, getCountriesForRegion } from '@/lib/regions'
 
 const STEPS = ['You', 'About you', 'Interests', 'Language & privacy'] as const
 const AGE_BANDS = [['18_20', '18–20'], ['21_29', '21–29'], ['30_44', '30–44'], ['45_59', '45–59'], ['60_plus', '60+']] as const
@@ -62,6 +63,8 @@ export default function OnboardingPage() {
   const [gender, setGender] = useState('')
   const [orientation, setOrientation] = useState('')
   const [generation, setGeneration] = useState('')
+  const [selectedRegion, setSelectedRegion] = useState('')
+  const [countryCode, setCountryCode] = useState('')
   const [interfaceLanguage, setInterfaceLanguage] = useState('en')
   const [chatLanguage, setChatLanguage] = useState('en')
   const [selectedInterests, setSelectedInterests] = useState<string[]>([])
@@ -93,7 +96,9 @@ export default function OnboardingPage() {
     if (!user) { setError('Your session expired. Please start again.'); setBusy(false); return }
     const { error: profileError } = await supabase.from('profiles').upsert({
       id: user.id, display_name: name.trim().slice(0, 32), age_band: ageBand, gender: gender || null,
-      orientation: orientation || null, generation: generation || null, interface_language: interfaceLanguage,
+      orientation: orientation || null, generation: generation || null,
+      country_code: countryCode || null,
+      interface_language: interfaceLanguage,
       chat_language: chatLanguage, online_visible: onlineVisible, profile_visible: profileVisible, last_active_at: new Date().toISOString(),
     })
     if (profileError) { setError(friendlyError(profileError, 'Could not save your profile. Please try again.')); setBusy(false); return }
@@ -189,6 +194,26 @@ export default function OnboardingPage() {
                     className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3.5 text-base outline-none transition placeholder:text-slate-600 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
                     placeholder="Share only if you want to" />
                 </label>
+                <div>
+                  <span className="mb-3 block text-sm font-semibold">Region <span className="font-normal text-slate-500">(optional)</span></span>
+                  <p className="mb-3 text-xs text-slate-500">Pick your continent, then your country. This helps people near you find you.</p>
+                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                    {CONTINENTS.map(([v, l]) => (
+                      <Pill key={v} selected={selectedRegion === v} onClick={() => { setSelectedRegion(v); setCountryCode('') }}>{l}</Pill>
+                    ))}
+                  </div>
+                  {selectedRegion && (
+                    <div className="mt-3">
+                      <select value={countryCode} onChange={(e) => setCountryCode(e.target.value)}
+                        className="w-full appearance-none rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20">
+                        <option value="">Select your country…</option>
+                        {getCountriesForRegion(selectedRegion).map(([code, name]) => (
+                          <option key={code} value={code}>{name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
