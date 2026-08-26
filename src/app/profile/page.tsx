@@ -97,7 +97,7 @@ export default function MyProfilePage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { window.location.href = '/'; return }
       const [{ data: profile }, { data: mine }, { data: catalog }, { data: mprefs }] = await Promise.all([
-        supabase.from('profiles').select('display_name,age_band,gender,orientation,generation,bio,interface_language,chat_language,country_code,online_visible,profile_visible,gender_visible,age_band_visible,generation_visible,country_visible,region_visible,language_visible,languages_known_visible,interests_visible').eq('id', user.id).maybeSingle(),
+        supabase.from('profiles').select('display_name,age_band,gender,orientation,generation,bio,interface_language,chat_language,country_code,languages_known,online_visible,profile_visible,gender_visible,age_band_visible,generation_visible,country_visible,region_visible,language_visible,languages_known_visible,interests_visible').eq('id', user.id).maybeSingle(),
         supabase.from('profile_interests').select('interest_id').eq('profile_id', user.id),
         supabase.from('interests').select('id,slug').eq('active', true),
         supabase.from('match_preferences').select('preferred_languages,language_filter_enabled').eq('profile_id', user.id).maybeSingle(),
@@ -125,13 +125,13 @@ export default function MyProfilePage() {
         setLanguageVisible((profile as any).language_visible ?? true)
         setLanguagesKnownVisible((profile as any).languages_known_visible ?? false)
         setInterestsVisible((profile as any).interests_visible ?? false)
+        setLanguagesKnown((profile as any).languages_known ?? [])
       }
       if (mine && catalog) {
         const idToSlug = new Map(catalog.map((c) => [c.id, c.slug]))
         setInterests(mine.map((m) => idToSlug.get(m.interest_id)).filter((x): x is string => !!x))
       }
       if (mprefs) {
-        setLanguagesKnown((mprefs as any).preferred_languages ?? [])
         setLanguageFilterEnabled((mprefs as any).language_filter_enabled ?? false)
       }
       if (active) setLoading(false)
@@ -164,6 +164,7 @@ export default function MyProfilePage() {
       country_visible: countryVisible,
       region_visible: regionVisible,
       language_visible: languageVisible,
+      languages_known: languagesKnown,
       languages_known_visible: languagesKnownVisible,
       interests_visible: interestsVisible,
     }).eq('id', user.id)

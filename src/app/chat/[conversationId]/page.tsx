@@ -47,6 +47,7 @@ type OtherProfile = {
   language_visible?: boolean
   languages_known_visible?: boolean
   interests_visible?: boolean
+  languages_known?: string[] | null
   profile_visible?: boolean
   last_active_at: string | null
 }
@@ -261,7 +262,7 @@ export default function ChatPage() {
       setOtherId(otherProfileId)
 
       if (otherProfileId && !isBotProfile(otherProfileId)) {
-        const { data: op } = await supabase.from('profiles').select('id,display_name,gender,gender_visible,age_band,age_band_visible,generation,generation_visible,bio,orientation,country_code,country_visible,chat_language,language_visible,languages_known_visible,interests_visible,profile_visible,last_active_at').eq('id', otherProfileId).maybeSingle()
+        const { data: op } = await supabase.from('profiles').select('id,display_name,gender,gender_visible,age_band,age_band_visible,generation,generation_visible,bio,orientation,country_code,country_visible,chat_language,language_visible,languages_known_visible,languages_known,interests_visible,profile_visible,last_active_at').eq('id', otherProfileId).maybeSingle()
         if (active && op) { setOther(op as OtherProfile); otherRef.current = op as OtherProfile; setOtherLastActiveAt(op.last_active_at ?? null); refreshPresence(op.last_active_at ?? null) }
         // Fetch interests if visible
         if ((op as any)?.interests_visible) {
@@ -270,8 +271,7 @@ export default function ChatPage() {
         }
         // Fetch languages known if visible
         if ((op as any)?.languages_known_visible) {
-          const { data: mp } = await supabase.from('match_preferences').select('preferred_languages').eq('profile_id', otherProfileId).maybeSingle()
-          if (active && mp) setOtherLanguages((mp as any).preferred_languages ?? [])
+          if (active) setOtherLanguages((op as any).languages_known ?? [])
         }
         // Partner's read receipt for the coloured "seen" tick.
         const { data: cp } = await supabase.from('conversation_participants').select('last_read_at').eq('conversation_id', conversationId).eq('profile_id', otherProfileId).maybeSingle()

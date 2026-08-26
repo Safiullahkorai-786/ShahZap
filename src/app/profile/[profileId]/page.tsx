@@ -23,7 +23,7 @@ type Profile = {
   bio: string | null; country_code: string | null; interface_language: string | null; chat_language: string | null
   online_visible: boolean; profile_visible: boolean; generation_visible: boolean
   country_visible: boolean; region_visible: boolean; gender_visible: boolean; age_band_visible: boolean
-  language_visible: boolean; languages_known_visible: boolean; interests_visible: boolean; last_active_at: string | null
+  language_visible: boolean; languages_known_visible: boolean; interests_visible: boolean; languages_known: string[] | null; last_active_at: string | null
 }
 
 export default function ProfilePage() {
@@ -64,7 +64,7 @@ export default function ProfilePage() {
       setReqBlocked((declinedCount ?? 0) >= 3)
       setFriendState(!fr.data ? 'none' : fr.data.status === 'accepted' ? 'friends' : (fr.data as { sender_id: string }).sender_id === user.id ? 'outgoing' : 'incoming')
 
-      const { data, error: e } = await supabase.from('profiles').select('id,display_name,avatar_path,age_band,generation,gender,orientation,bio,country_code,interface_language,chat_language,online_visible,profile_visible,generation_visible,country_visible,region_visible,gender_visible,age_band_visible,language_visible,languages_known_visible,interests_visible,last_active_at').eq('id', id).maybeSingle()
+      const { data, error: e } = await supabase.from('profiles').select('id,display_name,avatar_path,age_band,generation,gender,orientation,bio,country_code,interface_language,chat_language,languages_known,online_visible,profile_visible,generation_visible,country_visible,region_visible,gender_visible,age_band_visible,language_visible,languages_known_visible,interests_visible,last_active_at').eq('id', id).maybeSingle()
       if (e) setError(friendlyError(e, 'Could not load this profile.'))
       else {
         setProfile(data as Profile | null)
@@ -78,14 +78,9 @@ export default function ProfilePage() {
             setInterests(intRows.map((r: any) => r.interests?.name).filter(Boolean))
           }
         }
-        // Load languages known from match_preferences if visible
+        // Load languages known from profile
         if (data?.languages_known_visible && !own) {
-          const { data: mp } = await supabase
-            .from('match_preferences')
-            .select('preferred_languages')
-            .eq('profile_id', id)
-            .maybeSingle()
-          if (mp) setLanguagesKnown((mp as any).preferred_languages ?? [])
+          setLanguagesKnown((data as any).languages_known ?? [])
         }
       }
     })()
