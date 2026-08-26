@@ -188,12 +188,14 @@ export default function OnboardingPage() {
                     {GENERATIONS.map(([v, l]) => <Pill key={v} selected={generation === v} onClick={() => setGeneration(v)}>{l}</Pill>)}
                   </div>
                 </div>
-                <label className="block">
-                  <span className="mb-2 block text-sm font-semibold">Orientation <span className="font-normal text-slate-500">(optional)</span></span>
-                  <input value={orientation} onChange={(e) => setOrientation(e.target.value.slice(0, 32))}
-                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3.5 text-base outline-none transition placeholder:text-slate-600 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
-                    placeholder="Share only if you want to" />
-                </label>
+                {gender === 'non_binary' && (
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-semibold">Orientation <span className="font-normal text-slate-500">(optional)</span></span>
+                    <input value={orientation} onChange={(e) => setOrientation(e.target.value.slice(0, 32))}
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3.5 text-base outline-none transition placeholder:text-slate-600 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
+                      placeholder="Share only if you want to" />
+                  </label>
+                )}
                 <div>
                   <span className="mb-3 block text-sm font-semibold">Region <span className="font-normal text-slate-500">(optional)</span></span>
                   <p className="mb-3 text-xs text-slate-500">Pick your continent, then your country. This helps people near you find you.</p>

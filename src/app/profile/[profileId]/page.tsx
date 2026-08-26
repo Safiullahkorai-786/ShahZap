@@ -12,10 +12,10 @@ import { Ban, Clock, ShieldAlert, UserCheck, UserMinus, UserPlus } from 'lucide-
 type Profile = {
   id: string; display_name: string | null; avatar_path: string | null
   age_band: string | null; generation: string | null; gender: string | null
-  country_code: string | null; interface_language: string | null; chat_language: string | null
+  bio: string | null; country_code: string | null; interface_language: string | null; chat_language: string | null
   online_visible: boolean; profile_visible: boolean; generation_visible: boolean
   country_visible: boolean; gender_visible: boolean; age_band_visible: boolean
-  interests_visible: boolean; last_active_at: string | null
+  language_visible: boolean; interests_visible: boolean; last_active_at: string | null
 }
 
 export default function ProfilePage() {
@@ -55,7 +55,7 @@ export default function ProfilePage() {
       setReqBlocked((declinedCount ?? 0) >= 3)
       setFriendState(!fr.data ? 'none' : fr.data.status === 'accepted' ? 'friends' : (fr.data as { sender_id: string }).sender_id === user.id ? 'outgoing' : 'incoming')
 
-      const { data, error: e } = await supabase.from('profiles').select('id,display_name,avatar_path,age_band,generation,gender,country_code,interface_language,chat_language,online_visible,profile_visible,generation_visible,country_visible,gender_visible,age_band_visible,interests_visible,last_active_at').eq('id', id).maybeSingle()
+      const { data, error: e } = await supabase.from('profiles').select('id,display_name,avatar_path,age_band,generation,gender,bio,country_code,interface_language,chat_language,online_visible,profile_visible,generation_visible,country_visible,gender_visible,age_band_visible,language_visible,interests_visible,last_active_at').eq('id', id).maybeSingle()
       if (e) setError(friendlyError(e, 'Could not load this profile.'))
       else {
         setProfile(data as Profile | null)
@@ -174,11 +174,12 @@ export default function ProfilePage() {
             <p className="mt-4 text-sm text-slate-400">This profile is private.</p>
           ) : (
             <div className="mt-6 grid gap-3">
-              {profile.age_band_visible && profile.age_band && <div className="rounded-xl bg-slate-950 p-3 text-sm">Age band: {profile.age_band}</div>}
-              {profile.generation_visible && profile.generation && <div className="rounded-xl bg-slate-950 p-3 text-sm">Generation: {profile.generation}</div>}
-              {profile.gender_visible && profile.gender && <div className="rounded-xl bg-slate-950 p-3 text-sm">Gender: {profile.gender}</div>}
+              {profile.bio && <p className="text-sm leading-relaxed text-slate-300">{profile.bio}</p>}
+              {profile.age_band_visible && profile.age_band && <div className="rounded-xl bg-slate-950 p-3 text-sm">Age band: {profile.age_band.replace('_', '–')}</div>}
+              {profile.generation_visible && profile.generation && <div className="rounded-xl bg-slate-950 p-3 text-sm">Generation: {profile.generation === 'gen_z' ? 'Gen Z' : profile.generation === 'gen_x' ? 'Gen X' : profile.generation.charAt(0).toUpperCase() + profile.generation.slice(1).replace('_', ' ')}</div>}
+              {profile.gender_visible && profile.gender && <div className="rounded-xl bg-slate-950 p-3 text-sm">Gender: {profile.gender === 'non_binary' ? 'Non-binary' : profile.gender.charAt(0).toUpperCase() + profile.gender.slice(1)}</div>}
               {profile.country_visible && profile.country_code && <div className="rounded-xl bg-slate-950 p-3 text-sm">Country: {profile.country_code}</div>}
-              {profile.chat_language && <div className="rounded-xl bg-slate-950 p-3 text-sm">Chat language: {profile.chat_language}</div>}
+              {profile.language_visible && profile.chat_language && <div className="rounded-xl bg-slate-950 p-3 text-sm">Chat language: {profile.chat_language}</div>}
               {profile.interests_visible && interests.length > 0 && (
                 <div className="rounded-xl bg-slate-950 p-3 text-sm">
                   <span className="font-semibold">Interests: </span>

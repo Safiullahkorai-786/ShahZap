@@ -67,6 +67,7 @@ export default function MyProfilePage() {
   const [gender, setGender] = useState('prefer_not_to_say')
   const [orientation, setOrientation] = useState('')
   const [generation, setGeneration] = useState('')
+  const [bio, setBio] = useState('')
   const [interfaceLanguage, setInterfaceLanguage] = useState('en')
   const [chatLanguage, setChatLanguage] = useState('en')
   const [interests, setInterests] = useState<string[]>([])
@@ -94,7 +95,7 @@ export default function MyProfilePage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { window.location.href = '/'; return }
       const [{ data: profile }, { data: mine }, { data: catalog }, { data: mprefs }] = await Promise.all([
-        supabase.from('profiles').select('display_name,age_band,gender,orientation,generation,interface_language,chat_language,country_code,online_visible,profile_visible,gender_visible,age_band_visible,generation_visible,country_visible,language_visible,interests_visible').eq('id', user.id).maybeSingle(),
+        supabase.from('profiles').select('display_name,age_band,gender,orientation,generation,bio,interface_language,chat_language,country_code,online_visible,profile_visible,gender_visible,age_band_visible,generation_visible,country_visible,language_visible,interests_visible').eq('id', user.id).maybeSingle(),
         supabase.from('profile_interests').select('interest_id').eq('profile_id', user.id),
         supabase.from('interests').select('id,slug').eq('active', true),
         supabase.from('match_preferences').select('preferred_languages,language_filter_enabled').eq('profile_id', user.id).maybeSingle(),
@@ -106,6 +107,7 @@ export default function MyProfilePage() {
         setGender(profile.gender ?? 'prefer_not_to_say')
         setOrientation(profile.orientation ?? '')
         setGeneration(profile.generation ?? '')
+        setBio((profile as any).bio ?? '')
         setInterfaceLanguage(profile.interface_language ?? 'en')
         setChatLanguage(profile.chat_language ?? 'en')
         const cc = (profile as { country_code?: string | null }).country_code
@@ -146,6 +148,7 @@ export default function MyProfilePage() {
       gender: gender || null,
       orientation: orientation.trim().slice(0, 32) || null,
       generation: generation || null,
+      bio: bio.trim().slice(0, 150) || null,
       country_code: countryCode || null,
       interface_language: interfaceLanguage,
       chat_language: chatLanguage,
@@ -203,6 +206,7 @@ export default function MyProfilePage() {
                   </div>
                   {onlineVisible && <span className="rounded-full bg-emerald-400/10 px-3 py-1 text-xs text-emerald-300">Online</span>}
                 </div>
+                {bio.trim() && <p className="mt-3 text-sm leading-relaxed text-slate-300">{bio.trim()}</p>}
                 <div className="mt-4 grid gap-2">
                   {ageBandVisible && ageBand && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Age band: {ageBand.replace('_', '–')}</div>}
                   {generationVisible && generation && GEN_MAP[generation] && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Generation: {GEN_MAP[generation]}</div>}
@@ -244,11 +248,19 @@ export default function MyProfilePage() {
                     {GENDERS.map(([v, l]) => <Pill key={v} selected={gender === v} onClick={() => setGender(v)}>{l}</Pill>)}
                   </div>
                 </div>
-                <label className="block">
-                  <span className="mb-2 block text-sm font-semibold">Orientation <span className="font-normal text-slate-500">(optional)</span></span>
-                  <input value={orientation} maxLength={32} onChange={(e) => setOrientation(e.target.value)} placeholder="Share only if you want to"
-                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none transition placeholder:text-slate-600 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20" />
-                </label>
+                {gender === 'non_binary' && (
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-semibold">Orientation <span className="font-normal text-slate-500">(optional)</span></span>
+                    <input value={orientation} maxLength={32} onChange={(e) => setOrientation(e.target.value)} placeholder="Share only if you want to"
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none transition placeholder:text-slate-600 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20" />
+                  </label>
+                )}
+                <div>
+                  <span className="mb-2 block text-sm font-semibold">Bio <span className="font-normal text-slate-500">(optional · up to 30 words)</span></span>
+                  <textarea value={bio} maxLength={150} onChange={(e) => setBio(e.target.value)} rows={3} placeholder="Tell people a little about yourself…"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none transition placeholder:text-slate-600 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 resize-none" />
+                  <p className="mt-1 text-right text-xs text-slate-600">{bio.length}/150</p>
+                </div>
                 <div>
                   <span className="mb-2 block text-sm font-semibold">Generation <span className="font-normal text-slate-500">(optional)</span></span>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
