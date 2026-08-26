@@ -25,6 +25,39 @@ type FriendWithMeta = Profile & {
   partnerLastReadAt: string | null
 }
 type Tab = 'friends' | 'pending'
+type FilterGender = 'all' | 'woman' | 'man' | 'non_binary'
+type FilterRegion = 'all' | 'asia' | 'europe' | 'africa' | 'north_america' | 'south_america' | 'oceania'
+
+const REGION_MAP: Record<string, string[]> = {
+  africa: ['DZ','AO','BJ','BW','BF','BI','CV','CM','CF','TD','KM','CG','CD','CI','DJ','EG','GQ','ER','SZ','ET','GA','GM','GH','GN','GW','KE','LS','LR','LY','MG','MW','ML','MR','MU','MA','MZ','NA','NE','NG','RW','ST','SN','SC','SL','SO','ZA','SS','SD','TZ','TG','TN','UG','ZM','ZW'],
+  asia: ['AF','AM','AZ','BH','BD','BT','BN','KH','CN','CY','GE','IN','ID','IR','IQ','IL','JP','JO','KZ','KW','KG','LA','LB','MY','MV','MN','MM','NP','KP','OM','PK','PH','QA','SA','SG','KR','LK','SY','TW','TJ','TH','TL','TR','TM','AE','UZ','VN','YE'],
+  europe: ['AL','AD','AT','BY','BE','BA','BG','HR','CZ','DK','EE','FI','FR','DE','GR','HU','IS','IE','IT','XK','LV','LI','LT','LU','MT','MD','MC','ME','NL','MK','NO','PL','PT','RO','RU','SM','RS','SK','SI','ES','SE','CH','UA','GB'],
+  north_america: ['AG','BS','BB','BZ','CA','CR','CU','DM','DO','SV','GD','GT','HT','HN','JM','MX','NI','PA','KN','LC','VC','TT','US'],
+  south_america: ['AR','BO','BR','CL','CO','EC','GY','PY','PE','SR','UY','VE'],
+  oceania: ['AU','FJ','KI','MH','FM','NR','NZ','PW','PG','WS','SB','TO','TV','VU'],
+}
+const REGION_LABELS: Record<string, string> = { africa: 'Africa', asia: 'Asia', europe: 'Europe', north_america: 'N. America', south_america: 'S. America', oceania: 'Oceania' }
+
+function getRegionForCountry(code: string | null): string | null {
+  if (!code) return null
+  const upper = code.toUpperCase()
+  for (const [region, countries] of Object.entries(REGION_MAP)) {
+    if (countries.includes(upper)) return region
+  }
+  return null
+}
+
+const GENDER_FILTERS: readonly (readonly [FilterGender, string])[] = [['all', 'All'], ['woman', 'Women'], ['man', 'Men'], ['non_binary', 'Non-binary']]
+const REGION_FILTERS: readonly (readonly [FilterRegion, string])[] = [['all', 'All regions'], ['asia', 'Asia'], ['europe', 'Europe'], ['africa', 'Africa'], ['north_america', 'N. America'], ['south_america', 'S. America'], ['oceania', 'Oceania']]
+
+function FilterPill({ selected, onClick, children }: { selected: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button type="button" onClick={onClick}
+      className={`whitespace-nowrap rounded-full border px-3 py-1 text-[11px] font-medium transition ${selected ? 'border-cyan-400 bg-cyan-400/10 text-cyan-200' : 'border-slate-700 text-slate-400 hover:border-slate-500 hover:text-slate-300'}`}>
+      {children}
+    </button>
+  )
+}
 
 function TabButton({ label, active, count, onClick }: { label: string; active: boolean; count?: number; onClick: () => void }) {
   return (
@@ -46,6 +79,12 @@ function FriendsSkeleton() {
         <Shimmer className="h-8 w-20 rounded" />
         <Shimmer className="h-8 w-16 rounded" />
       </div>
+      <Shimmer className="h-10 w-full rounded-xl" />
+      <div className="mt-3 flex gap-2">
+        <Shimmer className="h-6 w-14 rounded-full" />
+        <Shimmer className="h-6 w-16 rounded-full" />
+        <Shimmer className="h-6 w-12 rounded-full" />
+      </div>
       <div className="space-y-2">
         {[0, 1, 2, 3].map((i) => (
           <div key={i} className="flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-4">
@@ -56,10 +95,6 @@ function FriendsSkeleton() {
             <div className="min-w-0 flex-1 space-y-1.5">
               <Shimmer className="h-3.5 w-28 rounded sm:w-36" />
               <Shimmer className="h-3 w-40 rounded sm:w-52" />
-            </div>
-            <div className="flex flex-none flex-col items-end gap-1.5">
-              <Shimmer className="h-3 w-8 rounded" />
-              {i < 2 && <Shimmer className="h-5 w-5 rounded-full" />}
             </div>
           </div>
         ))}
@@ -107,6 +142,8 @@ function sortFriends(arr: FriendWithMeta[]) {
     if (!a.isTyping && b.isTyping) return 1
     if (a.hasUnread && !b.hasUnread) return -1
     if (!a.hasUnread && b.hasUnread) return 1
+    if (a.isOnline && !b.isOnline) return -1
+    if (!a.isOnline && b.isOnline) return 1
     const aTime = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0
     const bTime = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0
     return bTime - aTime
@@ -124,12 +161,21 @@ export default function FriendsPage() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<Tab>('friends')
 
+  const [search, setSearch] = useState('')
+  const [filterGender, setFilterGender] = useState<FilterGender>('all')
+  const [filterRegion, setFilterRegion] = useState<FilterRegion>('all')
+  const [filterUnread, setFilterUnread] = useState(false)
+  const [filterOnline, setFilterOnline] = useState(false)
+  const [showFilters, setShowFilters] = useState(false)
+
   const friendsRef = useRef(friends)
   friendsRef.current = friends
   const convToFriendRef = useRef<Record<string, string>>({})
   const friendToConvRef = useRef<Record<string, string>>({})
   const userIdRef = useRef<string>('')
   const aliveRef = useRef(true)
+
+  const hasActiveFilters = filterGender !== 'all' || filterRegion !== 'all' || filterUnread || filterOnline
 
   // ---- initial load ----
   useEffect(() => {
@@ -228,15 +274,12 @@ export default function FriendsPage() {
                 friendMeta[friendId].lastSenderId = (lastMsg as { sender_id: string }).sender_id
               }
 
-              // Check if there are unread messages from friend after last_read_at
-              let hasUnread = false
               const { count } = await supabase.from('messages')
                 .select('id', { count: 'exact', head: true })
                 .eq('conversation_id', convId)
                 .neq('sender_id', user.id)
                 .gt('created_at', lastRead ?? '1970-01-01')
-              hasUnread = (count ?? 0) > 0
-              friendMeta[friendId].hasUnread = hasUnread
+              friendMeta[friendId].hasUnread = (count ?? 0) > 0
             }
           }
         }
@@ -448,11 +491,7 @@ export default function FriendsPage() {
     if (rpcError) { setOpeningId(null); setError(friendlyError(rpcError, 'Could not open the chat. Please try again.')); return }
 
     const convId = data as string
-
-    // Mark read on server — await so last_read_at is fresh when friends page re-mounts
     await supabase.rpc('mark_conversation_read', { p_conversation_id: convId })
-
-    // Clear optimistic unread
     setFriends((prev) => prev.map((f) => f.id === profileId ? { ...f, hasUnread: false, isTyping: false } : f))
 
     setOpeningId(null)
@@ -462,6 +501,21 @@ export default function FriendsPage() {
   const incoming = requests.filter((r) => r.status === 'pending' && r.receiver_id === userId)
   const outgoing = requests.filter((r) => r.status === 'pending' && r.sender_id === userId)
   const pendingCount = incoming.length + outgoing.length
+
+  const filteredFriends = friends.filter((f) => {
+    if (search) {
+      const q = search.toLowerCase()
+      const name = (f.display_name ?? '').toLowerCase()
+      const gender = (f.gender ?? '').toLowerCase()
+      const region = getRegionForCountry(f.country_code)
+      if (!name.includes(q) && !gender.includes(q) && !(region && REGION_LABELS[region]?.toLowerCase().includes(q))) return false
+    }
+    if (filterGender !== 'all' && f.gender !== filterGender) return false
+    if (filterRegion !== 'all' && getRegionForCountry(f.country_code) !== filterRegion) return false
+    if (filterUnread && !f.hasUnread) return false
+    if (filterOnline && !f.isOnline) return false
+    return true
+  })
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
@@ -483,67 +537,127 @@ export default function FriendsPage() {
                 {friends.length === 0 ? (
                   <p className="mt-8 text-center text-sm text-slate-500">No friends yet. Start matching to connect!</p>
                 ) : (
-                  <div className="divide-y divide-slate-800/60">
-                    {friends.map((p) => {
-                      const identity = resolveIdentity(p)
-                      const busy = openingId === p.id
-                      const isLastFromMe = p.lastSenderId === userId
-                      const isRead = isLastFromMe && !!p.partnerLastReadAt && !!p.lastMessageTime &&
-                        new Date(p.partnerLastReadAt).getTime() >= new Date(p.lastMessageTime).getTime()
+                  <>
+                    {/* Search bar */}
+                    <div className="relative mt-3">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
+                        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+                      </svg>
+                      <input
+                        value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name, gender, or region…"
+                        className="w-full rounded-xl border border-slate-800 bg-slate-900 py-2.5 pl-9 pr-9 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-400/60" />
+                      {search && (
+                        <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                        </button>
+                      )}
+                    </div>
 
-                      return (
-                        <div key={p.id}
-                          onClick={() => { if (!busy) void openChat(p.id) }}
-                          className="flex cursor-pointer items-center gap-3 px-1 py-3 transition hover:bg-slate-900/40 sm:px-2">
+                    {/* Filter toggle + count */}
+                    <div className="mt-3 flex items-center gap-2">
+                      <button onClick={() => setShowFilters(!showFilters)}
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium transition ${showFilters || hasActiveFilters ? 'border-cyan-400/60 bg-cyan-400/10 text-cyan-200' : 'border-slate-700 text-slate-400 hover:border-slate-500'}`}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" /></svg>
+                        Filters
+                        {hasActiveFilters && <span className="ml-0.5 h-4 w-4 rounded-full bg-cyan-400 text-[9px] font-bold text-slate-950 flex items-center justify-center">{[filterGender !== 'all', filterRegion !== 'all', filterUnread, filterOnline].filter(Boolean).length}</span>}
+                      </button>
+                      {hasActiveFilters && (
+                        <button onClick={() => { setFilterGender('all'); setFilterRegion('all'); setFilterUnread(false); setFilterOnline(false) }}
+                          className="text-[11px] text-slate-500 hover:text-white">Clear all</button>
+                      )}
+                      <span className="ml-auto text-[11px] text-slate-500">{filteredFriends.length} friend{filteredFriends.length !== 1 ? 's' : ''}</span>
+                    </div>
 
-                          <div className="relative flex-none">
-                            <div className="h-12 w-12 overflow-hidden rounded-full bg-gradient-to-br from-cyan-600 to-cyan-400">
-                              <span className="flex h-full w-full items-center justify-center text-lg font-bold text-white">
-                                {(p.display_name ?? '?')[0]?.toUpperCase() ?? '?'}
-                              </span>
-                            </div>
-                            <span className={`absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-slate-950 ${p.isOnline ? 'bg-emerald-400' : 'bg-slate-600'}`} />
-                          </div>
-
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className={`truncate text-sm font-semibold ${identity.colorClass}`}>{identity.label}</span>
-                            </div>
-                            <div className="mt-0.5 flex items-center gap-1.5">
-                              {p.isTyping ? (
-                                <div className="flex items-center gap-1.5">
-                                  <TypingDots />
-                                  <span className="text-xs text-cyan-400">typing...</span>
-                                </div>
-                              ) : p.lastMessage ? (
-                                <>
-                                  {isLastFromMe && <TickIcon read={!!isRead} />}
-                                  <p className={`min-w-0 flex-1 truncate text-xs ${p.hasUnread ? 'font-semibold text-white' : 'text-slate-400'}`}>
-                                    {isLastFromMe && <span className="text-slate-500">You: </span>}
-                                    {p.lastMessage}
-                                  </p>
-                                </>
-                              ) : (
-                                <p className="min-w-0 flex-1 truncate text-xs text-slate-500">Start a conversation</p>
-                              )}
-                              {!p.isTyping && p.lastMessageTime && (
-                                <span className={`flex-none text-[10px] ${p.hasUnread ? 'font-semibold text-cyan-400' : 'text-slate-600'}`}>
-                                  {formatTime(p.lastMessageTime)}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="flex flex-none items-center">
-                            <button onClick={(e) => { e.stopPropagation(); if (!busy) void openChat(p.id) }} disabled={busy}
-                              className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-700 text-slate-300 transition hover:border-cyan-400 hover:bg-cyan-400/10 hover:text-cyan-200 disabled:opacity-50">
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                            </button>
+                    {/* Filter chips */}
+                    {showFilters && (
+                      <div className="mt-3 space-y-2.5 rounded-2xl border border-slate-800 bg-slate-900/50 p-3">
+                        <div>
+                          <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Gender</span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {GENDER_FILTERS.map(([v, l]) => <FilterPill key={v} selected={filterGender === v} onClick={() => setFilterGender(v)}>{l}</FilterPill>)}
                           </div>
                         </div>
-                      )
-                    })}
-                  </div>
+                        <div>
+                          <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Region</span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {REGION_FILTERS.map(([v, l]) => <FilterPill key={v} selected={filterRegion === v} onClick={() => setFilterRegion(v)}>{l}</FilterPill>)}
+                          </div>
+                        </div>
+                        <div className="flex gap-3">
+                          <FilterPill selected={filterUnread} onClick={() => setFilterUnread(!filterUnread)}>Unread</FilterPill>
+                          <FilterPill selected={filterOnline} onClick={() => setFilterOnline(!filterOnline)}>Online</FilterPill>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="mt-1 divide-y divide-slate-800/60">
+                      {filteredFriends.map((p) => {
+                        const identity = resolveIdentity(p)
+                        const busy = openingId === p.id
+                        const isLastFromMe = p.lastSenderId === userId
+                        const isRead = isLastFromMe && !!p.partnerLastReadAt && !!p.lastMessageTime &&
+                          new Date(p.partnerLastReadAt).getTime() >= new Date(p.lastMessageTime).getTime()
+
+                        return (
+                          <div key={p.id}
+                            onClick={() => { if (!busy) void openChat(p.id) }}
+                            className="flex cursor-pointer items-center gap-3 px-1 py-3 transition hover:bg-slate-900/40 sm:px-2">
+
+                            <div className="relative flex-none">
+                              <div className="h-12 w-12 overflow-hidden rounded-full bg-gradient-to-br from-cyan-600 to-cyan-400">
+                                <span className="flex h-full w-full items-center justify-center text-lg font-bold text-white">
+                                  {(p.display_name ?? '?')[0]?.toUpperCase() ?? '?'}
+                                </span>
+                              </div>
+                              <span className={`absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-slate-950 ${p.isOnline ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className={`truncate text-sm font-semibold ${identity.colorClass}`}>{identity.label}</span>
+                              </div>
+                              <div className="mt-0.5 flex items-center gap-1.5">
+                                {p.isTyping ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <TypingDots />
+                                    <span className="text-xs text-cyan-400">typing...</span>
+                                  </div>
+                                ) : p.lastMessage ? (
+                                  <>
+                                    {isLastFromMe && <TickIcon read={!!isRead} />}
+                                    <p className={`min-w-0 flex-1 truncate text-xs ${p.hasUnread ? 'font-semibold text-white' : 'text-slate-400'}`}>
+                                      {isLastFromMe && <span className="text-slate-500">You: </span>}
+                                      {p.lastMessage}
+                                    </p>
+                                  </>
+                                ) : (
+                                  <p className="min-w-0 flex-1 truncate text-xs text-slate-500">Start a conversation</p>
+                                )}
+                                {!p.isTyping && p.lastMessageTime && (
+                                  <span className={`flex-none text-[10px] ${p.hasUnread ? 'font-semibold text-cyan-400' : 'text-slate-600'}`}>
+                                    {formatTime(p.lastMessageTime)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex flex-none items-center">
+                              <button onClick={(e) => { e.stopPropagation(); if (!busy) void openChat(p.id) }} disabled={busy}
+                                className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-700 text-slate-300 transition hover:border-cyan-400 hover:bg-cyan-400/10 hover:text-cyan-200 disabled:opacity-50">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    {filteredFriends.length === 0 && (
+                      <p className="mt-8 text-center text-sm text-slate-500">
+                        {hasActiveFilters || search ? 'No friends match your filters.' : 'No friends yet.'}
+                      </p>
+                    )}
+                  </>
                 )}
               </section>
             )}
