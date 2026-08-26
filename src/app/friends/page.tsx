@@ -449,8 +449,8 @@ export default function FriendsPage() {
 
     const convId = data as string
 
-    // Mark read on server
-    void supabase.rpc('mark_conversation_read', { p_conversation_id: convId })
+    // Mark read on server — await so last_read_at is fresh when friends page re-mounts
+    await supabase.rpc('mark_conversation_read', { p_conversation_id: convId })
 
     // Clear optimistic unread
     setFriends((prev) => prev.map((f) => f.id === profileId ? { ...f, hasUnread: false, isTyping: false } : f))
