@@ -11,8 +11,6 @@ import { Shimmer } from '@/components/shimmer'
 const ONLINE_WINDOW_MS = 20 * 1000
 const TYPING_WINDOW_MS = 5000
 const POLL_MS = 3000
-const READ_GRACE_MS = 30_000
-const READ_STORAGE_KEY = 'shahzap:read_convos'
 
 type Request = { id: string; sender_id: string; receiver_id: string; status: string; created_at: string }
 type Profile = { id: string; display_name: string | null; avatar_path: string | null; age_band: string | null; generation: string | null; country_code: string | null; profile_visible: boolean; gender: string | null; gender_visible: boolean; last_active_at: string | null; online_visible: boolean | null }
@@ -22,25 +20,11 @@ type FriendWithMeta = Profile & {
   lastSenderId: string | null
   conversationId: string | null
   isOnline: boolean
-  unreadCount: number
+  hasUnread: boolean
   isTyping: boolean
   partnerLastReadAt: string | null
 }
 type Tab = 'friends' | 'pending'
-
-function getReadMap(): Record<string, number> {
-  try { return JSON.parse(localStorage.getItem(READ_STORAGE_KEY) || '{}') } catch { return {} }
-}
-function markReadLocal(convId: string) {
-  const map = getReadMap()
-  map[convId] = Date.now()
-  localStorage.setItem(READ_STORAGE_KEY, JSON.stringify(map))
-}
-function wasRecentlyRead(convId: string): boolean {
-  const map = getReadMap()
-  const ts = map[convId]
-  return !!ts && (Date.now() - ts) < READ_GRACE_MS
-}
 
 function TabButton({ label, active, count, onClick }: { label: string; active: boolean; count?: number; onClick: () => void }) {
   return (
@@ -121,22 +105,12 @@ function sortFriends(arr: FriendWithMeta[]) {
   arr.sort((a, b) => {
     if (a.isTyping && !b.isTyping) return -1
     if (!a.isTyping && b.isTyping) return 1
-    if (a.unreadCount > 0 && b.unreadCount === 0) return -1
-    if (a.unreadCount === 0 && b.unreadCount > 0) return 1
+    if (a.hasUnread && !b.hasUnread) return -1
+    if (!a.hasUnread && b.hasUnread) return 1
     const aTime = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0
     const bTime = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0
     return bTime - aTime
   })
-}
-
-async function countUnread(supabase: ReturnType<typeof createClient>, convId: string, userId: string, lastRead: string | null): Promise<number> {
-  let q = supabase.from('messages')
-    .select('id', { count: 'exact', head: true })
-    .eq('conversation_id', convId)
-    .neq('sender_id', userId)
-  if (lastRead) q = q.gt('created_at', lastRead)
-  const { count } = await q
-  return count ?? 0
 }
 
 export default function FriendsPage() {
@@ -193,7 +167,7 @@ export default function FriendsPage() {
       const now = Date.now()
       const friendMeta: Record<string, {
         lastMessage: string | null; lastMessageTime: string | null; lastSenderId: string | null;
-        conversationId: string | null; unreadCount: number; partnerLastReadAt: string | null
+        conversationId: string | null; hasUnread: boolean; partnerLastReadAt: string | null
       }> = {}
 
       if (friendIds.length) {
@@ -229,7 +203,7 @@ export default function FriendsPage() {
                   friendToConvRef.current[other] = convId
                   friendMeta[other] = {
                     lastMessage: null, lastMessageTime: null, lastSenderId: null,
-                    conversationId: convId, unreadCount: 0,
+                    conversationId: convId, hasUnread: false,
                     partnerLastReadAt: partnerLastRead[convId] ?? null,
                   }
                 }
@@ -254,12 +228,15 @@ export default function FriendsPage() {
                 friendMeta[friendId].lastSenderId = (lastMsg as { sender_id: string }).sender_id
               }
 
-              // If recently read via localStorage, force 0 instead of querying
-              if (wasRecentlyRead(convId)) {
-                friendMeta[friendId].unreadCount = 0
-              } else {
-                friendMeta[friendId].unreadCount = await countUnread(supabase, convId, user.id, lastRead)
-              }
+              // Check if there are unread messages from friend after last_read_at
+              let hasUnread = false
+              const { count } = await supabase.from('messages')
+                .select('id', { count: 'exact', head: true })
+                .eq('conversation_id', convId)
+                .neq('sender_id', user.id)
+                .gt('created_at', lastRead ?? '1970-01-01')
+              hasUnread = (count ?? 0) > 0
+              friendMeta[friendId].hasUnread = hasUnread
             }
           }
         }
@@ -280,7 +257,7 @@ export default function FriendsPage() {
             lastSenderId: meta?.lastSenderId ?? null,
             conversationId: meta?.conversationId ?? null,
             isOnline,
-            unreadCount: meta?.unreadCount ?? 0,
+            hasUnread: meta?.hasUnread ?? false,
             isTyping: false,
             partnerLastReadAt: meta?.partnerLastReadAt ?? null,
           }
@@ -326,8 +303,8 @@ export default function FriendsPage() {
           f.lastMessage = msg.original_message
           f.lastMessageTime = msg.created_at
           f.lastSenderId = msg.sender_id
-          if (msg.sender_id !== uid && !wasRecentlyRead(msg.conversation_id)) {
-            f.unreadCount++
+          if (msg.sender_id !== uid) {
+            f.hasUnread = true
           }
           f.isTyping = false
           updated[idx] = f
@@ -341,7 +318,6 @@ export default function FriendsPage() {
         const friendId = convToFriendRef.current[row.conversation_id]
         if (!friendId) return
 
-        // Typing from friend
         if (row.profile_id !== uid) {
           const isTyping = !!row.typing_at && (Date.now() - new Date(row.typing_at).getTime()) < TYPING_WINDOW_MS
           setFriends((prev) => {
@@ -355,7 +331,6 @@ export default function FriendsPage() {
           })
         }
 
-        // Read receipt from friend — my sent messages are read
         if (row.profile_id !== uid && row.last_read_at) {
           setFriends((prev) => prev.map((f) =>
             f.id === friendId ? { ...f, partnerLastReadAt: row.last_read_at } : f
@@ -370,7 +345,7 @@ export default function FriendsPage() {
     }
   }, [friends.length, userId])
 
-  // ---- Polling: sync typing + unread every 3s ----
+  // ---- Polling: sync typing + online presence every 3s ----
   useEffect(() => {
     if (!userId || !friends.length) return
     const supabase = createClient()
@@ -378,6 +353,30 @@ export default function FriendsPage() {
 
     async function poll() {
       if (!aliveRef.current) return
+
+      // Poll online presence for each friend
+      const friendIds = friendsRef.current.map((f) => f.id)
+      if (friendIds.length) {
+        const now = Date.now()
+        const { data: profiles } = await supabase.from('profiles')
+          .select('id,last_active_at,online_visible')
+          .in('id', friendIds)
+        if (profiles && aliveRef.current) {
+          setFriends((prev) => {
+            let changed = false
+            const next = prev.map((f) => {
+              const p = profiles.find((x) => x.id === f.id)
+              if (!p) return f
+              const isOnline = p.online_visible !== false && !!p.last_active_at && (now - new Date(p.last_active_at).getTime()) < ONLINE_WINDOW_MS
+              if (f.isOnline !== isOnline) { changed = true; return { ...f, isOnline, last_active_at: p.last_active_at } }
+              return f
+            })
+            return changed ? next : prev
+          })
+        }
+      }
+
+      // Poll typing + read receipts
       const convIds = Object.keys(convToFriendRef.current)
       if (!convIds.length) return
 
@@ -389,37 +388,25 @@ export default function FriendsPage() {
 
       const now = Date.now()
       const friendTyping: Record<string, boolean> = {}
-      const myLastRead: Record<string, string | null> = {}
       const partsByConv: Record<string, typeof parts> = {}
       for (const p of parts) {
         if (!partsByConv[p.conversation_id]) partsByConv[p.conversation_id] = []
         partsByConv[p.conversation_id].push(p)
         if (p.profile_id !== uid) {
           friendTyping[p.conversation_id] = !!p.typing_at && (now - new Date(p.typing_at).getTime()) < TYPING_WINDOW_MS
-        } else {
-          myLastRead[p.conversation_id] = p.last_read_at
         }
       }
 
-      const updates: { friendId: string; isTyping: boolean; unreadCount: number; partnerLastReadAt: string | null }[] = []
+      const updates: { friendId: string; isTyping: boolean; partnerLastReadAt: string | null }[] = []
 
       for (const convId of convIds) {
         const friendId = convToFriendRef.current[convId]
         if (!friendId) continue
-
         const isTyping = friendTyping[convId] ?? false
         const friendParts = partsByConv[convId] ?? []
         const friendRow = friendParts.find((p) => p.profile_id !== uid)
         const partnerLastReadAt = friendRow?.last_read_at ?? null
-
-        let unreadCount: number
-        if (wasRecentlyRead(convId)) {
-          unreadCount = 0
-        } else {
-          unreadCount = await countUnread(supabase, convId, uid, myLastRead[convId])
-        }
-
-        updates.push({ friendId, isTyping, unreadCount, partnerLastReadAt })
+        updates.push({ friendId, isTyping, partnerLastReadAt })
       }
 
       if (!aliveRef.current) return
@@ -429,9 +416,9 @@ export default function FriendsPage() {
         const next = prev.map((f) => {
           const u = updates.find((x) => x.friendId === f.id)
           if (!u) return f
-          if (f.isTyping !== u.isTyping || f.unreadCount !== u.unreadCount || f.partnerLastReadAt !== u.partnerLastReadAt) {
+          if (f.isTyping !== u.isTyping || f.partnerLastReadAt !== u.partnerLastReadAt) {
             changed = true
-            return { ...f, isTyping: u.isTyping, unreadCount: u.unreadCount, partnerLastReadAt: u.partnerLastReadAt }
+            return { ...f, isTyping: u.isTyping, partnerLastReadAt: u.partnerLastReadAt }
           }
           return f
         })
@@ -462,12 +449,11 @@ export default function FriendsPage() {
 
     const convId = data as string
 
-    // Persist read state BEFORE navigation so it survives remount
-    markReadLocal(convId)
-
-    // Clear optimistic + server-side
-    setFriends((prev) => prev.map((f) => f.id === profileId ? { ...f, unreadCount: 0, isTyping: false } : f))
+    // Mark read on server
     void supabase.rpc('mark_conversation_read', { p_conversation_id: convId })
+
+    // Clear optimistic unread
+    setFriends((prev) => prev.map((f) => f.id === profileId ? { ...f, hasUnread: false, isTyping: false } : f))
 
     setOpeningId(null)
     router.push(`/chat/${convId}`)
@@ -501,7 +487,6 @@ export default function FriendsPage() {
                     {friends.map((p) => {
                       const identity = resolveIdentity(p)
                       const busy = openingId === p.id
-                      const hasUnread = p.unreadCount > 0
                       const isLastFromMe = p.lastSenderId === userId
                       const isRead = isLastFromMe && !!p.partnerLastReadAt && !!p.lastMessageTime &&
                         new Date(p.partnerLastReadAt).getTime() >= new Date(p.lastMessageTime).getTime()
@@ -533,7 +518,7 @@ export default function FriendsPage() {
                               ) : p.lastMessage ? (
                                 <>
                                   {isLastFromMe && <TickIcon read={!!isRead} />}
-                                  <p className={`min-w-0 flex-1 truncate text-xs ${hasUnread ? 'font-semibold text-white' : 'text-slate-400'}`}>
+                                  <p className={`min-w-0 flex-1 truncate text-xs ${p.hasUnread ? 'font-semibold text-white' : 'text-slate-400'}`}>
                                     {isLastFromMe && <span className="text-slate-500">You: </span>}
                                     {p.lastMessage}
                                   </p>
@@ -542,24 +527,18 @@ export default function FriendsPage() {
                                 <p className="min-w-0 flex-1 truncate text-xs text-slate-500">Start a conversation</p>
                               )}
                               {!p.isTyping && p.lastMessageTime && (
-                                <span className={`flex-none text-[10px] ${hasUnread ? 'font-semibold text-cyan-400' : 'text-slate-600'}`}>
+                                <span className={`flex-none text-[10px] ${p.hasUnread ? 'font-semibold text-cyan-400' : 'text-slate-600'}`}>
                                   {formatTime(p.lastMessageTime)}
                                 </span>
                               )}
                             </div>
                           </div>
 
-                          <div className="flex flex-none flex-col items-end gap-1.5">
-                            {hasUnread ? (
-                              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-cyan-400 px-1.5 text-[10px] font-bold text-slate-950">
-                                {p.unreadCount > 99 ? '99+' : p.unreadCount}
-                              </span>
-                            ) : (
-                              <button onClick={(e) => { e.stopPropagation(); if (!busy) void openChat(p.id) }} disabled={busy}
-                                className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-700 text-slate-300 transition hover:border-cyan-400 hover:bg-cyan-400/10 hover:text-cyan-200 disabled:opacity-50">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                              </button>
-                            )}
+                          <div className="flex flex-none items-center">
+                            <button onClick={(e) => { e.stopPropagation(); if (!busy) void openChat(p.id) }} disabled={busy}
+                              className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-700 text-slate-300 transition hover:border-cyan-400 hover:bg-cyan-400/10 hover:text-cyan-200 disabled:opacity-50">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                            </button>
                           </div>
                         </div>
                       )
