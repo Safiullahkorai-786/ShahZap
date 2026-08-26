@@ -315,9 +315,22 @@ export default function ChatPage() {
           setMessages((current) => current.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)))
         })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${otherProfileId}` }, (payload) => {
-          // Partner's heartbeat arrived → flip their dot/label in real time.
-          const row = payload.new as { last_active_at?: string | null }
+          const row = payload.new as Record<string, any>
           refreshPresence(row.last_active_at ?? null)
+          // Update other profile fields in real time
+          setOther((prev) => prev ? { ...prev, ...row } as OtherProfile : prev)
+          if (row.interests_visible) {
+            supabase.from('profile_interests').select('interests(name)').eq('profile_id', otherProfileId).then(({ data }) => {
+              if (data) setOtherInterests(data.map((r: any) => r.interests?.name).filter(Boolean))
+            })
+          } else {
+            setOtherInterests([])
+          }
+          if (row.languages_known_visible) {
+            setOtherLanguages(row.languages_known ?? [])
+          } else {
+            setOtherLanguages([])
+          }
         })
         .on('broadcast', { event: 'typing' }, ({ payload }) => {
           const p = payload as { typing: boolean; from: string }

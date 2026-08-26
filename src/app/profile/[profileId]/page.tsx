@@ -49,42 +49,49 @@ export default function ProfilePage() {
 
   useEffect(() => {
     const supabase = createClient()
+    let active = true
     void (async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.replace('/'); return }
-      setOwn(user.id === id)
-      setMe(user.id)
+      const isOwn = user.id === id
+      if (active) { setOwn(isOwn); setMe(user.id) }
 
       const bl = await supabase.from('blocks').select('blocker_id,blocked_id').or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`)
-      setBlockedAny((bl.data ?? []).some(b => (b.blocker_id === id && b.blocked_id === user.id) || (b.blocked_id === id && b.blocker_id === user.id)))
-      setBlockedByMe((bl.data ?? []).some(b => b.blocker_id === user.id && b.blocked_id === id))
+      if (active) setBlockedAny((bl.data ?? []).some(b => (b.blocker_id === id && b.blocked_id === user.id) || (b.blocked_id === id && b.blocker_id === user.id)))
+      if (active) setBlockedByMe((bl.data ?? []).some(b => b.blocker_id === user.id && b.blocked_id === id))
 
       const fr = await supabase.from('friend_requests').select('sender_id,status').or(`and(sender_id.eq.${user.id},receiver_id.eq.${id}),and(sender_id.eq.${id},receiver_id.eq.${user.id})`).in('status', ['pending', 'accepted']).maybeSingle()
       const { count: declinedCount } = await supabase.from('friend_requests').select('id', { count: 'exact', head: true }).eq('sender_id', user.id).eq('receiver_id', id).eq('status', 'declined')
-      setReqBlocked((declinedCount ?? 0) >= 3)
-      setFriendState(!fr.data ? 'none' : fr.data.status === 'accepted' ? 'friends' : (fr.data as { sender_id: string }).sender_id === user.id ? 'outgoing' : 'incoming')
+      if (active) {
+        setReqBlocked((declinedCount ?? 0) >= 3)
+        setFriendState(!fr.data ? 'none' : fr.data.status === 'accepted' ? 'friends' : (fr.data as { sender_id: string }).sender_id === user.id ? 'outgoing' : 'incoming')
+      }
 
       const { data, error: e } = await supabase.from('profiles').select('id,display_name,avatar_path,age_band,generation,gender,orientation,bio,country_code,interface_language,chat_language,languages_known,online_visible,profile_visible,generation_visible,country_visible,region_visible,gender_visible,age_band_visible,language_visible,languages_known_visible,interests_visible,last_active_at').eq('id', id).maybeSingle()
+      if (!active) return
       if (e) setError(friendlyError(e, 'Could not load this profile.'))
       else {
         setProfile(data as Profile | null)
-        // Load interests if visible
-        if (data?.interests_visible && !own) {
+        if (data?.interests_visible && !isOwn) {
           const { data: intRows } = await supabase
             .from('profile_interests')
             .select('interests(name)')
             .eq('profile_id', id)
-          if (intRows) {
+          if (active && intRows) {
             setInterests(intRows.map((r: any) => r.interests?.name).filter(Boolean))
           }
+        } else if (!isOwn) {
+          setInterests([])
         }
-        // Load languages known from profile
-        if (data?.languages_known_visible && !own) {
-          setLanguagesKnown((data as any).languages_known ?? [])
+        if (data?.languages_known_visible && !isOwn) {
+          if (active) setLanguagesKnown((data as any).languages_known ?? [])
+        } else if (!isOwn) {
+          setLanguagesKnown([])
         }
       }
     })()
-  }, [id, router, own])
+    return () => { active = false }
+  }, [id, router])
 
   useEffect(() => { if (!status) return; const t = window.setTimeout(() => setStatus(''), 10_000); return () => window.clearTimeout(t) }, [status])
 
@@ -93,11 +100,25 @@ export default function ProfilePage() {
     const supabase = createClient()
     const ch = supabase.channel(`profile:${id}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${id}` }, (payload) => {
-        const r = payload.new as { last_active_at?: string | null }
-        setProfile((p) => p ? { ...p, last_active_at: r.last_active_at ?? p.last_active_at } : p)
+        const r = payload.new as Record<string, any>
+        setProfile((p) => p ? { ...p, ...r } : p)
+        // Re-load interests if visibility changed
+        if (r.interests_visible && id !== me) {
+          supabase.from('profile_interests').select('interests(name)').eq('profile_id', id).then(({ data }) => {
+            if (data) setInterests(data.map((row: any) => row.interests?.name).filter(Boolean))
+          })
+        } else if (!r.interests_visible) {
+          setInterests([])
+        }
+        // Re-load languages if visibility changed
+        if (r.languages_known_visible && id !== me) {
+          setLanguagesKnown(r.languages_known ?? [])
+        } else if (!r.languages_known_visible) {
+          setLanguagesKnown([])
+        }
       }).subscribe()
     return () => { void supabase.removeChannel(ch) }
-  }, [id])
+  }, [id, me])
 
   async function friendAction(action: 'send' | 'cancel' | 'unfriend') {
     const supabase = createClient()
