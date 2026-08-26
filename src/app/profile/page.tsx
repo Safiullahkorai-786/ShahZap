@@ -187,7 +187,7 @@ export default function MyProfilePage() {
     setSaved(true); setBusy(false)
   }
 
-  const orientDisplay = orientation.trim()
+  const orientDisplay = gender === 'non_binary' ? orientation.trim() : ''
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">

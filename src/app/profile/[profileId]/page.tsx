@@ -72,12 +72,21 @@ export default function ProfilePage() {
       if (e) setError(friendlyError(e, 'Could not load this profile.'))
       else {
         setProfile(data as Profile | null)
-        const { data: intRows } = await supabase
+        const { data: piRows } = await supabase
           .from('profile_interests')
-          .select('interest_id,interests(name)')
+          .select('interest_id')
           .eq('profile_id', id)
-        if (active && intRows) {
-          setInterests(intRows.map((r: any) => r.interests?.name).filter(Boolean))
+        if (active && piRows && piRows.length > 0) {
+          const ids = piRows.map((r: any) => r.interest_id)
+          const { data: intRows } = await supabase
+            .from('interests')
+            .select('name')
+            .in('id', ids)
+          if (active && intRows) {
+            setInterests(intRows.map((r: any) => r.name).filter(Boolean))
+          }
+        } else if (active) {
+          setInterests([])
         }
         if (active) setLanguagesKnown((data as any).languages_known ?? [])
       }
@@ -95,8 +104,14 @@ export default function ProfilePage() {
         const r = payload.new as Record<string, any>
         setProfile((p) => p ? { ...p, ...r } : p)
         // Always re-fetch interests on profile update
-        supabase.from('profile_interests').select('interest_id,interests(name)').eq('profile_id', id).then(({ data }) => {
-          if (data) setInterests(data.map((row: any) => row.interests?.name).filter(Boolean))
+        supabase.from('profile_interests').select('interest_id').eq('profile_id', id).then(async ({ data: piRows }) => {
+          if (piRows && piRows.length > 0) {
+            const ids = piRows.map((r: any) => r.interest_id)
+            const { data: intRows } = await supabase.from('interests').select('name').in('id', ids)
+            if (intRows) setInterests(intRows.map((r: any) => r.name).filter(Boolean))
+          } else {
+            setInterests([])
+          }
         })
         // Always sync languages from profile update
         setLanguagesKnown(r.languages_known ?? [])
@@ -212,7 +227,7 @@ export default function ProfilePage() {
               {!profile.region_visible && profile.country_visible && profile.country_code && (
                 <div className="rounded-xl bg-slate-950 p-3 text-sm">Country: {getCountryName(profile.country_code) ?? profile.country_code}</div>
               )}
-              {profile.orientation && <div className="rounded-xl bg-slate-950 p-3 text-sm">Orientation: {profile.orientation}</div>}
+              {profile.gender === 'non_binary' && profile.orientation && <div className="rounded-xl bg-slate-950 p-3 text-sm">Orientation: {profile.orientation}</div>}
               {profile.language_visible && profile.chat_language && <div className="rounded-xl bg-slate-950 p-3 text-sm">Chat language: {LANG_LABELS[profile.chat_language] ?? profile.chat_language}</div>}
               {profile.languages_known_visible && languagesKnown.length > 0 && (
                 <div className="rounded-xl bg-slate-950 p-3 text-sm">

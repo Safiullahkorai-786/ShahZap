@@ -266,8 +266,12 @@ export default function ChatPage() {
         if (active && op) { setOther(op as OtherProfile); otherRef.current = op as OtherProfile; setOtherLastActiveAt(op.last_active_at ?? null); refreshPresence(op.last_active_at ?? null) }
         // Fetch interests if visible
         if ((op as any)?.interests_visible) {
-          const { data: intRows } = await supabase.from('profile_interests').select('interests(name)').eq('profile_id', otherProfileId)
-          if (active && intRows) setOtherInterests(intRows.map((r: any) => r.interests?.name).filter(Boolean))
+          const { data: piRows } = await supabase.from('profile_interests').select('interest_id').eq('profile_id', otherProfileId)
+          if (active && piRows && piRows.length > 0) {
+            const ids = piRows.map((r: any) => r.interest_id)
+            const { data: intRows } = await supabase.from('interests').select('name').in('id', ids)
+            if (active && intRows) setOtherInterests(intRows.map((r: any) => r.name).filter(Boolean))
+          }
         }
         // Fetch languages known if visible
         if ((op as any)?.languages_known_visible) {
@@ -320,8 +324,14 @@ export default function ChatPage() {
           // Update other profile fields in real time
           setOther((prev) => prev ? { ...prev, ...row } as OtherProfile : prev)
           if (row.interests_visible) {
-            supabase.from('profile_interests').select('interests(name)').eq('profile_id', otherProfileId).then(({ data }) => {
-              if (data) setOtherInterests(data.map((r: any) => r.interests?.name).filter(Boolean))
+            supabase.from('profile_interests').select('interest_id').eq('profile_id', otherProfileId).then(async ({ data: piRows }) => {
+              if (piRows && piRows.length > 0) {
+                const ids = piRows.map((r: any) => r.interest_id)
+                const { data: intRows } = await supabase.from('interests').select('name').in('id', ids)
+                if (intRows) setOtherInterests(intRows.map((r: any) => r.name).filter(Boolean))
+              } else {
+                setOtherInterests([])
+              }
             })
           } else {
             setOtherInterests([])
@@ -1271,7 +1281,7 @@ export default function ChatPage() {
                     <div className="flex items-center gap-3 rounded-xl bg-slate-950 px-4 py-2.5 text-sm"><Globe size={16} className="flex-none text-cyan-300" /> {label}</div>
                   )
                 })()}
-                {!!other.orientation && (
+                {!!other.orientation && other.gender === 'non_binary' && (
                   <div className="flex items-center gap-3 rounded-xl bg-slate-950 px-4 py-2.5 text-sm"><Heart size={16} className="flex-none text-cyan-300" /> Orientation: {other.orientation}</div>
                 )}
                 {!!other.language_visible && !!other.chat_language && (
