@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { MoreVertical, Send, UserPlus, ShieldAlert, Ban, Languages, UserCircle2, CornerUpLeft, Pencil, Trash2, X, Check, CheckCheck, ArrowDown, SunMoon, Clock, UserCheck, UserMinus, Smile, SmilePlus, BellRing, Vibrate, VolumeX, Type, ChevronDown, Plus, Minus, Cake, Sparkles, User, Globe, Copy, Image as ImageIcon } from 'lucide-react'
+import { MoreVertical, Send, UserPlus, ShieldAlert, Ban, Languages, UserCircle2, CornerUpLeft, Pencil, Trash2, X, Check, CheckCheck, ArrowDown, SunMoon, Clock, UserCheck, UserMinus, Smile, SmilePlus, BellRing, Vibrate, VolumeX, Type, ChevronDown, Plus, Minus, Cake, Sparkles, User, Globe, Copy, Image as ImageIcon, Heart } from 'lucide-react'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import { getSoundPrefs, setSoundBundle, setSoundMode, notify, playFriendRequestSound, playMessageSound, playSentSound, playUnfriendSound, type SoundPrefs } from '@/lib/notification-sound'
@@ -37,9 +37,13 @@ type OtherProfile = {
   age_band_visible: boolean
   generation?: string | null
   generation_visible?: boolean
+  bio?: string | null
+  orientation?: string | null
   country_code?: string | null
   country_visible?: boolean
   chat_language?: string | null
+  language_visible?: boolean
+  interests_visible?: boolean
   profile_visible?: boolean
   last_active_at: string | null
 }
@@ -47,6 +51,21 @@ type OtherProfile = {
 const AGE_BAND_LABELS: Record<string, string> = {
   under_13: 'Under 13', '13_15': '13–15', '16_17': '16–17', '18_20': '18–20',
   '21_29': '21–29', '30_44': '30–44', '45_59': '45–59', '60_plus': '60+',
+}
+
+const GEN_LABELS: Record<string, string> = {
+  gen_z: 'Gen Z', gen_x: 'Gen X', millennial: 'Millennial', boomer: 'Boomer', gen_alpha: 'Gen Alpha',
+}
+
+const GENDER_LABELS: Record<string, string> = {
+  woman: 'Woman', man: 'Man', non_binary: 'Non-binary', prefer_not_to_say: 'Prefer not to say',
+}
+
+const LANG_LABELS: Record<string, string> = {
+  en: 'English', ur: 'Urdu', sd: 'Sindhi', hi: 'Hindi', pa: 'Punjabi', ar: 'Arabic',
+  es: 'Spanish', fr: 'French', de: 'German', tr: 'Turkish', bn: 'Bengali', zh: 'Chinese',
+  fa: 'Persian', ru: 'Russian', pt: 'Portuguese', id: 'Indonesian', ms: 'Malay', ja: 'Japanese',
+  ko: 'Korean', it: 'Italian',
 }
 const REPORT_REASONS = ['harassment','spam','hate_speech','sexual_content','scam','impersonation','underage_concern','threatening_behavior','other']
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '😘', '💦', '🤡', '🌚', '🌝']
@@ -100,6 +119,7 @@ export default function ChatPage() {
   const [userId, setUserId] = useState<string | null>(null)
   const [otherId, setOtherId] = useState<string | null>(null)
   const [other, setOther] = useState<OtherProfile | null>(null)
+  const [otherInterests, setOtherInterests] = useState<string[]>([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
 
@@ -237,8 +257,13 @@ export default function ChatPage() {
       setOtherId(otherProfileId)
 
       if (otherProfileId && !isBotProfile(otherProfileId)) {
-        const { data: op } = await supabase.from('profiles').select('id,display_name,gender,gender_visible,age_band,age_band_visible,generation,generation_visible,country_code,country_visible,chat_language,profile_visible,last_active_at').eq('id', otherProfileId).maybeSingle()
+        const { data: op } = await supabase.from('profiles').select('id,display_name,gender,gender_visible,age_band,age_band_visible,generation,generation_visible,bio,orientation,country_code,country_visible,chat_language,language_visible,interests_visible,profile_visible,last_active_at').eq('id', otherProfileId).maybeSingle()
         if (active && op) { setOther(op as OtherProfile); otherRef.current = op as OtherProfile; setOtherLastActiveAt(op.last_active_at ?? null); refreshPresence(op.last_active_at ?? null) }
+        // Fetch interests if visible
+        if ((op as any)?.interests_visible) {
+          const { data: intRows } = await supabase.from('profile_interests').select('interests(name)').eq('profile_id', otherProfileId)
+          if (active && intRows) setOtherInterests(intRows.map((r: any) => r.interests?.name).filter(Boolean))
+        }
         // Partner's read receipt for the coloured "seen" tick.
         const { data: cp } = await supabase.from('conversation_participants').select('last_read_at').eq('conversation_id', conversationId).eq('profile_id', otherProfileId).maybeSingle()
         if (active && cp) setPartnerReadAt(cp.last_read_at ?? null)
@@ -1197,20 +1222,29 @@ export default function ChatPage() {
               <p className="p-5 text-sm text-slate-400">This profile is private.</p>
             ) : (
               <div className="grid gap-2 p-5">
+                {!!other.bio && (
+                  <p className="text-sm leading-relaxed text-slate-300">{other.bio}</p>
+                )}
                 {!!other.age_band_visible && !!other.age_band && (
                   <div className="flex items-center gap-3 rounded-xl bg-slate-950 px-4 py-2.5 text-sm"><Cake size={16} className="flex-none text-cyan-300" /> Age band: {AGE_BAND_LABELS[other.age_band] ?? other.age_band}</div>
                 )}
                 {!!other.generation_visible && !!other.generation && (
-                  <div className="flex items-center gap-3 rounded-xl bg-slate-950 px-4 py-2.5 text-sm"><Sparkles size={16} className="flex-none text-cyan-300" /> Generation: {other.generation}</div>
+                  <div className="flex items-center gap-3 rounded-xl bg-slate-950 px-4 py-2.5 text-sm"><Sparkles size={16} className="flex-none text-cyan-300" /> Generation: {GEN_LABELS[other.generation] ?? other.generation}</div>
                 )}
                 {!!other.gender_visible && !!other.gender && (
-                  <div className="flex items-center gap-3 rounded-xl bg-slate-950 px-4 py-2.5 text-sm"><User size={16} className="flex-none text-cyan-300" /> Gender: {other.gender}</div>
+                  <div className="flex items-center gap-3 rounded-xl bg-slate-950 px-4 py-2.5 text-sm"><User size={16} className="flex-none text-cyan-300" /> Gender: {GENDER_LABELS[other.gender] ?? other.gender}</div>
                 )}
                 {!!other.country_visible && !!other.country_code && (
                   <div className="flex items-center gap-3 rounded-xl bg-slate-950 px-4 py-2.5 text-sm"><Globe size={16} className="flex-none text-cyan-300" /> Country: {other.country_code}</div>
                 )}
-                {!!other.chat_language && (
-                  <div className="flex items-center gap-3 rounded-xl bg-slate-950 px-4 py-2.5 text-sm"><Languages size={16} className="flex-none text-cyan-300" /> Chat language: {other.chat_language}</div>
+                {!!other.orientation && (
+                  <div className="flex items-center gap-3 rounded-xl bg-slate-950 px-4 py-2.5 text-sm"><Heart size={16} className="flex-none text-cyan-300" /> Orientation: {other.orientation}</div>
+                )}
+                {!!other.language_visible && !!other.chat_language && (
+                  <div className="flex items-center gap-3 rounded-xl bg-slate-950 px-4 py-2.5 text-sm"><Languages size={16} className="flex-none text-cyan-300" /> Chat language: {LANG_LABELS[other.chat_language] ?? other.chat_language}</div>
+                )}
+                {!!other.interests_visible && otherInterests.length > 0 && (
+                  <div className="flex items-start gap-3 rounded-xl bg-slate-950 px-4 py-2.5 text-sm"><Sparkles size={16} className="mt-0.5 flex-none text-cyan-300" /> <span><span className="font-semibold">Interests: </span>{otherInterests.join(', ')}</span></div>
                 )}
               </div>
             )}
