@@ -8,14 +8,22 @@ import { Shimmer } from '@/components/shimmer'
 import { AdsterraBanner } from '@/components/adsterra-banner'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Ban, Clock, ShieldAlert, UserCheck, UserMinus, UserPlus } from 'lucide-react'
+import { getRegionForCountry, REGION_LABELS, getCountryName } from '@/lib/regions'
+
+const LANG_LABELS: Record<string, string> = {
+  en: 'English', ur: 'Urdu', sd: 'Sindhi', hi: 'Hindi', pa: 'Punjabi', ar: 'Arabic',
+  es: 'Spanish', fr: 'French', de: 'German', tr: 'Turkish',
+}
+const GEN_MAP: Record<string, string> = { gen_z: 'Gen Z', millennial: 'Millennial', gen_x: 'Gen X', boomer: 'Boomer' }
+const GENDER_MAP: Record<string, string> = { woman: 'Woman', man: 'Man', non_binary: 'Non-binary', prefer_not_to_say: 'Prefer not to say' }
 
 type Profile = {
   id: string; display_name: string | null; avatar_path: string | null
-  age_band: string | null; generation: string | null; gender: string | null
+  age_band: string | null; generation: string | null; gender: string | null; orientation: string | null
   bio: string | null; country_code: string | null; interface_language: string | null; chat_language: string | null
   online_visible: boolean; profile_visible: boolean; generation_visible: boolean
-  country_visible: boolean; gender_visible: boolean; age_band_visible: boolean
-  language_visible: boolean; interests_visible: boolean; last_active_at: string | null
+  country_visible: boolean; region_visible: boolean; gender_visible: boolean; age_band_visible: boolean
+  language_visible: boolean; languages_known_visible: boolean; interests_visible: boolean; last_active_at: string | null
 }
 
 export default function ProfilePage() {
@@ -37,6 +45,7 @@ export default function ProfilePage() {
   const [reason, setReason] = useState('harassment')
   const [details, setDetails] = useState('')
   const [interests, setInterests] = useState<string[]>([])
+  const [languagesKnown, setLanguagesKnown] = useState<string[]>([])
 
   useEffect(() => {
     const supabase = createClient()
@@ -55,7 +64,7 @@ export default function ProfilePage() {
       setReqBlocked((declinedCount ?? 0) >= 3)
       setFriendState(!fr.data ? 'none' : fr.data.status === 'accepted' ? 'friends' : (fr.data as { sender_id: string }).sender_id === user.id ? 'outgoing' : 'incoming')
 
-      const { data, error: e } = await supabase.from('profiles').select('id,display_name,avatar_path,age_band,generation,gender,bio,country_code,interface_language,chat_language,online_visible,profile_visible,generation_visible,country_visible,gender_visible,age_band_visible,language_visible,interests_visible,last_active_at').eq('id', id).maybeSingle()
+      const { data, error: e } = await supabase.from('profiles').select('id,display_name,avatar_path,age_band,generation,gender,orientation,bio,country_code,interface_language,chat_language,online_visible,profile_visible,generation_visible,country_visible,region_visible,gender_visible,age_band_visible,language_visible,languages_known_visible,interests_visible,last_active_at').eq('id', id).maybeSingle()
       if (e) setError(friendlyError(e, 'Could not load this profile.'))
       else {
         setProfile(data as Profile | null)
@@ -68,6 +77,15 @@ export default function ProfilePage() {
           if (intRows) {
             setInterests(intRows.map((r: any) => r.interests?.name).filter(Boolean))
           }
+        }
+        // Load languages known from match_preferences if visible
+        if (data?.languages_known_visible && !own) {
+          const { data: mp } = await supabase
+            .from('match_preferences')
+            .select('preferred_languages')
+            .eq('profile_id', id)
+            .maybeSingle()
+          if (mp) setLanguagesKnown((mp as any).preferred_languages ?? [])
         }
       }
     })()
@@ -176,10 +194,21 @@ export default function ProfilePage() {
             <div className="mt-6 grid gap-3">
               {profile.bio && <p className="text-sm leading-relaxed text-slate-300">{profile.bio}</p>}
               {profile.age_band_visible && profile.age_band && <div className="rounded-xl bg-slate-950 p-3 text-sm">Age band: {profile.age_band.replace('_', '–')}</div>}
-              {profile.generation_visible && profile.generation && <div className="rounded-xl bg-slate-950 p-3 text-sm">Generation: {profile.generation === 'gen_z' ? 'Gen Z' : profile.generation === 'gen_x' ? 'Gen X' : profile.generation.charAt(0).toUpperCase() + profile.generation.slice(1).replace('_', ' ')}</div>}
-              {profile.gender_visible && profile.gender && <div className="rounded-xl bg-slate-950 p-3 text-sm">Gender: {profile.gender === 'non_binary' ? 'Non-binary' : profile.gender.charAt(0).toUpperCase() + profile.gender.slice(1)}</div>}
-              {profile.country_visible && profile.country_code && <div className="rounded-xl bg-slate-950 p-3 text-sm">Country: {profile.country_code}</div>}
-              {profile.language_visible && profile.chat_language && <div className="rounded-xl bg-slate-950 p-3 text-sm">Chat language: {profile.chat_language}</div>}
+              {profile.generation_visible && profile.generation && <div className="rounded-xl bg-slate-950 p-3 text-sm">Generation: {GEN_MAP[profile.generation] ?? profile.generation}</div>}
+              {profile.gender_visible && profile.gender && <div className="rounded-xl bg-slate-950 p-3 text-sm">Gender: {GENDER_MAP[profile.gender] ?? profile.gender}</div>}
+              {profile.country_visible && profile.country_code && <div className="rounded-xl bg-slate-950 p-3 text-sm">Country: {getCountryName(profile.country_code) ?? profile.country_code}</div>}
+              {profile.region_visible && profile.country_code && (() => {
+                const continent = getRegionForCountry(profile.country_code)
+                return continent ? <div className="rounded-xl bg-slate-950 p-3 text-sm">Region: {REGION_LABELS[continent] ?? continent}</div> : null
+              })()}
+              {profile.orientation && <div className="rounded-xl bg-slate-950 p-3 text-sm">Orientation: {profile.orientation}</div>}
+              {profile.language_visible && profile.chat_language && <div className="rounded-xl bg-slate-950 p-3 text-sm">Chat language: {LANG_LABELS[profile.chat_language] ?? profile.chat_language}</div>}
+              {profile.languages_known_visible && languagesKnown.length > 0 && (
+                <div className="rounded-xl bg-slate-950 p-3 text-sm">
+                  <span className="font-semibold">Languages: </span>
+                  <span className="text-slate-300">{languagesKnown.map((v) => LANG_LABELS[v] ?? v).join(', ')}</span>
+                </div>
+              )}
               {profile.interests_visible && interests.length > 0 && (
                 <div className="rounded-xl bg-slate-950 p-3 text-sm">
                   <span className="font-semibold">Interests: </span>

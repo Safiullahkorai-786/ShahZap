@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { friendlyError } from '@/lib/errors'
 import { AppHeader } from '@/components/app-header'
 import { Shimmer } from '@/components/shimmer'
-import { CONTINENTS, getCountriesForRegion, getRegionForCountry, getCountryName } from '@/lib/regions'
+import { CONTINENTS, getCountriesForRegion, getRegionForCountry, getCountryName, REGION_LABELS } from '@/lib/regions'
 
 const AGE_BANDS = [['18_20', '18–20'], ['21_29', '21–29'], ['30_44', '30–44'], ['45_59', '45–59'], ['60_plus', '60+']] as const
 const LANGUAGES = [['en', 'English'], ['ur', 'Urdu'], ['sd', 'Sindhi'], ['hi', 'Hindi'], ['pa', 'Punjabi'], ['ar', 'Arabic'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German'], ['tr', 'Turkish']] as const
@@ -79,7 +79,9 @@ export default function MyProfilePage() {
   const [ageBandVisible, setAgeBandVisible] = useState(false)
   const [generationVisible, setGenerationVisible] = useState(false)
   const [countryVisible, setCountryVisible] = useState(false)
+  const [regionVisible, setRegionVisible] = useState(false)
   const [languageVisible, setLanguageVisible] = useState(true)
+  const [languagesKnownVisible, setLanguagesKnownVisible] = useState(false)
   const [interestsVisible, setInterestsVisible] = useState(false)
   const [languagesKnown, setLanguagesKnown] = useState<string[]>([])
   const [languageFilterEnabled, setLanguageFilterEnabled] = useState(false)
@@ -95,7 +97,7 @@ export default function MyProfilePage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { window.location.href = '/'; return }
       const [{ data: profile }, { data: mine }, { data: catalog }, { data: mprefs }] = await Promise.all([
-        supabase.from('profiles').select('display_name,age_band,gender,orientation,generation,bio,interface_language,chat_language,country_code,online_visible,profile_visible,gender_visible,age_band_visible,generation_visible,country_visible,language_visible,interests_visible').eq('id', user.id).maybeSingle(),
+        supabase.from('profiles').select('display_name,age_band,gender,orientation,generation,bio,interface_language,chat_language,country_code,online_visible,profile_visible,gender_visible,age_band_visible,generation_visible,country_visible,region_visible,language_visible,languages_known_visible,interests_visible').eq('id', user.id).maybeSingle(),
         supabase.from('profile_interests').select('interest_id').eq('profile_id', user.id),
         supabase.from('interests').select('id,slug').eq('active', true),
         supabase.from('match_preferences').select('preferred_languages,language_filter_enabled').eq('profile_id', user.id).maybeSingle(),
@@ -119,7 +121,9 @@ export default function MyProfilePage() {
         setAgeBandVisible((profile as any).age_band_visible ?? false)
         setGenerationVisible((profile as any).generation_visible ?? false)
         setCountryVisible((profile as any).country_visible ?? false)
+        setRegionVisible((profile as any).region_visible ?? false)
         setLanguageVisible((profile as any).language_visible ?? true)
+        setLanguagesKnownVisible((profile as any).languages_known_visible ?? false)
         setInterestsVisible((profile as any).interests_visible ?? false)
       }
       if (mine && catalog) {
@@ -158,7 +162,9 @@ export default function MyProfilePage() {
       age_band_visible: ageBandVisible,
       generation_visible: generationVisible,
       country_visible: countryVisible,
+      region_visible: regionVisible,
       language_visible: languageVisible,
+      languages_known_visible: languagesKnownVisible,
       interests_visible: interestsVisible,
     }).eq('id', user.id)
     if (e1) { setError(friendlyError(e1, 'Could not save your profile.')); setBusy(false); return }
@@ -211,16 +217,30 @@ export default function MyProfilePage() {
                   {ageBandVisible && ageBand && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Age band: {ageBand.replace('_', '–')}</div>}
                   {generationVisible && generation && GEN_MAP[generation] && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Generation: {GEN_MAP[generation]}</div>}
                   {genderVisible && gender && GENDER_MAP[gender] && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Gender: {GENDER_MAP[gender]}</div>}
-                  {countryVisible && countryCode && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Country: {getCountryName(countryCode) ?? countryCode}</div>}
+                  {regionVisible && countryCode && (() => {
+                    const continent = getRegionForCountry(countryCode)
+                    const country = getCountryName(countryCode)
+                    return (
+                      <div className="rounded-xl bg-slate-900 p-2.5 text-sm">
+                        Region: {continent ? REGION_LABELS[continent] ?? continent : ''}{countryVisible && country ? ` · ${country}` : ''}
+                      </div>
+                    )
+                  })()}
                   {orientDisplay && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Orientation: {orientDisplay}</div>}
                   {languageVisible && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Chat language: {LANG_MAP[chatLanguage] ?? chatLanguage}</div>}
+                  {languagesKnownVisible && languagesKnown.length > 0 && (
+                    <div className="rounded-xl bg-slate-900 p-2.5 text-sm">
+                      <span className="font-semibold">Languages: </span>
+                      <span className="text-slate-300">{languagesKnown.map((v) => LANG_MAP[v] ?? v).join(', ')}</span>
+                    </div>
+                  )}
                   {interestsVisible && interests.length > 0 && (
                     <div className="rounded-xl bg-slate-900 p-2.5 text-sm">
                       <span className="font-semibold">Interests: </span>
                       <span className="text-slate-300">{interests.map((v) => INTERESTS.find(([k]) => k === v)?.[1] ?? v).join(', ')}</span>
                     </div>
                   )}
-                  {!ageBandVisible && !generationVisible && !genderVisible && !countryVisible && !interestsVisible && !orientDisplay && !languageVisible && (
+                  {!ageBandVisible && !generationVisible && !genderVisible && !regionVisible && !interestsVisible && !orientDisplay && !languageVisible && !languagesKnownVisible && (
                     <p className="py-2 text-center text-sm text-slate-500">All fields hidden. Enable toggles in Privacy below to show them.</p>
                   )}
                 </div>
@@ -340,7 +360,9 @@ export default function MyProfilePage() {
                 <Toggle checked={ageBandVisible} onChange={setAgeBandVisible} label="Show age band" hint="Display your age band on your profile." />
                 <Toggle checked={generationVisible} onChange={setGenerationVisible} label="Show generation" hint="Display your generation on your profile." />
                 <Toggle checked={countryVisible} onChange={setCountryVisible} label="Show country" hint="Display your country on your profile." />
+                <Toggle checked={regionVisible} onChange={setRegionVisible} label="Show region" hint="Display your continent and country on your profile." />
                 <Toggle checked={languageVisible} onChange={setLanguageVisible} label="Show chat language" hint="Display your chat language on your profile." />
+                <Toggle checked={languagesKnownVisible} onChange={setLanguagesKnownVisible} label="Show languages I know" hint="Display all languages you speak on your profile." />
                 <Toggle checked={interestsVisible} onChange={setInterestsVisible} label="Show interests" hint="Display your interests on your profile." />
               </div>
             </section>
