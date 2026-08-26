@@ -53,6 +53,13 @@ export default function MyProfilePage() {
   const [interests, setInterests] = useState<string[]>([])
   const [selectedRegion, setSelectedRegion] = useState('')
   const [countryCode, setCountryCode] = useState('')
+  const [onlineVisible, setOnlineVisible] = useState(true)
+  const [profileVisible, setProfileVisible] = useState(true)
+  const [genderVisible, setGenderVisible] = useState(false)
+  const [ageBandVisible, setAgeBandVisible] = useState(false)
+  const [generationVisible, setGenerationVisible] = useState(false)
+  const [countryVisible, setCountryVisible] = useState(false)
+  const [interestsVisible, setInterestsVisible] = useState(false)
 
   function toggleInterest(v: string) {
     setInterests((cur) => (cur.includes(v) ? cur.filter((x) => x !== v) : cur.length >= 8 ? cur : [...cur, v]))
@@ -65,7 +72,7 @@ export default function MyProfilePage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { window.location.href = '/'; return }
       const [{ data: profile }, { data: mine }, { data: catalog }] = await Promise.all([
-        supabase.from('profiles').select('display_name,age_band,gender,orientation,generation,interface_language,chat_language,country_code').eq('id', user.id).maybeSingle(),
+        supabase.from('profiles').select('display_name,age_band,gender,orientation,generation,interface_language,chat_language,country_code,online_visible,profile_visible,gender_visible,age_band_visible,generation_visible,country_visible,interests_visible').eq('id', user.id).maybeSingle(),
         supabase.from('profile_interests').select('interest_id').eq('profile_id', user.id),
         supabase.from('interests').select('id,slug').eq('active', true),
       ])
@@ -81,6 +88,13 @@ export default function MyProfilePage() {
         const cc = (profile as { country_code?: string | null }).country_code
         setCountryCode(cc ?? '')
         setSelectedRegion(cc ? getRegionForCountry(cc) ?? '' : '')
+        setOnlineVisible((profile as any).online_visible ?? true)
+        setProfileVisible((profile as any).profile_visible ?? true)
+        setGenderVisible((profile as any).gender_visible ?? false)
+        setAgeBandVisible((profile as any).age_band_visible ?? false)
+        setGenerationVisible((profile as any).generation_visible ?? false)
+        setCountryVisible((profile as any).country_visible ?? false)
+        setInterestsVisible((profile as any).interests_visible ?? false)
       }
       if (mine && catalog) {
         const idToSlug = new Map(catalog.map((c) => [c.id, c.slug]))
@@ -107,6 +121,13 @@ export default function MyProfilePage() {
       country_code: countryCode || null,
       interface_language: interfaceLanguage,
       chat_language: chatLanguage,
+      online_visible: onlineVisible,
+      profile_visible: profileVisible,
+      gender_visible: genderVisible,
+      age_band_visible: ageBandVisible,
+      generation_visible: generationVisible,
+      country_visible: countryVisible,
+      interests_visible: interestsVisible,
     }).eq('id', user.id)
     if (e1) { setError(friendlyError(e1, 'Could not save your profile.')); setBusy(false); return }
 
@@ -133,6 +154,65 @@ export default function MyProfilePage() {
 
         {!loading && (
           <div className="mt-4 space-y-4">
+            {/* Preview card */}
+            <section className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5 sm:p-6">
+              <h2 className="text-[15px] font-semibold">Preview — how others see you</h2>
+              <p className="mt-1 text-xs text-slate-500">This is your public profile card. Toggle visibility below.</p>
+              <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-950 p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-cyan-300">⚡ ShahZap profile</p>
+                    <h3 className="mt-1 text-2xl font-bold">{name || 'ShahZap user'}</h3>
+                  </div>
+                  {onlineVisible && <span className="rounded-full bg-emerald-400/10 px-3 py-1 text-xs text-emerald-300">Online</span>}
+                </div>
+                <div className="mt-4 grid gap-2">
+                  {ageBandVisible && ageBand && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Age band: {ageBand.replace('_', '–')}</div>}
+                  {generationVisible && generation && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Generation: {generation.replace('_', ' ')}</div>}
+                  {genderVisible && gender && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Gender: {gender.replace('_', ' ')}</div>}
+                  {countryVisible && countryCode && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Country: {getCountryName(countryCode) ?? countryCode}</div>}
+                  {chatLanguage && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Chat language: {chatLanguage}</div>}
+                  {interestsVisible && interests.length > 0 && (
+                    <div className="rounded-xl bg-slate-900 p-2.5 text-sm">
+                      <span className="font-semibold">Interests: </span>
+                      <span className="text-slate-300">{interests.map((v) => INTERESTS.find(([k]) => k === v)?.[1] ?? v).join(', ')}</span>
+                    </div>
+                  )}
+                  {!ageBandVisible && !generationVisible && !genderVisible && !countryVisible && !interestsVisible && (
+                    <p className="py-2 text-center text-sm text-slate-500">All fields hidden. Enable toggles below to show them.</p>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            {/* Privacy toggles */}
+            <section className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5 sm:p-6">
+              <h2 className="text-[15px] font-semibold">Privacy & visibility</h2>
+              <p className="mt-1 text-xs text-slate-500">Control what others see on your profile card above.</p>
+              <div className="mt-4 space-y-2.5">
+                {[
+                  [onlineVisible, setOnlineVisible, 'Show me online', 'Appear in the online directory.'],
+                  [profileVisible, setProfileVisible, 'Profile discoverable', 'Let compatible users see your profile.'],
+                  [genderVisible, setGenderVisible, 'Show gender', 'Display your gender on your profile.'],
+                  [ageBandVisible, setAgeBandVisible, 'Show age band', 'Display your age band on your profile.'],
+                  [generationVisible, setGenerationVisible, 'Show generation', 'Display your generation on your profile.'],
+                  [countryVisible, setCountryVisible, 'Show country', 'Display your country on your profile.'],
+                  [interestsVisible, setInterestsVisible, 'Show interests', 'Display your interests on your profile.'],
+                ].map(([checked, set, label, hint], i) => (
+                  <button key={i} type="button" role="switch" aria-checked={checked as boolean} onClick={() => (set as (v: boolean) => void)(!(checked as boolean))}
+                    className={`flex w-full items-center justify-between gap-4 rounded-2xl border p-3.5 text-left transition ${(checked as boolean) ? 'border-cyan-500/40 bg-cyan-950/20' : 'border-slate-800 bg-slate-950 hover:border-slate-600'}`}>
+                    <span>
+                      <span className="block text-sm font-semibold text-white">{label as string}</span>
+                      <span className="mt-0.5 block text-xs leading-relaxed text-slate-400">{hint as string}</span>
+                    </span>
+                    <span className={`relative h-6 w-11 flex-none rounded-full transition ${(checked as boolean) ? 'bg-cyan-400' : 'bg-slate-700'}`}>
+                      <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${(checked as boolean) ? 'left-[22px]' : 'left-0.5'}`} />
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
+
             <section className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5 sm:p-6">
               <h2 className="text-[15px] font-semibold">Identity</h2>
               <div className="mt-4 space-y-4">

@@ -81,9 +81,6 @@ export default async function AppPage() {
             <Link href="/match" className="rounded-xl bg-gradient-to-r from-cyan-400 to-cyan-300 px-8 py-4 text-sm font-bold text-slate-950 shadow-xl shadow-cyan-950/50 transition hover:brightness-110">
               Start matching
             </Link>
-            <Link href={`/profile/${user.id}`} className="rounded-xl border border-slate-700 px-6 py-4 text-sm font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white">
-              My profile
-            </Link>
           </div>
         </section>
 
