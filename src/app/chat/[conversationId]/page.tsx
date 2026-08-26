@@ -1256,14 +1256,20 @@ export default function ChatPage() {
                 {!!other.gender_visible && !!other.gender && (
                   <div className="flex items-center gap-3 rounded-xl bg-slate-950 px-4 py-2.5 text-sm"><User size={16} className="flex-none text-cyan-300" /> Gender: {GENDER_LABELS[other.gender] ?? other.gender}</div>
                 )}
-                {!!other.country_visible && !!other.country_code && (
-                  <div className="flex items-center gap-3 rounded-xl bg-slate-950 px-4 py-2.5 text-sm"><Globe size={16} className="flex-none text-cyan-300" /> Country: {getCountryName(other.country_code) ?? other.country_code}</div>
-                )}
-                {!!other.region_visible && !!other.country_code && (() => {
+                {(!!other.region_visible || !!other.country_visible) && !!other.country_code && (() => {
                   const continent = getRegionForCountry(other.country_code)
-                  return continent ? (
-                    <div className="flex items-center gap-3 rounded-xl bg-slate-950 px-4 py-2.5 text-sm"><Globe size={16} className="flex-none text-cyan-300" /> Region: {REGION_LABELS[continent] ?? continent}</div>
-                  ) : null
+                  const country = getCountryName(other.country_code)
+                  const hasRegion = !!continent && !!other.region_visible
+                  const hasCountry = !!country && !!other.country_visible
+                  if (!hasRegion && !hasCountry) return null
+                  const label = hasRegion && hasCountry
+                    ? `Region: ${REGION_LABELS[continent!] ?? continent} · ${country}`
+                    : hasRegion
+                      ? `Region: ${REGION_LABELS[continent!] ?? continent}`
+                      : `Country: ${country}`
+                  return (
+                    <div className="flex items-center gap-3 rounded-xl bg-slate-950 px-4 py-2.5 text-sm"><Globe size={16} className="flex-none text-cyan-300" /> {label}</div>
+                  )
                 })()}
                 {!!other.orientation && (
                   <div className="flex items-center gap-3 rounded-xl bg-slate-950 px-4 py-2.5 text-sm"><Heart size={16} className="flex-none text-cyan-300" /> Orientation: {other.orientation}</div>

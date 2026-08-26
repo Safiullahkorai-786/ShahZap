@@ -72,22 +72,14 @@ export default function ProfilePage() {
       if (e) setError(friendlyError(e, 'Could not load this profile.'))
       else {
         setProfile(data as Profile | null)
-        if (data?.interests_visible && !isOwn) {
-          const { data: intRows } = await supabase
-            .from('profile_interests')
-            .select('interests(name)')
-            .eq('profile_id', id)
-          if (active && intRows) {
-            setInterests(intRows.map((r: any) => r.interests?.name).filter(Boolean))
-          }
-        } else if (!isOwn) {
-          setInterests([])
+        const { data: intRows } = await supabase
+          .from('profile_interests')
+          .select('interest_id,interests(name)')
+          .eq('profile_id', id)
+        if (active && intRows) {
+          setInterests(intRows.map((r: any) => r.interests?.name).filter(Boolean))
         }
-        if (data?.languages_known_visible && !isOwn) {
-          if (active) setLanguagesKnown((data as any).languages_known ?? [])
-        } else if (!isOwn) {
-          setLanguagesKnown([])
-        }
+        if (active) setLanguagesKnown((data as any).languages_known ?? [])
       }
     })()
     return () => { active = false }
@@ -102,23 +94,15 @@ export default function ProfilePage() {
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${id}` }, (payload) => {
         const r = payload.new as Record<string, any>
         setProfile((p) => p ? { ...p, ...r } : p)
-        // Re-load interests if visibility changed
-        if (r.interests_visible && id !== me) {
-          supabase.from('profile_interests').select('interests(name)').eq('profile_id', id).then(({ data }) => {
-            if (data) setInterests(data.map((row: any) => row.interests?.name).filter(Boolean))
-          })
-        } else if (!r.interests_visible) {
-          setInterests([])
-        }
-        // Re-load languages if visibility changed
-        if (r.languages_known_visible && id !== me) {
-          setLanguagesKnown(r.languages_known ?? [])
-        } else if (!r.languages_known_visible) {
-          setLanguagesKnown([])
-        }
+        // Always re-fetch interests on profile update
+        supabase.from('profile_interests').select('interest_id,interests(name)').eq('profile_id', id).then(({ data }) => {
+          if (data) setInterests(data.map((row: any) => row.interests?.name).filter(Boolean))
+        })
+        // Always sync languages from profile update
+        setLanguagesKnown(r.languages_known ?? [])
       }).subscribe()
     return () => { void supabase.removeChannel(ch) }
-  }, [id, me])
+  }, [id])
 
   async function friendAction(action: 'send' | 'cancel' | 'unfriend') {
     const supabase = createClient()
@@ -212,11 +196,22 @@ export default function ProfilePage() {
               {profile.age_band_visible && profile.age_band && <div className="rounded-xl bg-slate-950 p-3 text-sm">Age band: {profile.age_band.replace('_', '–')}</div>}
               {profile.generation_visible && profile.generation && <div className="rounded-xl bg-slate-950 p-3 text-sm">Generation: {GEN_MAP[profile.generation] ?? profile.generation}</div>}
               {profile.gender_visible && profile.gender && <div className="rounded-xl bg-slate-950 p-3 text-sm">Gender: {GENDER_MAP[profile.gender] ?? profile.gender}</div>}
-              {profile.country_visible && profile.country_code && <div className="rounded-xl bg-slate-950 p-3 text-sm">Country: {getCountryName(profile.country_code) ?? profile.country_code}</div>}
               {profile.region_visible && profile.country_code && (() => {
                 const continent = getRegionForCountry(profile.country_code)
-                return continent ? <div className="rounded-xl bg-slate-950 p-3 text-sm">Region: {REGION_LABELS[continent] ?? continent}</div> : null
+                const country = getCountryName(profile.country_code)
+                const hasRegion = !!continent && profile.region_visible
+                const hasCountry = !!country && profile.country_visible
+                if (!hasRegion && !hasCountry) return null
+                const label = hasRegion && hasCountry
+                  ? `Region: ${REGION_LABELS[continent!] ?? continent} · ${country}`
+                  : hasRegion
+                    ? `Region: ${REGION_LABELS[continent!] ?? continent}`
+                    : `Country: ${country}`
+                return <div className="rounded-xl bg-slate-950 p-3 text-sm">{label}</div>
               })()}
+              {!profile.region_visible && profile.country_visible && profile.country_code && (
+                <div className="rounded-xl bg-slate-950 p-3 text-sm">Country: {getCountryName(profile.country_code) ?? profile.country_code}</div>
+              )}
               {profile.orientation && <div className="rounded-xl bg-slate-950 p-3 text-sm">Orientation: {profile.orientation}</div>}
               {profile.language_visible && profile.chat_language && <div className="rounded-xl bg-slate-950 p-3 text-sm">Chat language: {LANG_LABELS[profile.chat_language] ?? profile.chat_language}</div>}
               {profile.languages_known_visible && languagesKnown.length > 0 && (

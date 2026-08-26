@@ -194,20 +194,20 @@ export default function OnlineMembers({ members: initialMembers, loading: server
     const channel = supabase.channel('online-directory')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload) => {
         if (!active) return
-        const row = payload.new as { id: string; online_visible?: boolean; last_active_at?: string | null }
+        const row = payload.new as Record<string, any>
         const now = Date.now()
         const ts = row.last_active_at ?? null
         const isOnline = row.online_visible !== false && !!ts && (now - new Date(ts).getTime()) < ONLINE_WINDOW_MS
         setMembers((prev) => {
           const exists = prev.some((m) => m.id === row.id)
+          if (!isOnline && exists) return prev.filter((m) => m.id !== row.id)
           if (isOnline && !exists && ts) {
             void supabase.from('profiles').select(MEMBER_COLS).eq('id', row.id).maybeSingle().then(({ data }) => {
               if (active && data) setMembers((cur) => [...cur, data as OnlineMember])
             })
             return prev
           }
-          if (!isOnline && exists) return prev.filter((m) => m.id !== row.id)
-          if (isOnline && exists && ts) return prev.map((m) => m.id === row.id ? { ...m, last_active_at: ts } : m)
+          if (isOnline && exists && ts) return prev.map((m) => m.id === row.id ? { ...m, ...row, last_active_at: ts } : m)
           return prev
         })
       }).subscribe()

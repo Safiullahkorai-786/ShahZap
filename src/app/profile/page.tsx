@@ -221,12 +221,21 @@ export default function MyProfilePage() {
                   {regionVisible && countryCode && (() => {
                     const continent = getRegionForCountry(countryCode)
                     const country = getCountryName(countryCode)
+                    const hasRegion = !!continent
+                    const hasCountry = !!country && countryVisible
+                    if (!hasRegion && !hasCountry) return null
+                    const label = hasRegion && hasCountry
+                      ? `Region: ${REGION_LABELS[continent!] ?? continent} · ${country}`
+                      : hasRegion
+                        ? `Region: ${REGION_LABELS[continent!] ?? continent}`
+                        : `Country: ${country}`
                     return (
-                      <div className="rounded-xl bg-slate-900 p-2.5 text-sm">
-                        Region: {continent ? REGION_LABELS[continent] ?? continent : ''}{countryVisible && country ? ` · ${country}` : ''}
-                      </div>
+                      <div className="rounded-xl bg-slate-900 p-2.5 text-sm">{label}</div>
                     )
                   })()}
+                  {!regionVisible && countryVisible && countryCode && (
+                    <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Country: {getCountryName(countryCode) ?? countryCode}</div>
+                  )}
                   {orientDisplay && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Orientation: {orientDisplay}</div>}
                   {languageVisible && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Chat language: {LANG_MAP[chatLanguage] ?? chatLanguage}</div>}
                   {languagesKnownVisible && languagesKnown.length > 0 && (
