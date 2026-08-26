@@ -27,16 +27,6 @@ const INTEREST_OPTIONS = [
 ] as const
 const WAIT_TIMES = [[5, '5 seconds'], [10, '10 seconds'], [15, '15 seconds'], [30, '30 seconds'], [45, '45 seconds'], [60, '60 seconds']] as const
 
-type Visibility = {
-  online_visible: boolean
-  profile_visible: boolean
-  generation_visible: boolean
-  country_visible: boolean
-  gender_visible: boolean
-  age_band_visible: boolean
-  interests_visible: boolean
-}
-
 type Prefs = {
   preferred_age_bands: string[]
   preferred_genders: string[]
@@ -149,7 +139,6 @@ export default function SettingsPage() {
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
-  const [vis, setVis] = useState<Visibility | null>(null)
   const [prefs, setPrefs] = useState<Prefs>({
     preferred_age_bands: [],
     preferred_genders: [],
@@ -172,12 +161,8 @@ export default function SettingsPage() {
       if (!user) { router.replace('/'); return }
       setSel(getSelection())
       setSound(getSoundPrefs())
-      const [{ data: v }, { data: p }] = await Promise.all([
-        supabase.from('profiles').select('online_visible,profile_visible,generation_visible,country_visible,gender_visible,age_band_visible,interests_visible').eq('id', user.id).maybeSingle(),
-        supabase.from('match_preferences').select('preferred_age_bands,preferred_genders,preferred_orientations,preferred_generations,preferred_languages,preferred_continents,preferred_interests,language_filter_enabled,interest_wait_seconds,country_targeting_enabled').eq('profile_id', user.id).maybeSingle(),
-      ])
+      const { data: p } = await supabase.from('match_preferences').select('preferred_age_bands,preferred_genders,preferred_orientations,preferred_generations,preferred_languages,preferred_continents,preferred_interests,language_filter_enabled,interest_wait_seconds,country_targeting_enabled').eq('profile_id', user.id).maybeSingle()
       if (!active) return
-      if (v) setVis(v as Visibility)
       if (p) setPrefs((cur) => ({ ...cur, ...(p as Partial<Prefs>) }))
       setLoading(false)
     })()
@@ -190,21 +175,10 @@ export default function SettingsPage() {
   }
 
   async function save() {
-    if (!vis) return
     setBusy(true); setError(''); setSaved(false)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setError('Your session expired. Please sign in again.'); setBusy(false); return }
-    const { error: e1 } = await supabase.from('profiles').update({
-      online_visible: vis.online_visible,
-      profile_visible: vis.profile_visible,
-      generation_visible: vis.generation_visible,
-      country_visible: vis.country_visible,
-      gender_visible: vis.gender_visible,
-      age_band_visible: vis.age_band_visible,
-      interests_visible: vis.interests_visible,
-    }).eq('id', user.id)
-    if (e1) { setError(friendlyError(e1, 'Could not save your settings.')); setBusy(false); return }
-    const { error: e2 } = await supabase.from('match_preferences').upsert({
+    const { error: e1 } = await supabase.from('match_preferences').upsert({
       profile_id: user.id,
       preferred_age_bands: prefs.preferred_age_bands,
       preferred_genders: prefs.preferred_genders,
@@ -217,11 +191,11 @@ export default function SettingsPage() {
       interest_wait_seconds: prefs.interest_wait_seconds,
       country_targeting_enabled: prefs.country_targeting_enabled,
     })
-    if (e2) { setError(friendlyError(e2, 'Could not save your matching preferences.')); setBusy(false); return }
+    if (e1) { setError(friendlyError(e1, 'Could not save your matching preferences.')); setBusy(false); return }
     setSaved(true); setBusy(false)
   }
 
-  if (loading || !vis) {
+  if (loading) {
     return (
       <main className="min-h-screen bg-slate-950 text-white">
         <AppHeader title="Settings" icon="settings" />
@@ -295,27 +269,6 @@ export default function SettingsPage() {
                 ))}
               </div>
             </div>
-          </Section>
-
-          <Section title="Privacy & visibility" description="You decide what others can discover about you. Names follow these rules everywhere — notifications, lists and profiles.">
-            <Toggle checked={vis.profile_visible} onChange={(v2) => setVis({ ...vis, profile_visible: v2 })}
-              label="Profile discoverable" hint="Let compatible users see your profile at all." />
-            <Toggle checked={vis.online_visible} onChange={(v2) => {
-              const next = { ...vis, online_visible: v2 }
-              try { localStorage.setItem('shahzap:onlineMode', v2 ? 'on' : 'off') } catch {}
-              setVis(next)
-            }}
-              label="Online mode" hint="Appear online in real time while you're here — the green dot and “last seen” update live. Turn off to browse invisibly; random matching keeps working either way." />
-            <Toggle checked={vis.age_band_visible} onChange={(v2) => setVis({ ...vis, age_band_visible: v2 })}
-              label="Show age band" hint="Display your age band on your profile." />
-            <Toggle checked={vis.gender_visible} onChange={(v2) => setVis({ ...vis, gender_visible: v2 })}
-              label="Show gender" hint="Display your gender — your name appears pink, blue or rainbow to others." />
-            <Toggle checked={vis.generation_visible} onChange={(v2) => setVis({ ...vis, generation_visible: v2 })}
-              label="Show generation" hint="Display your generation on your profile." />
-            <Toggle checked={vis.country_visible} onChange={(v2) => setVis({ ...vis, country_visible: v2 })}
-              label="Show country" hint="Display your country code on your profile." />
-            <Toggle checked={vis.interests_visible} onChange={(v2) => setVis({ ...vis, interests_visible: v2 })}
-              label="Show interests" hint="Display your interests in lists and on your profile." />
           </Section>
 
           <Section title="Who I want to meet" description="Leave any group empty to stay open to everyone in it.">

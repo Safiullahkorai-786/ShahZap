@@ -38,6 +38,21 @@ function Select({ value, onChange, label, options }: { value: string; onChange: 
   )
 }
 
+function Toggle({ checked, onChange, label, hint }: { checked: boolean; onChange: (v: boolean) => void; label: string; hint: string }) {
+  return (
+    <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)}
+      className={`flex w-full items-center justify-between gap-4 rounded-2xl border p-3.5 text-left transition ${checked ? 'border-cyan-500/40 bg-cyan-950/20' : 'border-slate-800 bg-slate-950 hover:border-slate-600'}`}>
+      <span>
+        <span className="block text-sm font-semibold text-white">{label}</span>
+        <span className="mt-0.5 block text-xs leading-relaxed text-slate-400">{hint}</span>
+      </span>
+      <span className={`relative h-6 w-11 flex-none rounded-full transition ${checked ? 'bg-cyan-400' : 'bg-slate-700'}`}>
+        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${checked ? 'left-[22px]' : 'left-0.5'}`} />
+      </span>
+    </button>
+  )
+}
+
 export default function MyProfilePage() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -131,7 +146,6 @@ export default function MyProfilePage() {
     }).eq('id', user.id)
     if (e1) { setError(friendlyError(e1, 'Could not save your profile.')); setBusy(false); return }
 
-    // Replace interests wholesale.
     await supabase.from('profile_interests').delete().eq('profile_id', user.id)
     if (interests.length) {
       const { data: rows } = await supabase.from('interests').select('id').in('slug', interests)
@@ -143,21 +157,25 @@ export default function MyProfilePage() {
     setSaved(true); setBusy(false)
   }
 
+  const genLabel = generation ? (GENERATIONS.find(([v]) => v === generation)?.[1] ?? generation.replace('_', ' ')) : ''
+  const orientDisplay = orientation.trim()
+
   return (
     <main className="min-h-screen bg-slate-950 text-white">
       <AppHeader title="My Profile" icon="user" />
       <div className="mx-auto max-w-2xl w-full px-4 pb-24 pt-4 md:pb-10 lg:max-w-4xl">
-        <p className="text-xs leading-relaxed text-slate-500">Your identity details. Privacy visibility is controlled separately from Settings.</p>
+        <p className="text-xs leading-relaxed text-slate-500">Your identity details and how others see you.</p>
 
         {error && <p className="mt-4 rounded-xl bg-red-950/40 p-3 text-sm text-red-200">{error}</p>}
         {saved && <p className="mt-4 rounded-xl bg-emerald-950/40 p-3 text-sm text-emerald-200">Profile saved.</p>}
 
         {!loading && (
           <div className="mt-4 space-y-4">
-            {/* Preview card */}
+
+            {/* 1. Preview card — top */}
             <section className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5 sm:p-6">
               <h2 className="text-[15px] font-semibold">Preview — how others see you</h2>
-              <p className="mt-1 text-xs text-slate-500">This is your public profile card. Toggle visibility below.</p>
+              <p className="mt-1 text-xs text-slate-500">This is your public profile card. Toggle visibility in Privacy below.</p>
               <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-950 p-5">
                 <div className="flex items-center justify-between">
                   <div>
@@ -168,9 +186,10 @@ export default function MyProfilePage() {
                 </div>
                 <div className="mt-4 grid gap-2">
                   {ageBandVisible && ageBand && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Age band: {ageBand.replace('_', '–')}</div>}
-                  {generationVisible && generation && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Generation: {generation.replace('_', ' ')}</div>}
-                  {genderVisible && gender && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Gender: {gender.replace('_', ' ')}</div>}
+                  {generationVisible && genLabel && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Generation: {genLabel}</div>}
+                  {genderVisible && gender && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Gender: {GENDERS.find(([v]) => v === gender)?.[1] ?? gender}</div>}
                   {countryVisible && countryCode && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Country: {getCountryName(countryCode) ?? countryCode}</div>}
+                  {orientDisplay && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Orientation: {orientDisplay}</div>}
                   {chatLanguage && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Chat language: {chatLanguage}</div>}
                   {interestsVisible && interests.length > 0 && (
                     <div className="rounded-xl bg-slate-900 p-2.5 text-sm">
@@ -178,41 +197,14 @@ export default function MyProfilePage() {
                       <span className="text-slate-300">{interests.map((v) => INTERESTS.find(([k]) => k === v)?.[1] ?? v).join(', ')}</span>
                     </div>
                   )}
-                  {!ageBandVisible && !generationVisible && !genderVisible && !countryVisible && !interestsVisible && (
-                    <p className="py-2 text-center text-sm text-slate-500">All fields hidden. Enable toggles below to show them.</p>
+                  {!ageBandVisible && !generationVisible && !genderVisible && !countryVisible && !interestsVisible && !orientDisplay && (
+                    <p className="py-2 text-center text-sm text-slate-500">All fields hidden. Enable toggles in Privacy below to show them.</p>
                   )}
                 </div>
               </div>
             </section>
 
-            {/* Privacy toggles */}
-            <section className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5 sm:p-6">
-              <h2 className="text-[15px] font-semibold">Privacy & visibility</h2>
-              <p className="mt-1 text-xs text-slate-500">Control what others see on your profile card above.</p>
-              <div className="mt-4 space-y-2.5">
-                {[
-                  [onlineVisible, setOnlineVisible, 'Show me online', 'Appear in the online directory.'],
-                  [profileVisible, setProfileVisible, 'Profile discoverable', 'Let compatible users see your profile.'],
-                  [genderVisible, setGenderVisible, 'Show gender', 'Display your gender on your profile.'],
-                  [ageBandVisible, setAgeBandVisible, 'Show age band', 'Display your age band on your profile.'],
-                  [generationVisible, setGenerationVisible, 'Show generation', 'Display your generation on your profile.'],
-                  [countryVisible, setCountryVisible, 'Show country', 'Display your country on your profile.'],
-                  [interestsVisible, setInterestsVisible, 'Show interests', 'Display your interests on your profile.'],
-                ].map(([checked, set, label, hint], i) => (
-                  <button key={i} type="button" role="switch" aria-checked={checked as boolean} onClick={() => (set as (v: boolean) => void)(!(checked as boolean))}
-                    className={`flex w-full items-center justify-between gap-4 rounded-2xl border p-3.5 text-left transition ${(checked as boolean) ? 'border-cyan-500/40 bg-cyan-950/20' : 'border-slate-800 bg-slate-950 hover:border-slate-600'}`}>
-                    <span>
-                      <span className="block text-sm font-semibold text-white">{label as string}</span>
-                      <span className="mt-0.5 block text-xs leading-relaxed text-slate-400">{hint as string}</span>
-                    </span>
-                    <span className={`relative h-6 w-11 flex-none rounded-full transition ${(checked as boolean) ? 'bg-cyan-400' : 'bg-slate-700'}`}>
-                      <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${(checked as boolean) ? 'left-[22px]' : 'left-0.5'}`} />
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </section>
-
+            {/* 2. Identity */}
             <section className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5 sm:p-6">
               <h2 className="text-[15px] font-semibold">Identity</h2>
               <div className="mt-4 space-y-4">
@@ -258,8 +250,8 @@ export default function MyProfilePage() {
                       <select value={countryCode} onChange={(e) => setCountryCode(e.target.value)}
                         className="w-full appearance-none rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20">
                         <option value="">Select your country…</option>
-                        {getCountriesForRegion(selectedRegion).map(([code, name]) => (
-                          <option key={code} value={code}>{name}</option>
+                        {getCountriesForRegion(selectedRegion).map(([code, cName]) => (
+                          <option key={code} value={code}>{cName}</option>
                         ))}
                       </select>
                     </div>
@@ -271,6 +263,7 @@ export default function MyProfilePage() {
               </div>
             </section>
 
+            {/* 3. Languages & interests */}
             <section className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5 sm:p-6">
               <h2 className="text-[15px] font-semibold">Languages & interests</h2>
               <div className="mt-4 space-y-4">
@@ -293,6 +286,21 @@ export default function MyProfilePage() {
               </div>
             </section>
 
+            {/* 4. Privacy & visibility — bottom */}
+            <section className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5 sm:p-6">
+              <h2 className="text-[15px] font-semibold">Privacy & visibility</h2>
+              <p className="mt-1 text-xs text-slate-500">Control what others see on your profile card above.</p>
+              <div className="mt-4 space-y-2.5">
+                <Toggle checked={onlineVisible} onChange={setOnlineVisible} label="Show me online" hint="Appear in the online directory." />
+                <Toggle checked={profileVisible} onChange={setProfileVisible} label="Profile discoverable" hint="Let compatible users see your profile." />
+                <Toggle checked={genderVisible} onChange={setGenderVisible} label="Show gender" hint="Display your gender on your profile." />
+                <Toggle checked={ageBandVisible} onChange={setAgeBandVisible} label="Show age band" hint="Display your age band on your profile." />
+                <Toggle checked={generationVisible} onChange={setGenerationVisible} label="Show generation" hint="Display your generation on your profile." />
+                <Toggle checked={countryVisible} onChange={setCountryVisible} label="Show country" hint="Display your country on your profile." />
+                <Toggle checked={interestsVisible} onChange={setInterestsVisible} label="Show interests" hint="Display your interests on your profile." />
+              </div>
+            </section>
+
             <div className="sticky bottom-24 md:bottom-4">
               <button type="button" onClick={() => void save()} disabled={busy}
                 className="w-full rounded-xl bg-gradient-to-r from-cyan-400 to-cyan-300 px-6 py-4 text-sm font-bold text-slate-950 shadow-xl shadow-cyan-950/50 transition hover:brightness-110 disabled:opacity-50">
@@ -304,11 +312,16 @@ export default function MyProfilePage() {
         {loading && (
           <div aria-busy="true" className="mt-6 space-y-4">
             <Shimmer className="h-5 w-44 rounded" />
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {Array.from({length:8}).map((_,i)=><Shimmer key={i} className="h-11 rounded-xl" />)}
+            <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5">
+              <Shimmer className="h-5 w-36 rounded" />
+              <div className="mt-4 space-y-2">
+                <Shimmer className="h-10 w-full rounded-xl" />
+                <Shimmer className="h-10 w-2/3 rounded-xl" />
+              </div>
             </div>
-            <Shimmer className="h-11 w-full rounded-xl" />
-            <Shimmer className="h-11 w-full rounded-xl" />
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {Array.from({length:6}).map((_,i)=><Shimmer key={i} className="h-11 rounded-xl" />)}
+            </div>
             <Shimmer className="h-14 w-full rounded-3xl" />
           </div>
         )}
