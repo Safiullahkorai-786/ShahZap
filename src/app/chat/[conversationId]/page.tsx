@@ -493,7 +493,8 @@ export default function ChatPage() {
 
   // Read receipts: while THIS chat is open and the tab/PWA is visible,
   // stamp my participant row so my partner's ticks turn "seen". Re-stamps
-  // when new messages arrive or I come back to the tab.
+  // when new messages arrive, on focus, and on an interval while visible so
+  // the partner's blue "seen" ticks stay live for every message I read.
   useEffect(() => {
     if (!userId || !conversationId || loading) return
     const mark = () => {
@@ -502,9 +503,13 @@ export default function ChatPage() {
       void createClient().rpc('mark_conversation_read', { p_conversation_id: conversationId })
     }
     mark()
+    const iv = window.setInterval(() => {
+      if (document.visibilityState === 'visible') mark()
+    }, 4000)
     document.addEventListener('visibilitychange', mark)
     window.addEventListener('focus', mark)
     return () => {
+      window.clearInterval(iv)
       document.removeEventListener('visibilitychange', mark)
       window.removeEventListener('focus', mark)
     }
