@@ -180,6 +180,7 @@ export default function FriendsPage() {
   const [filterUnread, setFilterUnread] = useState(false)
   const [filterOnline, setFilterOnline] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
+  const [myOnline, setMyOnline] = useState(true)
 
   const friendsRef = useRef(friends)
   friendsRef.current = friends
@@ -191,6 +192,13 @@ export default function FriendsPage() {
   const hasActiveFilters = filterGender !== 'all' || filterRegion !== 'all' || filterActivity !== 'all' || filterUnread || filterOnline
 
   // ---- initial load ----
+  // Track my own online status: when I go offline, delivered ticks revert to single.
+  useEffect(() => {
+    function onVis() { setMyOnline(document.visibilityState === 'visible') }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [])
+
   useEffect(() => {
     let mounted = true
     async function load() {
@@ -762,7 +770,7 @@ export default function FriendsPage() {
                         const busy = openingId === p.id
                         const isLastFromMe = p.lastSenderId === userId
                         const isRead = isLastFromMe && !!p.lastMessageReadAt
-                        const isDelivered = isLastFromMe && !isRead && !!p.lastMessageDeliveredAt && p.isOnline
+                        const isDelivered = isLastFromMe && !isRead && !!p.lastMessageDeliveredAt && myOnline
 
                         return (
                           <div key={p.id}
