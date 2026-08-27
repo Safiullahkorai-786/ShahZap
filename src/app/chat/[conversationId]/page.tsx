@@ -224,6 +224,7 @@ export default function ChatPage() {
     let channelStatus = ''
     let smartPollTimer: number | undefined
     let staleCheckTimer: number | undefined
+    let presenceCheckTimer: number | undefined
     const otherRef: { current: OtherProfile | null } = { current: null }
     const otherIdRef: { current: string | null } = { current: null }
 
@@ -511,6 +512,16 @@ export default function ChatPage() {
           }
         })
       channelRef.current = channel
+
+      // ── Presence poll: check other person's last_active_at every 10s ──
+      // Detects when they go offline (heartbeat stops → last_active_at goes stale).
+      if (!isBotProfile(otherProfileId)) {
+        presenceCheckTimer = window.setInterval(async () => {
+          if (!active) return
+          const { data: op } = await supabase.from('profiles').select('last_active_at').eq('id', otherIdRef.current).maybeSingle()
+          if (op && active) refreshPresence(op.last_active_at ?? null)
+        }, 10_000)
+      }
     }
 
     void load()
@@ -520,6 +531,7 @@ export default function ChatPage() {
       if (channel) void supabase.removeChannel(channel)
       if (smartPollTimer) window.clearInterval(smartPollTimer)
       if (staleCheckTimer) window.clearInterval(staleCheckTimer)
+      if (presenceCheckTimer) window.clearInterval(presenceCheckTimer)
       window.clearTimeout(typingStopTimer.current)
       window.clearTimeout(partnerTypingExpiry.current)
       window.clearTimeout(pressTimer.current)
