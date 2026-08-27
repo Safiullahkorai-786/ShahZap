@@ -416,9 +416,9 @@ export default function FriendsPage() {
           return updated
         })
       })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `sender_id=neq.${uid}` }, (payload) => {
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, (payload) => {
         if (!aliveRef.current) return
-        const msg = payload.new as { id: string; conversation_id: string; delivered_at: string | null; read_at: string | null }
+        const msg = payload.new as { id: string; conversation_id: string; sender_id: string; delivered_at: string | null; read_at: string | null }
         const friendId = convToFriendRef.current[msg.conversation_id]
         if (!friendId) return
         setFriends((prev) => {
@@ -431,7 +431,7 @@ export default function FriendsPage() {
             ...f,
             lastMessageDeliveredAt: msg.delivered_at ?? f.lastMessageDeliveredAt,
             lastMessageReadAt: msg.read_at ?? f.lastMessageReadAt,
-            unreadCount: msg.read_at ? 0 : f.unreadCount,
+            unreadCount: msg.sender_id !== uid && msg.read_at ? 0 : f.unreadCount,
           }
           return updated
         })
