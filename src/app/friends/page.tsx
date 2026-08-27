@@ -234,10 +234,14 @@ export default function FriendsPage() {
         lastMessageDeliveredAt: string | null; lastMessageReadAt: string | null
       }> = {}
 
+      convToFriendRef.current = {}
+      friendToConvRef.current = {}
+
       if (friendIds.length) {
         const { data: myParts } = await supabase.from('conversation_participants')
-          .select('conversation_id,last_read_at')
+          .select('conversation_id,last_read_at,conversations!inner(status)')
           .eq('profile_id', user.id)
+          .eq('conversations.status', 'active')
 
         if (myParts?.length) {
           const convIds = myParts.map((p) => p.conversation_id)
@@ -259,49 +263,78 @@ export default function FriendsPage() {
               if (p.profile_id !== user.id) partnerLastRead[p.conversation_id] = p.last_read_at
             }
 
+            const candidateConvs: { convId: string; other: string }[] = []
             for (const [convId, participants] of Object.entries(partsByConv)) {
               if (participants.length === 2) {
                 const other = participants.find((id) => id !== user.id)
                 if (other && friendIds.includes(other)) {
-                  convToFriendRef.current[convId] = other
-                  friendToConvRef.current[other] = convId
-                  friendMeta[other] = {
-                    lastMessage: null, lastMessageTime: null, lastSenderId: null,
-                    lastMessageId: null, conversationId: convId, unreadCount: 0,
-                    partnerLastReadAt: partnerLastRead[convId] ?? null,
-                    lastMessageDeliveredAt: null, lastMessageReadAt: null,
-                  }
+                  candidateConvs.push({ convId, other })
                 }
               }
             }
 
-            const relevantConvIds = Object.keys(convToFriendRef.current)
-            for (const convId of relevantConvIds) {
-              const friendId = convToFriendRef.current[convId]
-              const lastRead = userLastRead[convId]
+            const deduped: Record<string, { convId: string; other: string }> = {}
+            for (const c of candidateConvs) {
+              if (!deduped[c.other]) deduped[c.other] = c
+            }
 
-              const { data: lastMsg } = await supabase.from('messages')
-                .select('id,original_message,created_at,sender_id,delivered_at,read_at')
-                .eq('conversation_id', convId)
+            for (const { convId, other } of Object.values(deduped)) {
+              convToFriendRef.current[convId] = other
+              friendToConvRef.current[other] = convId
+              friendMeta[other] = {
+                lastMessage: null, lastMessageTime: null, lastSenderId: null,
+                lastMessageId: null, conversationId: convId, unreadCount: 0,
+                partnerLastReadAt: partnerLastRead[convId] ?? null,
+                lastMessageDeliveredAt: null, lastMessageReadAt: null,
+              }
+            }
+
+            const activeConvIds = Object.keys(convToFriendRef.current)
+            if (activeConvIds.length) {
+              const { data: lastMsgs } = await supabase.from('messages')
+                .select('id,original_message,created_at,sender_id,delivered_at,read_at,conversation_id')
+                .in('conversation_id', activeConvIds)
                 .order('created_at', { ascending: false })
-                .limit(1)
-                .maybeSingle()
 
-              if (lastMsg && friendMeta[friendId]) {
-                friendMeta[friendId].lastMessage = (lastMsg as { original_message: string | null }).original_message
-                friendMeta[friendId].lastMessageTime = (lastMsg as { created_at: string }).created_at
-                friendMeta[friendId].lastSenderId = (lastMsg as { sender_id: string }).sender_id
-                friendMeta[friendId].lastMessageId = (lastMsg as { id: string }).id
-                friendMeta[friendId].lastMessageDeliveredAt = (lastMsg as { delivered_at: string | null }).delivered_at ?? null
-                friendMeta[friendId].lastMessageReadAt = (lastMsg as { read_at: string | null }).read_at ?? null
+              const latestByConv: Record<string, typeof lastMsgs extends (infer T)[] | null ? T : never> = {}
+              if (lastMsgs) {
+                for (const m of lastMsgs) {
+                  if (!latestByConv[m.conversation_id]) latestByConv[m.conversation_id] = m
+                }
               }
 
-              const { count } = await supabase.from('messages')
-                .select('id', { count: 'exact', head: true })
-                .eq('conversation_id', convId)
+              for (const convId of activeConvIds) {
+                const friendId = convToFriendRef.current[convId]
+                if (!friendMeta[friendId]) continue
+                const lastMsg = latestByConv[convId]
+                if (lastMsg) {
+                  friendMeta[friendId].lastMessage = lastMsg.original_message
+                  friendMeta[friendId].lastMessageTime = lastMsg.created_at
+                  friendMeta[friendId].lastSenderId = lastMsg.sender_id
+                  friendMeta[friendId].lastMessageId = lastMsg.id
+                  friendMeta[friendId].lastMessageDeliveredAt = lastMsg.delivered_at ?? null
+                  friendMeta[friendId].lastMessageReadAt = lastMsg.read_at ?? null
+                }
+              }
+
+              const { data: unreadRows } = await supabase.from('messages')
+                .select('conversation_id')
+                .in('conversation_id', activeConvIds)
                 .neq('sender_id', user.id)
                 .is('read_at', null)
-              friendMeta[friendId].unreadCount = count ?? 0
+
+              const unreadMap: Record<string, number> = {}
+              if (unreadRows) {
+                for (const row of unreadRows) {
+                  unreadMap[row.conversation_id] = (unreadMap[row.conversation_id] ?? 0) + 1
+                }
+              }
+              for (const convId of activeConvIds) {
+                const friendId = convToFriendRef.current[convId]
+                if (friendMeta[friendId]) {
+                  friendMeta[friendId].unreadCount = unreadMap[convId] ?? 0
+                }
+              }
             }
           }
         }
