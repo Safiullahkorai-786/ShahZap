@@ -547,6 +547,10 @@ export default function ChatPage() {
 
     async function mark() {
       const supabase = createClient()
+      // 0. Deliver inbound messages FIRST so delivered_at is set before read_at.
+      //    This ensures the client sees double-white tick before blue tick.
+      await supabase.rpc('sync_deliveries').then(() => {}, () => {})
+
       // 1. Directly update our own last_read_at via client (RLS-safe).
       //    This fires the DB trigger that stamps read_at on inbound messages.
       await supabase
