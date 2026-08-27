@@ -556,6 +556,85 @@ export default function FriendsPage() {
     return () => window.clearInterval(interval)
   }, [userId, friends.length])
 
+  // ---- Re-fetch last messages on visibility change / online ----
+  useEffect(() => {
+    if (!userId || !friends.length) return
+
+    async function refreshLastMessages() {
+      if (!aliveRef.current) return
+      const supabase = createClient()
+      const convIds = Object.keys(convToFriendRef.current)
+      if (!convIds.length) return
+
+      const { data: lastMsgs } = await supabase.from('messages')
+        .select('id,original_message,created_at,sender_id,delivered_at,read_at,conversation_id')
+        .in('conversation_id', convIds)
+        .order('created_at', { ascending: false })
+
+      const { data: unreadRows } = await supabase.from('messages')
+        .select('conversation_id')
+        .in('conversation_id', convIds)
+        .neq('sender_id', userId)
+        .is('read_at', null)
+
+      if (!aliveRef.current) return
+
+      const latestByConv: Record<string, typeof lastMsgs extends (infer T)[] | null ? T : never> = {}
+      if (lastMsgs) {
+        for (const m of lastMsgs) {
+          if (!latestByConv[m.conversation_id]) latestByConv[m.conversation_id] = m
+        }
+      }
+
+      const unreadMap: Record<string, number> = {}
+      if (unreadRows) {
+        for (const row of unreadRows) {
+          unreadMap[row.conversation_id] = (unreadMap[row.conversation_id] ?? 0) + 1
+        }
+      }
+
+      setFriends((prev) => {
+        let changed = false
+        const next = prev.map((f) => {
+          const convId = friendToConvRef.current[f.id]
+          if (!convId) return f
+          const lastMsg = latestByConv[convId]
+          const newUnread = unreadMap[convId] ?? 0
+          if (!lastMsg) return f
+          const updates: Partial<typeof f> = {}
+          if (lastMsg.id !== f.lastMessageId) {
+            updates.lastMessage = lastMsg.original_message
+            updates.lastMessageTime = lastMsg.created_at
+            updates.lastSenderId = lastMsg.sender_id
+            updates.lastMessageId = lastMsg.id
+            updates.lastMessageDeliveredAt = lastMsg.delivered_at ?? null
+            updates.lastMessageReadAt = lastMsg.read_at ?? null
+            changed = true
+          } else {
+            if (lastMsg.delivered_at !== f.lastMessageDeliveredAt) { updates.lastMessageDeliveredAt = lastMsg.delivered_at ?? null; changed = true }
+            if (lastMsg.read_at !== f.lastMessageReadAt) { updates.lastMessageReadAt = lastMsg.read_at ?? null; changed = true }
+          }
+          if (newUnread !== f.unreadCount) { updates.unreadCount = newUnread; changed = true }
+          return Object.keys(updates).length ? { ...f, ...updates } : f
+        })
+        if (changed) sortFriends(next)
+        return changed ? next : prev
+      })
+    }
+
+    function onVisible() {
+      if (document.visibilityState === 'visible') void refreshLastMessages()
+    }
+    function onOnline() { void refreshLastMessages() }
+
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('online', onOnline)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('online', onOnline)
+    }
+  }, [userId, friends.length])
+
   async function updateRequest(id: string, status: 'accepted' | 'declined' | 'cancelled') {
     const supabase = createClient()
     const { error: updateError } = await supabase.from('friend_requests').update({ status }).eq('id', id)
