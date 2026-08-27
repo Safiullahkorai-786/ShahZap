@@ -167,6 +167,7 @@ export default function MyProfilePage() {
       languages_known: languagesKnown,
       languages_known_visible: languagesKnownVisible,
       interests_visible: interestsVisible,
+      interest_names: interests.map((v) => INTERESTS.find(([k]) => k === v)?.[1] ?? v),
     }).eq('id', user.id)
     if (e1) { setError(friendlyError(e1, 'Could not save your profile.')); setBusy(false); return }
 

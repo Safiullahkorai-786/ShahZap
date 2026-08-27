@@ -47,6 +47,7 @@ type OtherProfile = {
   language_visible?: boolean
   languages_known_visible?: boolean
   interests_visible?: boolean
+  interest_names?: string[] | null
   languages_known?: string[] | null
   profile_visible?: boolean
   last_active_at: string | null
@@ -262,16 +263,11 @@ export default function ChatPage() {
       setOtherId(otherProfileId)
 
       if (otherProfileId && !isBotProfile(otherProfileId)) {
-        const { data: op } = await supabase.from('profiles').select('id,display_name,gender,gender_visible,age_band,age_band_visible,generation,generation_visible,bio,orientation,country_code,country_visible,chat_language,language_visible,languages_known_visible,languages_known,interests_visible,profile_visible,last_active_at').eq('id', otherProfileId).maybeSingle()
+        const { data: op } = await supabase.from('profiles').select('id,display_name,gender,gender_visible,age_band,age_band_visible,generation,generation_visible,bio,orientation,country_code,country_visible,chat_language,language_visible,languages_known_visible,languages_known,interests_visible,interest_names,profile_visible,last_active_at').eq('id', otherProfileId).maybeSingle()
         if (active && op) { setOther(op as OtherProfile); otherRef.current = op as OtherProfile; setOtherLastActiveAt(op.last_active_at ?? null); refreshPresence(op.last_active_at ?? null) }
-        // Fetch interests if visible
+        // Fetch interests if visible (from interest_names on profiles - always readable)
         if ((op as any)?.interests_visible) {
-          const { data: piRows } = await supabase.from('profile_interests').select('interest_id').eq('profile_id', otherProfileId)
-          if (active && piRows && piRows.length > 0) {
-            const ids = piRows.map((r: any) => r.interest_id)
-            const { data: intRows } = await supabase.from('interests').select('name').in('id', ids)
-            if (active && intRows) setOtherInterests(intRows.map((r: any) => r.name).filter(Boolean))
-          }
+          if (active) setOtherInterests(((op as any).interest_names ?? []).filter(Boolean))
         }
         // Fetch languages known if visible
         if ((op as any)?.languages_known_visible) {
@@ -324,15 +320,7 @@ export default function ChatPage() {
           // Update other profile fields in real time
           setOther((prev) => prev ? { ...prev, ...row } as OtherProfile : prev)
           if (row.interests_visible) {
-            supabase.from('profile_interests').select('interest_id').eq('profile_id', otherProfileId).then(async ({ data: piRows }) => {
-              if (piRows && piRows.length > 0) {
-                const ids = piRows.map((r: any) => r.interest_id)
-                const { data: intRows } = await supabase.from('interests').select('name').in('id', ids)
-                if (intRows) setOtherInterests(intRows.map((r: any) => r.name).filter(Boolean))
-              } else {
-                setOtherInterests([])
-              }
-            })
+            setOtherInterests((row.interest_names ?? []).filter(Boolean))
           } else {
             setOtherInterests([])
           }

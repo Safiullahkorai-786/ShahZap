@@ -26,7 +26,7 @@ export type OnlineMember = {
   generation_visible: boolean
   last_active_at: string | null
   interests_visible?: boolean
-  profile_interests?: { interests: { name: string }[] }[] | null
+  interest_names?: string[] | null
 }
 
 type RequestState = 'none' | 'outgoing' | 'incoming' | 'friends'
@@ -176,7 +176,7 @@ export default function OnlineMembers({ members: initialMembers, loading: server
     const supabase = createClient()
     let active = true
 
-    const MEMBER_COLS = 'id,display_name,level,country_code,country_visible,chat_language,gender,gender_visible,age_band,age_band_visible,generation,generation_visible,last_active_at,interests_visible,profile_interests(interest_id,interests(name))'
+    const MEMBER_COLS = 'id,display_name,level,country_code,country_visible,chat_language,gender,gender_visible,age_band,age_band_visible,generation,generation_visible,last_active_at,interests_visible,interest_names'
 
     async function fetchOnlineMembers(): Promise<OnlineMember[]> {
       const since = new Date(Date.now() - ONLINE_WINDOW_MS).toISOString()
@@ -368,13 +368,12 @@ export default function OnlineMembers({ members: initialMembers, loading: server
                   {(m.chat_language || (m.country_visible && m.country_code)) && <span>·</span>}
                   <span>{formatTimeAgo(m.last_active_at)}</span>
                 </div>
-                {m.interests_visible && !!m.profile_interests?.length && (
+                {m.interests_visible && !!m.interest_names?.length && (
                   <div className="mt-1 flex flex-wrap gap-1">
-                    {m.profile_interests.slice(0, 3).map((pi) => {
-                      const name = pi.interests?.[0]?.name
-                      return name ? <span key={name} className="rounded-full bg-slate-800/60 px-2 py-0.5 text-[10px] text-slate-400">{name}</span> : null
-                    })}
-                    {m.profile_interests.length > 3 && <span className="text-[10px] text-slate-600">+{m.profile_interests.length - 3}</span>}
+                    {m.interest_names.slice(0, 3).map((name) => (
+                      name ? <span key={name} className="rounded-full bg-slate-800/60 px-2 py-0.5 text-[10px] text-slate-400">{name}</span> : null
+                    ))}
+                    {m.interest_names.length > 3 && <span className="text-[10px] text-slate-600">+{m.interest_names.length - 3}</span>}
                   </div>
                 )}
               </div>

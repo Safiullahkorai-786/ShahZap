@@ -1,0 +1,3 @@
+insert into public.interests(slug,name,category) values
+('gaming','Gaming','Entertainment'),('music','Music','Entertainment'),('movies','Movies','Entertainment'),('anime','Anime','Entertainment'),('books','Books','Learning'),('coding','Coding','Technology'),('art','Art','Creative'),('sports','Sports','Lifestyle'),('travel','Travel','Lifestyle'),('food','Food','Lifestyle'),('fitness','Fitness','Lifestyle'),('photography','Photography','Creative'),('memes','Memes','Entertainment'),('science','Science','Learning'),('technology','Technology','Technology'),('nature','Nature','Lifestyle')
+on conflict (slug) do nothing;

@@ -23,7 +23,7 @@ type Profile = {
   bio: string | null; country_code: string | null; interface_language: string | null; chat_language: string | null
   online_visible: boolean; profile_visible: boolean; generation_visible: boolean
   country_visible: boolean; region_visible: boolean; gender_visible: boolean; age_band_visible: boolean
-  language_visible: boolean; languages_known_visible: boolean; interests_visible: boolean; languages_known: string[] | null; last_active_at: string | null
+  language_visible: boolean; languages_known_visible: boolean; interests_visible: boolean; languages_known: string[] | null; interest_names: string[] | null; last_active_at: string | null
 }
 
 export default function ProfilePage() {
@@ -67,27 +67,13 @@ export default function ProfilePage() {
         setFriendState(!fr.data ? 'none' : fr.data.status === 'accepted' ? 'friends' : (fr.data as { sender_id: string }).sender_id === user.id ? 'outgoing' : 'incoming')
       }
 
-      const { data, error: e } = await supabase.from('profiles').select('id,display_name,avatar_path,age_band,generation,gender,orientation,bio,country_code,interface_language,chat_language,languages_known,online_visible,profile_visible,generation_visible,country_visible,region_visible,gender_visible,age_band_visible,language_visible,languages_known_visible,interests_visible,last_active_at').eq('id', id).maybeSingle()
+      const { data, error: e } = await supabase.from('profiles').select('id,display_name,avatar_path,age_band,generation,gender,orientation,bio,country_code,interface_language,chat_language,languages_known,interest_names,online_visible,profile_visible,generation_visible,country_visible,region_visible,gender_visible,age_band_visible,language_visible,languages_known_visible,interests_visible,last_active_at').eq('id', id).maybeSingle()
       if (!active) return
       if (e) setError(friendlyError(e, 'Could not load this profile.'))
       else {
         setProfile(data as Profile | null)
-        const { data: piRows } = await supabase
-          .from('profile_interests')
-          .select('interest_id')
-          .eq('profile_id', id)
-        if (active && piRows && piRows.length > 0) {
-          const ids = piRows.map((r: any) => r.interest_id)
-          const { data: intRows } = await supabase
-            .from('interests')
-            .select('name')
-            .in('id', ids)
-          if (active && intRows) {
-            setInterests(intRows.map((r: any) => r.name).filter(Boolean))
-          }
-        } else if (active) {
-          setInterests([])
-        }
+        // Interests come directly from profiles.interest_names (always readable)
+        if (active) setInterests(((data as any).interest_names ?? []).filter(Boolean))
         if (active) setLanguagesKnown((data as any).languages_known ?? [])
       }
     })()
@@ -103,17 +89,9 @@ export default function ProfilePage() {
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${id}` }, (payload) => {
         const r = payload.new as Record<string, any>
         setProfile((p) => p ? { ...p, ...r } : p)
-        // Always re-fetch interests on profile update
-        supabase.from('profile_interests').select('interest_id').eq('profile_id', id).then(async ({ data: piRows }) => {
-          if (piRows && piRows.length > 0) {
-            const ids = piRows.map((r: any) => r.interest_id)
-            const { data: intRows } = await supabase.from('interests').select('name').in('id', ids)
-            if (intRows) setInterests(intRows.map((r: any) => r.name).filter(Boolean))
-          } else {
-            setInterests([])
-          }
-        })
-        // Always sync languages from profile update
+        // Interests directly from profile update
+        setInterests((r.interest_names ?? []).filter(Boolean))
+        // Languages from profile update
         setLanguagesKnown(r.languages_known ?? [])
       }).subscribe()
     return () => { void supabase.removeChannel(ch) }
