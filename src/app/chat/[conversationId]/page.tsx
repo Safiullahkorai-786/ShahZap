@@ -988,12 +988,12 @@ export default function ChatPage() {
   }
 
   // WhatsApp-style ticks for my own messages:
-  //   single tick      → receiver offline (regresses when they go away);
-  //   white double tick → receiver currently online;
+  //   single tick      → message not yet delivered (receiver offline when sent);
+  //   white double tick → message delivered (permanent — stays even if receiver goes offline);
   //   blue double tick  → receiver has read the message (permanent).
-  function isDelivered(): boolean {
+  function isDelivered(m: Message): boolean {
     if (persona) return true
-    return otherOnline
+    return !!m.delivered_at
   }
 
   function isSeen(m: Message): boolean {
@@ -1502,7 +1502,7 @@ export default function ChatPage() {
                       {mine && !deleted && (
                         isSeen(m)
                           ? <CheckCheck size={13} strokeWidth={2.5} className="self-center text-sky-300 drop-shadow-[0_1px_1px_rgba(15,23,42,0.6)]" aria-label="Seen" />
-                          : isDelivered()
+                          : isDelivered(m)
                             ? <CheckCheck size={13} strokeWidth={2.5} className="self-center text-white drop-shadow-[0_1px_1px_rgba(15,23,42,0.6)]" aria-label="Delivered" />
                             : <Check size={13} strokeWidth={2.5} className="self-center opacity-50" aria-label="Sent" />
                       )}
