@@ -762,7 +762,7 @@ export default function FriendsPage() {
                         const busy = openingId === p.id
                         const isLastFromMe = p.lastSenderId === userId
                         const isRead = isLastFromMe && !!p.lastMessageReadAt
-                        const isDelivered = isLastFromMe && !isRead && !!p.lastMessageDeliveredAt
+                        const isDelivered = isLastFromMe && !isRead && !!p.lastMessageDeliveredAt && p.isOnline
 
                         return (
                           <div key={p.id}

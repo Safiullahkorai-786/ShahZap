@@ -520,7 +520,7 @@ export default function ChatPage() {
           if (!active) return
           const { data: op } = await supabase.from('profiles').select('last_active_at').eq('id', otherIdRef.current).maybeSingle()
           if (op && active) refreshPresence(op.last_active_at ?? null)
-        }, 10_000)
+        }, 30_000)
       }
     }
 
@@ -1033,12 +1033,12 @@ export default function ChatPage() {
   }
 
   // WhatsApp-style ticks for my own messages:
-  //   single tick      → message not yet delivered (receiver offline when sent);
-  //   white double tick → message delivered (permanent — stays even if receiver goes offline);
+  //   single tick      → message not yet delivered (receiver offline or not received);
+  //   white double tick → receiver is online AND message delivered;
   //   blue double tick  → receiver has read the message (permanent).
   function isDelivered(m: Message): boolean {
     if (persona) return true
-    return !!m.delivered_at
+    return !!m.delivered_at && otherOnline
   }
 
   function isSeen(m: Message): boolean {
