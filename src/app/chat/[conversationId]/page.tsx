@@ -497,15 +497,16 @@ export default function ChatPage() {
   // the partner's blue "seen" ticks stay live for every message I read.
   useEffect(() => {
     if (!userId || !conversationId || loading) return
+    // Server-authoritative stamp — cannot be silently dropped. Runs every 4s
+    // while the chat is mounted regardless of visibilityState, because some
+    // mobile/PWA shells report 'hidden' even while the user is actively in
+    // the chat (which would otherwise freeze last_read_at and break blue
+    // "seen" ticks).
     const mark = () => {
-      if (document.visibilityState !== 'visible') return
-      // Server-authoritative stamp — cannot be silently dropped.
       void createClient().rpc('mark_conversation_read', { p_conversation_id: conversationId })
     }
     mark()
-    const iv = window.setInterval(() => {
-      if (document.visibilityState === 'visible') mark()
-    }, 4000)
+    const iv = window.setInterval(mark, 4000)
     document.addEventListener('visibilitychange', mark)
     window.addEventListener('focus', mark)
     return () => {
