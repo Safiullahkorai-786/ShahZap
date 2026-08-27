@@ -175,7 +175,6 @@ export default function ChatPage() {
   const incomingTimer = useRef<number | undefined>(undefined)
   const lastLocalFriendChange = useRef<number>(0)
   const [otherOnline, setOtherOnline] = useState(false)
-  const [myOnline, setMyOnline] = useState(true)
   const [presenceLabel, setPresenceLabel] = useState('')
   const [otherLastActiveAt, setOtherLastActiveAt] = useState<string | null>(null)
   const [showScrollDown, setShowScrollDown] = useState(false)
@@ -539,13 +538,6 @@ export default function ChatPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId, router])
-
-  // Track my own online status: when I go offline, delivered ticks revert to single.
-  useEffect(() => {
-    function onVis() { setMyOnline(document.visibilityState === 'visible') }
-    document.addEventListener('visibilitychange', onVis)
-    return () => document.removeEventListener('visibilitychange', onVis)
-  }, [])
 
   // Read receipts: while THIS chat is open, stamp my read receipt AND mark
   // inbound messages read so my partner's ticks turn "seen". Re-stamps on an
@@ -1041,12 +1033,12 @@ export default function ChatPage() {
   }
 
   // WhatsApp-style ticks for my own messages:
-  //   single tick      → message not yet delivered (receiver offline or not received);
-  //   white double tick → I'm online and message delivered;
+  //   single tick      → message not yet delivered (receiver offline when sent);
+  //   white double tick → message delivered (permanent — stays even if receiver goes offline);
   //   blue double tick  → receiver has read the message (permanent).
   function isDelivered(m: Message): boolean {
     if (persona) return true
-    return !!m.delivered_at && myOnline
+    return !!m.delivered_at
   }
 
   function isSeen(m: Message): boolean {
