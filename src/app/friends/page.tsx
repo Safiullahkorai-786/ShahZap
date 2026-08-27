@@ -30,6 +30,7 @@ type FriendWithMeta = Profile & {
 type Tab = 'friends' | 'pending'
 type FilterGender = 'all' | 'woman' | 'man' | 'non_binary'
 type FilterRegion = 'all' | 'asia' | 'europe' | 'africa' | 'north_america' | 'south_america' | 'oceania'
+type FilterActivity = 'all' | 'sent' | 'received'
 
 const REGION_MAP: Record<string, string[]> = {
   africa: ['DZ','AO','BJ','BW','BF','BI','CV','CM','CF','TD','KM','CG','CD','CI','DJ','EG','GQ','ER','SZ','ET','GA','GM','GH','GN','GW','KE','LS','LR','LY','MG','MW','ML','MR','MU','MA','MZ','NA','NE','NG','RW','ST','SN','SC','SL','SO','ZA','SS','SD','TZ','TG','TN','UG','ZM','ZW'],
@@ -181,6 +182,7 @@ export default function FriendsPage() {
   const [search, setSearch] = useState('')
   const [filterGender, setFilterGender] = useState<FilterGender>('all')
   const [filterRegion, setFilterRegion] = useState<FilterRegion>('all')
+  const [filterActivity, setFilterActivity] = useState<FilterActivity>('all')
   const [filterUnread, setFilterUnread] = useState(false)
   const [filterOnline, setFilterOnline] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
@@ -192,7 +194,7 @@ export default function FriendsPage() {
   const userIdRef = useRef<string>('')
   const aliveRef = useRef(true)
 
-  const hasActiveFilters = filterGender !== 'all' || filterRegion !== 'all' || filterUnread || filterOnline
+  const hasActiveFilters = filterGender !== 'all' || filterRegion !== 'all' || filterActivity !== 'all' || filterUnread || filterOnline
 
   // ---- initial load ----
   useEffect(() => {
@@ -672,6 +674,8 @@ export default function FriendsPage() {
     }
     if (filterGender !== 'all' && f.gender !== filterGender) return false
     if (filterRegion !== 'all' && getRegionForCountry(f.country_code) !== filterRegion) return false
+    if (filterActivity === 'sent' && f.lastSenderId !== userId) return false
+    if (filterActivity === 'received' && (f.lastSenderId === userId || !f.lastSenderId)) return false
     if (filterUnread && f.unreadCount === 0) return false
     if (filterOnline && !f.isOnline) return false
     return true
@@ -719,10 +723,10 @@ export default function FriendsPage() {
                         className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium transition ${showFilters || hasActiveFilters ? 'border-cyan-400/60 bg-cyan-400/10 text-cyan-200' : 'border-slate-700 text-slate-400 hover:border-slate-500'}`}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" /></svg>
                         Filters
-                        {hasActiveFilters && <span className="ml-0.5 h-4 w-4 rounded-full bg-cyan-400 text-[9px] font-bold text-slate-950 flex items-center justify-center">{[filterGender !== 'all', filterRegion !== 'all', filterUnread, filterOnline].filter(Boolean).length}</span>}
+                        {hasActiveFilters && <span className="ml-0.5 h-4 w-4 rounded-full bg-cyan-400 text-[9px] font-bold text-slate-950 flex items-center justify-center">{[filterGender !== 'all', filterRegion !== 'all', filterActivity !== 'all', filterUnread, filterOnline].filter(Boolean).length}</span>}
                       </button>
                       {hasActiveFilters && (
-                        <button onClick={() => { setFilterGender('all'); setFilterRegion('all'); setFilterUnread(false); setFilterOnline(false) }}
+                        <button onClick={() => { setFilterGender('all'); setFilterRegion('all'); setFilterActivity('all'); setFilterUnread(false); setFilterOnline(false) }}
                           className="text-[11px] text-slate-500 hover:text-white">Clear all</button>
                       )}
                       <span className="ml-auto text-[11px] text-slate-500">{filteredFriends.length} friend{filteredFriends.length !== 1 ? 's' : ''}</span>
@@ -741,6 +745,14 @@ export default function FriendsPage() {
                           <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Region</span>
                           <div className="flex flex-wrap gap-1.5">
                             {REGION_FILTERS.map(([v, l]) => <FilterPill key={v} selected={filterRegion === v} onClick={() => setFilterRegion(v)}>{l}</FilterPill>)}
+                          </div>
+                        </div>
+                        <div>
+                          <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Last Activity</span>
+                          <div className="flex flex-wrap gap-1.5">
+                            <FilterPill selected={filterActivity === 'all'} onClick={() => setFilterActivity('all')}>All</FilterPill>
+                            <FilterPill selected={filterActivity === 'sent'} onClick={() => setFilterActivity('sent')}>Sent</FilterPill>
+                            <FilterPill selected={filterActivity === 'received'} onClick={() => setFilterActivity('received')}>Received</FilterPill>
                           </div>
                         </div>
                         <div className="flex gap-3">
