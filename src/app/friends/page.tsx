@@ -156,12 +156,6 @@ function TypingDots() {
 
 function sortFriends(arr: FriendWithMeta[]) {
   arr.sort((a, b) => {
-    if (a.isTyping && !b.isTyping) return -1
-    if (!a.isTyping && b.isTyping) return 1
-    if (a.unreadCount > 0 && b.unreadCount === 0) return -1
-    if (a.unreadCount === 0 && b.unreadCount > 0) return 1
-    if (a.isOnline && !b.isOnline) return -1
-    if (!a.isOnline && b.isOnline) return 1
     const aTime = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0
     const bTime = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0
     return bTime - aTime
