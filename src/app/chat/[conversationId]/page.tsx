@@ -330,6 +330,13 @@ export default function ChatPage() {
             setOtherLanguages([])
           }
         })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversation_participants', filter: `conversation_id=eq.${conversationId}` }, (payload) => {
+          const row = payload.new as { profile_id: string; last_read_at: string | null }
+          // Partner's last_read_at changed → flip my sent ticks to blue "seen" instantly.
+          if (row.profile_id !== user.id) {
+            setPartnerReadAt(row.last_read_at ?? null)
+          }
+        })
         .on('broadcast', { event: 'typing' }, ({ payload }) => {
           const p = payload as { typing: boolean; from: string }
           if (p.from === user.id) return
