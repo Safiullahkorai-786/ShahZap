@@ -178,10 +178,6 @@ export default function ChatPage() {
   // Partner's read receipt: when they last had this chat open. Drives the
   // coloured "seen" double tick on my own messages.
   const [partnerReadAt, setPartnerReadAt] = useState<string | null>(null)
-  // My own read receipt for this chat. Drives read-state ticks on incoming
-  // (received) messages: blue = I've read it in the chat, double = online,
-  // single = offline.
-  const [myReadAt, setMyReadAt] = useState<string | null>(null)
   const [showScrollDown, setShowScrollDown] = useState(false)
   const [reactorInfo, setReactorInfo] = useState<{ emoji: string; names: string[] } | null>(null)
   const [sel, setSel] = useState<Selection>({ base: 'dark', accent: 'none' })
@@ -280,9 +276,6 @@ export default function ChatPage() {
         // Partner's read receipt for the coloured "seen" tick.
         const { data: cp } = await supabase.from('conversation_participants').select('last_read_at').eq('conversation_id', conversationId).eq('profile_id', otherProfileId).maybeSingle()
         if (active && cp) setPartnerReadAt(cp.last_read_at ?? null)
-        // My own read receipt — drives read-state ticks on incoming messages.
-        const { data: myCp } = await supabase.from('conversation_participants').select('last_read_at').eq('conversation_id', conversationId).eq('profile_id', user.id).maybeSingle()
-        if (active && myCp) setMyReadAt(myCp.last_read_at ?? null)
         // Did they decline our friend request 3 times? Then requests are off.
         const { count: declinedCount } = await supabase.from('friend_requests').select('id', { count: 'exact', head: true }).eq('sender_id', user.id).eq('receiver_id', otherProfileId).eq('status', 'declined')
         if (active) setReqBlocked((declinedCount ?? 0) >= 3)
@@ -342,9 +335,6 @@ export default function ChatPage() {
           // Partner's last_read_at changed → flip my sent ticks to blue "seen" instantly.
           if (row.profile_id !== user.id) {
             setPartnerReadAt(row.last_read_at ?? null)
-          } else {
-            // My own read receipt changed → flip read-state ticks on incoming messages.
-            setMyReadAt(row.last_read_at ?? null)
           }
         })
         .on('broadcast', { event: 'typing' }, ({ payload }) => {
@@ -481,8 +471,6 @@ export default function ChatPage() {
           if (op && active) refreshPresence(op.last_active_at ?? null)
           const { data: cp } = await supabase.from('conversation_participants').select('last_read_at').eq('conversation_id', conversationId).eq('profile_id', otherProfileId).maybeSingle()
           if (cp && active) setPartnerReadAt(cp.last_read_at ?? null)
-          const { data: myCp } = await supabase.from('conversation_participants').select('last_read_at').eq('conversation_id', conversationId).eq('profile_id', user.id).maybeSingle()
-          if (myCp && active) setMyReadAt(myCp.last_read_at ?? null)
         }
         // Recompute label/online from the latest known timestamp every tick,
         // so "last seen 1m ago" counts up and flips offline right on time.
@@ -998,16 +986,6 @@ export default function ChatPage() {
     return new Date(partnerReadAt).getTime() >= new Date(m.created_at).getTime()
   }
 
-  // Read-state of an INCOMING message from my perspective: blue = I've read
-  // it while inside this chat; double = online but not read; single = offline.
-  function myIsRead(m: Message): boolean {
-    if (!myReadAt) return false
-    return new Date(myReadAt).getTime() >= new Date(m.created_at).getTime()
-  }
-  function myIsOnline(): boolean {
-    return !!otherLastActiveAt && (Date.now() - new Date(otherLastActiveAt).getTime() < ONLINE_WINDOW_MS)
-  }
-
   // Insert an emoji/emoticon at the cursor and keep the caret right after it.
   function insertNewline() {
     const el = inputRef.current
@@ -1512,11 +1490,6 @@ export default function ChatPage() {
                           : isDelivered(m)
                             ? <CheckCheck size={13} strokeWidth={2.5} className="self-center text-white drop-shadow-[0_1px_1px_rgba(15,23,42,0.6)]" aria-label="Delivered" />
                             : <Check size={13} strokeWidth={2.5} className="self-center opacity-50" aria-label="Sent" />
-                      )}
-                      {!mine && !deleted && !hiddenForMe && (
-                        myIsRead(m)
-                          ? <CheckCheck size={13} strokeWidth={2.5} className="self-center text-sky-400" aria-label="Read" />
-                          : <CheckCheck size={13} strokeWidth={2.5} className="self-center text-slate-400" aria-label="Delivered-You" />
                       )}
                     </p>
                   </div>
