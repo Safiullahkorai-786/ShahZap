@@ -18,11 +18,14 @@ type FriendWithMeta = Profile & {
   lastMessage: string | null
   lastMessageTime: string | null
   lastSenderId: string | null
+  lastMessageId: string | null
   conversationId: string | null
   isOnline: boolean
   hasUnread: boolean
   isTyping: boolean
   partnerLastReadAt: string | null
+  lastMessageDeliveredAt: string | null
+  lastMessageReadAt: string | null
 }
 type Tab = 'friends' | 'pending'
 type FilterGender = 'all' | 'woman' | 'man' | 'non_binary'
@@ -118,10 +121,24 @@ function formatTime(ts: string | null): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
-function TickIcon({ read }: { read: boolean }) {
+function TickIcon({ delivered, read }: { delivered: boolean; read: boolean }) {
+  if (read) {
+    return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="flex-none text-cyan-400">
+        <path d="M18 6 7 17l-5-5" /><path d="m22 10-9.5 9.5L10 17" />
+      </svg>
+    )
+  }
+  if (delivered) {
+    return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="flex-none text-white">
+        <path d="M18 6 7 17l-5-5" /><path d="m22 10-9.5 9.5L10 17" />
+      </svg>
+    )
+  }
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`flex-none ${read ? 'text-cyan-400' : 'text-slate-500'}`}>
-      <path d="M18 6 7 17l-5-5" /><path d="m22 10-9.5 9.5L10 17" />
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="flex-none text-slate-500">
+      <path d="M20 6 9 17l-5-5" />
     </svg>
   )
 }
@@ -213,7 +230,8 @@ export default function FriendsPage() {
       const now = Date.now()
       const friendMeta: Record<string, {
         lastMessage: string | null; lastMessageTime: string | null; lastSenderId: string | null;
-        conversationId: string | null; hasUnread: boolean; partnerLastReadAt: string | null
+        lastMessageId: string | null; conversationId: string | null; hasUnread: boolean; partnerLastReadAt: string | null;
+        lastMessageDeliveredAt: string | null; lastMessageReadAt: string | null
       }> = {}
 
       if (friendIds.length) {
@@ -249,8 +267,9 @@ export default function FriendsPage() {
                   friendToConvRef.current[other] = convId
                   friendMeta[other] = {
                     lastMessage: null, lastMessageTime: null, lastSenderId: null,
-                    conversationId: convId, hasUnread: false,
+                    lastMessageId: null, conversationId: convId, hasUnread: false,
                     partnerLastReadAt: partnerLastRead[convId] ?? null,
+                    lastMessageDeliveredAt: null, lastMessageReadAt: null,
                   }
                 }
               }
@@ -262,7 +281,7 @@ export default function FriendsPage() {
               const lastRead = userLastRead[convId]
 
               const { data: lastMsg } = await supabase.from('messages')
-                .select('id,original_message,created_at,sender_id')
+                .select('id,original_message,created_at,sender_id,delivered_at,read_at')
                 .eq('conversation_id', convId)
                 .order('created_at', { ascending: false })
                 .limit(1)
@@ -272,13 +291,16 @@ export default function FriendsPage() {
                 friendMeta[friendId].lastMessage = (lastMsg as { original_message: string | null }).original_message
                 friendMeta[friendId].lastMessageTime = (lastMsg as { created_at: string }).created_at
                 friendMeta[friendId].lastSenderId = (lastMsg as { sender_id: string }).sender_id
+                friendMeta[friendId].lastMessageId = (lastMsg as { id: string }).id
+                friendMeta[friendId].lastMessageDeliveredAt = (lastMsg as { delivered_at: string | null }).delivered_at ?? null
+                friendMeta[friendId].lastMessageReadAt = (lastMsg as { read_at: string | null }).read_at ?? null
               }
 
               const { count } = await supabase.from('messages')
                 .select('id', { count: 'exact', head: true })
                 .eq('conversation_id', convId)
                 .neq('sender_id', user.id)
-                .gt('created_at', lastRead ?? '1970-01-01')
+                .is('read_at', null)
               friendMeta[friendId].hasUnread = (count ?? 0) > 0
             }
           }
@@ -298,11 +320,14 @@ export default function FriendsPage() {
             lastMessage: meta?.lastMessage ?? null,
             lastMessageTime: meta?.lastMessageTime ?? null,
             lastSenderId: meta?.lastSenderId ?? null,
+            lastMessageId: meta?.lastMessageId ?? null,
             conversationId: meta?.conversationId ?? null,
             isOnline,
             hasUnread: meta?.hasUnread ?? false,
             isTyping: false,
             partnerLastReadAt: meta?.partnerLastReadAt ?? null,
+            lastMessageDeliveredAt: meta?.lastMessageDeliveredAt ?? null,
+            lastMessageReadAt: meta?.lastMessageReadAt ?? null,
           }
         })
         .filter(Boolean) as FriendWithMeta[]
@@ -335,7 +360,7 @@ export default function FriendsPage() {
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
         if (!aliveRef.current) return
-        const msg = payload.new as { id: string; conversation_id: string; sender_id: string; original_message: string | null; created_at: string }
+        const msg = payload.new as { id: string; conversation_id: string; sender_id: string; original_message: string | null; created_at: string; delivered_at: string | null; read_at: string | null }
         const friendId = convToFriendRef.current[msg.conversation_id]
         if (!friendId) return
         setFriends((prev) => {
@@ -346,12 +371,35 @@ export default function FriendsPage() {
           f.lastMessage = msg.original_message
           f.lastMessageTime = msg.created_at
           f.lastSenderId = msg.sender_id
+          f.lastMessageId = msg.id
+          f.lastMessageDeliveredAt = msg.delivered_at
+          f.lastMessageReadAt = msg.read_at
           if (msg.sender_id !== uid) {
             f.hasUnread = true
           }
           f.isTyping = false
           updated[idx] = f
           sortFriends(updated)
+          return updated
+        })
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `sender_id=neq.${uid}` }, (payload) => {
+        if (!aliveRef.current) return
+        const msg = payload.new as { id: string; conversation_id: string; delivered_at: string | null; read_at: string | null }
+        const friendId = convToFriendRef.current[msg.conversation_id]
+        if (!friendId) return
+        setFriends((prev) => {
+          const idx = prev.findIndex((f) => f.id === friendId)
+          if (idx === -1) return prev
+          const f = prev[idx]
+          if (msg.id !== f.lastMessageId) return prev
+          const updated = [...prev]
+          updated[idx] = {
+            ...f,
+            lastMessageDeliveredAt: msg.delivered_at ?? f.lastMessageDeliveredAt,
+            lastMessageReadAt: msg.read_at ?? f.lastMessageReadAt,
+            hasUnread: msg.read_at ? false : f.hasUnread,
+          }
           return updated
         })
       })
@@ -595,8 +643,8 @@ export default function FriendsPage() {
                         const identity = resolveIdentity(p)
                         const busy = openingId === p.id
                         const isLastFromMe = p.lastSenderId === userId
-                        const isRead = isLastFromMe && !!p.partnerLastReadAt && !!p.lastMessageTime &&
-                          new Date(p.partnerLastReadAt).getTime() >= new Date(p.lastMessageTime).getTime()
+                        const isRead = isLastFromMe && !!p.lastMessageReadAt
+                        const isDelivered = isLastFromMe && !isRead && !!p.lastMessageDeliveredAt
 
                         return (
                           <div key={p.id}
@@ -624,7 +672,7 @@ export default function FriendsPage() {
                                   </div>
                                 ) : p.lastMessage ? (
                                   <>
-                                    {isLastFromMe && <TickIcon read={!!isRead} />}
+                                    {isLastFromMe && <TickIcon delivered={!!isDelivered} read={!!isRead} />}
                                     <p className={`min-w-0 flex-1 truncate text-xs ${p.hasUnread ? 'font-semibold text-white' : 'text-slate-400'}`}>
                                       {isLastFromMe && <span className="text-slate-500">You: </span>}
                                       {p.lastMessage}
