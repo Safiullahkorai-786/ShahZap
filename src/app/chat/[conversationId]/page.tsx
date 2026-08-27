@@ -573,14 +573,18 @@ export default function ChatPage() {
       if (data) setMessages(data as Message[])
     }
 
+    function safeMark() {
+      if (document.visibilityState === 'visible') void mark()
+    }
+
     mark()
-    const iv = window.setInterval(() => void mark(), 4000)
-    document.addEventListener('visibilitychange', mark)
-    window.addEventListener('focus', mark)
+    const iv = window.setInterval(safeMark, 4000)
+    document.addEventListener('visibilitychange', safeMark)
+    window.addEventListener('focus', safeMark)
     return () => {
       window.clearInterval(iv)
-      document.removeEventListener('visibilitychange', mark)
-      window.removeEventListener('focus', mark)
+      document.removeEventListener('visibilitychange', safeMark)
+      window.removeEventListener('focus', safeMark)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, conversationId, loading])
