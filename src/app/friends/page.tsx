@@ -21,7 +21,7 @@ type FriendWithMeta = Profile & {
   lastMessageId: string | null
   conversationId: string | null
   isOnline: boolean
-  hasUnread: boolean
+  unreadCount: number
   isTyping: boolean
   partnerLastReadAt: string | null
   lastMessageDeliveredAt: string | null
@@ -157,8 +157,8 @@ function sortFriends(arr: FriendWithMeta[]) {
   arr.sort((a, b) => {
     if (a.isTyping && !b.isTyping) return -1
     if (!a.isTyping && b.isTyping) return 1
-    if (a.hasUnread && !b.hasUnread) return -1
-    if (!a.hasUnread && b.hasUnread) return 1
+    if (a.unreadCount > 0 && b.unreadCount === 0) return -1
+    if (a.unreadCount === 0 && b.unreadCount > 0) return 1
     if (a.isOnline && !b.isOnline) return -1
     if (!a.isOnline && b.isOnline) return 1
     const aTime = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0
@@ -230,7 +230,7 @@ export default function FriendsPage() {
       const now = Date.now()
       const friendMeta: Record<string, {
         lastMessage: string | null; lastMessageTime: string | null; lastSenderId: string | null;
-        lastMessageId: string | null; conversationId: string | null; hasUnread: boolean; partnerLastReadAt: string | null;
+        lastMessageId: string | null; conversationId: string | null; unreadCount: number; partnerLastReadAt: string | null;
         lastMessageDeliveredAt: string | null; lastMessageReadAt: string | null
       }> = {}
 
@@ -267,7 +267,7 @@ export default function FriendsPage() {
                   friendToConvRef.current[other] = convId
                   friendMeta[other] = {
                     lastMessage: null, lastMessageTime: null, lastSenderId: null,
-                    lastMessageId: null, conversationId: convId, hasUnread: false,
+                    lastMessageId: null, conversationId: convId, unreadCount: 0,
                     partnerLastReadAt: partnerLastRead[convId] ?? null,
                     lastMessageDeliveredAt: null, lastMessageReadAt: null,
                   }
@@ -301,7 +301,7 @@ export default function FriendsPage() {
                 .eq('conversation_id', convId)
                 .neq('sender_id', user.id)
                 .is('read_at', null)
-              friendMeta[friendId].hasUnread = (count ?? 0) > 0
+              friendMeta[friendId].unreadCount = count ?? 0
             }
           }
         }
@@ -323,7 +323,7 @@ export default function FriendsPage() {
             lastMessageId: meta?.lastMessageId ?? null,
             conversationId: meta?.conversationId ?? null,
             isOnline,
-            hasUnread: meta?.hasUnread ?? false,
+            unreadCount: meta?.unreadCount ?? 0,
             isTyping: false,
             partnerLastReadAt: meta?.partnerLastReadAt ?? null,
             lastMessageDeliveredAt: meta?.lastMessageDeliveredAt ?? null,
@@ -375,7 +375,7 @@ export default function FriendsPage() {
           f.lastMessageDeliveredAt = msg.delivered_at
           f.lastMessageReadAt = msg.read_at
           if (msg.sender_id !== uid) {
-            f.hasUnread = true
+            f.unreadCount = (f.unreadCount || 0) + 1
           }
           f.isTyping = false
           updated[idx] = f
@@ -398,7 +398,7 @@ export default function FriendsPage() {
             ...f,
             lastMessageDeliveredAt: msg.delivered_at ?? f.lastMessageDeliveredAt,
             lastMessageReadAt: msg.read_at ?? f.lastMessageReadAt,
-            hasUnread: msg.read_at ? false : f.hasUnread,
+            unreadCount: msg.read_at ? 0 : f.unreadCount,
           }
           return updated
         })
@@ -540,7 +540,7 @@ export default function FriendsPage() {
 
     const convId = data as string
     await supabase.rpc('mark_conversation_read', { p_conversation_id: convId })
-    setFriends((prev) => prev.map((f) => f.id === profileId ? { ...f, hasUnread: false, isTyping: false } : f))
+    setFriends((prev) => prev.map((f) => f.id === profileId ? { ...f, unreadCount: 0, isTyping: false } : f))
 
     setOpeningId(null)
     router.push(`/chat/${convId}`)
@@ -560,7 +560,7 @@ export default function FriendsPage() {
     }
     if (filterGender !== 'all' && f.gender !== filterGender) return false
     if (filterRegion !== 'all' && getRegionForCountry(f.country_code) !== filterRegion) return false
-    if (filterUnread && !f.hasUnread) return false
+    if (filterUnread && f.unreadCount === 0) return false
     if (filterOnline && !f.isOnline) return false
     return true
   })
@@ -673,7 +673,7 @@ export default function FriendsPage() {
                                 ) : p.lastMessage ? (
                                   <>
                                     {isLastFromMe && <TickIcon delivered={!!isDelivered} read={!!isRead} />}
-                                    <p className={`min-w-0 flex-1 truncate text-xs ${p.hasUnread ? 'font-semibold text-white' : 'text-slate-400'}`}>
+                                    <p className={`min-w-0 flex-1 truncate text-xs ${p.unreadCount > 0 ? 'font-semibold text-white' : 'text-slate-400'}`}>
                                       {isLastFromMe && <span className="text-slate-500">You: </span>}
                                       {p.lastMessage}
                                     </p>
@@ -682,14 +682,19 @@ export default function FriendsPage() {
                                   <p className="min-w-0 flex-1 truncate text-xs text-slate-500">Start a conversation</p>
                                 )}
                                 {!p.isTyping && p.lastMessageTime && (
-                                  <span className={`flex-none text-[10px] ${p.hasUnread ? 'font-semibold text-cyan-400' : 'text-slate-600'}`}>
+                                  <span className={`flex-none text-[10px] ${p.unreadCount > 0 ? 'font-semibold text-cyan-400' : 'text-slate-600'}`}>
                                     {formatTime(p.lastMessageTime)}
                                   </span>
                                 )}
                               </div>
                             </div>
 
-                            <div className="flex flex-none items-center">
+                            <div className="flex flex-none items-center gap-2">
+                              {p.unreadCount > 0 && (
+                                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-cyan-400 px-1.5 text-[10px] font-bold text-slate-950">
+                                  {p.unreadCount}
+                                </span>
+                              )}
                               <button onClick={(e) => { e.stopPropagation(); if (!busy) void openChat(p.id) }} disabled={busy}
                                 className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-700 text-slate-300 transition hover:border-cyan-400 hover:bg-cyan-400/10 hover:text-cyan-200 disabled:opacity-50">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
