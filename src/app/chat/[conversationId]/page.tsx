@@ -28,6 +28,8 @@ type Message = {
   deleted_at?: string | null
   reply_to_message_id?: string | null
   deleted_by_receiver_at?: string | null
+  delivered_at?: string | null
+  read_at?: string | null
 }
 type OtherProfile = {
   id: string
@@ -80,7 +82,7 @@ const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', 
 // 20s, and returning goes green again in near real time.
 const ONLINE_WINDOW_MS = 20 * 1000
 const EDIT_WINDOW_MS = 15 * 60 * 1000
-const MESSAGE_COLUMNS = 'id,sender_id,original_message,translated_message,created_at,reactions,edited_at,deleted_at,reply_to_message_id,deleted_by_receiver_at'
+const MESSAGE_COLUMNS = 'id,sender_id,original_message,translated_message,created_at,reactions,edited_at,deleted_at,reply_to_message_id,deleted_by_receiver_at,delivered_at,read_at'
 
 type WallpaperPrefs = { mode: 'wallpaper' | 'solid'; solid: string; dim: number }
 const SOLID_COLORS = ['#020617', '#0f172a', '#1e293b', '#083344', '#134e4a', '#1e1b4b', '#450a0a', '#052e16']
@@ -175,9 +177,6 @@ export default function ChatPage() {
   const [otherOnline, setOtherOnline] = useState(false)
   const [presenceLabel, setPresenceLabel] = useState('')
   const [otherLastActiveAt, setOtherLastActiveAt] = useState<string | null>(null)
-  // Partner's read receipt: when they last had this chat open. Drives the
-  // coloured "seen" double tick on my own messages.
-  const [partnerReadAt, setPartnerReadAt] = useState<string | null>(null)
   const [showScrollDown, setShowScrollDown] = useState(false)
   const [reactorInfo, setReactorInfo] = useState<{ emoji: string; names: string[] } | null>(null)
   const [sel, setSel] = useState<Selection>({ base: 'dark', accent: 'none' })
@@ -273,9 +272,6 @@ export default function ChatPage() {
         if ((op as any)?.languages_known_visible) {
           if (active) setOtherLanguages((op as any).languages_known ?? [])
         }
-        // Partner's read receipt for the coloured "seen" tick.
-        const { data: cp } = await supabase.from('conversation_participants').select('last_read_at').eq('conversation_id', conversationId).eq('profile_id', otherProfileId).maybeSingle()
-        if (active && cp) setPartnerReadAt(cp.last_read_at ?? null)
         // Did they decline our friend request 3 times? Then requests are off.
         const { count: declinedCount } = await supabase.from('friend_requests').select('id', { count: 'exact', head: true }).eq('sender_id', user.id).eq('receiver_id', otherProfileId).eq('status', 'declined')
         if (active) setReqBlocked((declinedCount ?? 0) >= 3)
@@ -328,13 +324,6 @@ export default function ChatPage() {
             setOtherLanguages(row.languages_known ?? [])
           } else {
             setOtherLanguages([])
-          }
-        })
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversation_participants', filter: `conversation_id=eq.${conversationId}` }, (payload) => {
-          const row = payload.new as { profile_id: string; last_read_at: string | null }
-          // Partner's last_read_at changed → flip my sent ticks to blue "seen" instantly.
-          if (row.profile_id !== user.id) {
-            setPartnerReadAt(row.last_read_at ?? null)
           }
         })
         .on('broadcast', { event: 'typing' }, ({ payload }) => {
@@ -464,13 +453,11 @@ export default function ChatPage() {
         })
         const latest = fresh[fresh.length - 1]
         if (latest && latest.sender_id !== user.id) setBotTyping(false)
-        // Keep the partner's presence + read receipt fresh EVERY tick (3s)
-        // so the dot and ticks stay live even if Realtime hiccups.
+        // Keep the partner's presence fresh EVERY tick (3s) so the dot and
+        // "last seen" label stay live even if Realtime hiccups.
         if (otherProfileId && !isBotProfile(otherProfileId)) {
           const { data: op } = await supabase.from('profiles').select('last_active_at').eq('id', otherProfileId).maybeSingle()
           if (op && active) refreshPresence(op.last_active_at ?? null)
-          const { data: cp } = await supabase.from('conversation_participants').select('last_read_at').eq('conversation_id', conversationId).eq('profile_id', otherProfileId).maybeSingle()
-          if (cp && active) setPartnerReadAt(cp.last_read_at ?? null)
         }
         // Recompute label/online from the latest known timestamp every tick,
         // so "last seen 1m ago" counts up and flips offline right on time.
@@ -491,16 +478,15 @@ export default function ChatPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId, router])
 
-  // Read receipts: while THIS chat is open and the tab/PWA is visible,
-  // stamp my participant row so my partner's ticks turn "seen". Re-stamps
-  // when new messages arrive, on focus, and on an interval while visible so
-  // the partner's blue "seen" ticks stay live for every message I read.
+  // Read receipts: while THIS chat is open, stamp my read receipt AND mark
+  // inbound messages read so my partner's ticks turn "seen". Re-stamps on an
+  // interval so the sender's blue tick stays live for every message I read.
   useEffect(() => {
     if (!userId || !conversationId || loading) return
     // Server-authoritative stamp — cannot be silently dropped. Runs every 4s
     // while the chat is mounted regardless of visibilityState, because some
     // mobile/PWA shells report 'hidden' even while the user is actively in
-    // the chat (which would otherwise freeze last_read_at and break blue
+    // the chat (which would otherwise freeze delivery/read and break blue
     // "seen" ticks).
     const mark = () => {
       void createClient().rpc('mark_conversation_read', { p_conversation_id: conversationId })
@@ -967,24 +953,19 @@ export default function ChatPage() {
     inputRef.current?.focus({ preventScroll: true })
   }
 
-  // WhatsApp-style delivery state for my own messages:
-  //   single tick      → partner offline when the message landed;
-  //   white double tick → partner has been online since (even unread);
-  //   blue double tick  → partner opened this chat (seen).
+  // WhatsApp-style delivery state for my own messages (persisted server-side,
+  // so ticks only move forward and never regress when the partner goes off):
+  //   single tick      → delivered_at NULL (not yet reached the receiver);
+  //   white double tick → delivered_at set (receiver online/received);
+  //   blue double tick  → read_at set (receiver opened this chat).
   function isDelivered(m: Message): boolean {
     if (persona) return true
-    const t = otherLastActiveAt ? new Date(otherLastActiveAt).getTime() : 0
-    if (!t) return false
-    if (t >= new Date(m.created_at).getTime()) return true
-    // Display-only clock read; presence refreshes re-render anyway.
-    // eslint-disable-next-line react-hooks/purity
-    return Date.now() - t < ONLINE_WINDOW_MS
+    return !!m.delivered_at
   }
 
   function isSeen(m: Message): boolean {
     if (persona) return true
-    if (!partnerReadAt) return false
-    return new Date(partnerReadAt).getTime() >= new Date(m.created_at).getTime()
+    return !!m.read_at
   }
 
   // Insert an emoji/emoticon at the cursor and keep the caret right after it.

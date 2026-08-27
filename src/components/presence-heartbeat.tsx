@@ -43,6 +43,9 @@ export function PresenceHeartbeat() {
         const ok = await resolveAuth()
         if (ok && active) await supabase.rpc('touch_presence')
       }
+      // Deliver any inbound messages sent while online so the sender's
+      // double-tick appears (and stays) even if the DM is never opened.
+      void supabase.rpc('sync_deliveries')
     }
 
     function onVisChange() { void beat() }
