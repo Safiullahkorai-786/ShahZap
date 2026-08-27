@@ -299,6 +299,21 @@ export default function ChatPage() {
       if (readError) setError(friendlyError(readError, 'Could not load the messages. Please refresh.'))
       if (active) { setMessages((data ?? []) as Message[]); setLoading(false) }
 
+      // Immediately stamp read on inbound messages so the sender's blue ticks
+      // appear. Direct client update fires the DB trigger; belt-and-suspenders
+      // with the server RPC.
+      void (async () => {
+        await supabase
+          .from('conversation_participants')
+          .update({ last_read_at: new Date().toISOString() })
+          .eq('conversation_id', conversationId)
+          .eq('profile_id', user.id)
+        await supabase.rpc('mark_conversation_read', { p_conversation_id: conversationId }).then(() => {}, () => {})
+        if (!active) return
+        const { data: fresh } = await supabase.from('messages').select(MESSAGE_COLUMNS).eq('conversation_id', conversationId).order('created_at', { ascending: true })
+        if (active && fresh) setMessages(fresh as Message[])
+      })()
+
       channel = supabase.channel(`conversation:${conversationId}`, { config: { broadcast: { self: false } } })
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload) => {
           const message = payload.new as Message
@@ -447,6 +462,7 @@ export default function ChatPage() {
             fresh.some((fm, i) => {
               const pm = prev[i]
               return !pm || pm.id !== fm.id || pm.edited_at !== fm.edited_at || pm.deleted_at !== fm.deleted_at || pm.deleted_by_receiver_at !== fm.deleted_by_receiver_at ||
+                pm.delivered_at !== fm.delivered_at || pm.read_at !== fm.read_at ||
                 JSON.stringify(pm.reactions ?? {}) !== JSON.stringify(fm.reactions ?? {})
             })
           return changed ? (fresh as Message[]) : prev
@@ -483,16 +499,33 @@ export default function ChatPage() {
   // interval so the sender's blue tick stays live for every message I read.
   useEffect(() => {
     if (!userId || !conversationId || loading) return
-    // Server-authoritative stamp — cannot be silently dropped. Runs every 4s
-    // while the chat is mounted regardless of visibilityState, because some
-    // mobile/PWA shells report 'hidden' even while the user is actively in
-    // the chat (which would otherwise freeze delivery/read and break blue
-    // "seen" ticks).
-    const mark = () => {
-      void createClient().rpc('mark_conversation_read', { p_conversation_id: conversationId })
+
+    async function mark() {
+      const supabase = createClient()
+      // 1. Directly update our own last_read_at via client (RLS-safe).
+      //    This fires the DB trigger that stamps read_at on inbound messages.
+      await supabase
+        .from('conversation_participants')
+        .update({ last_read_at: new Date().toISOString() })
+        .eq('conversation_id', conversationId)
+        .eq('profile_id', userId)
+
+      // 2. Also call the server RPC as a belt-and-suspenders safety net.
+      //    Swallow errors — the direct update above is the primary path.
+      await supabase.rpc('mark_conversation_read', { p_conversation_id: conversationId }).then(() => {}, () => {})
+
+      // 3. Re-fetch messages to immediately pick up the server-stamped
+      //    read_at values (don't wait for Realtime or the 3s poll).
+      const { data } = await supabase
+        .from('messages')
+        .select(MESSAGE_COLUMNS)
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true })
+      if (data) setMessages(data as Message[])
     }
+
     mark()
-    const iv = window.setInterval(mark, 4000)
+    const iv = window.setInterval(() => void mark(), 4000)
     document.addEventListener('visibilitychange', mark)
     window.addEventListener('focus', mark)
     return () => {
@@ -500,7 +533,8 @@ export default function ChatPage() {
       document.removeEventListener('visibilitychange', mark)
       window.removeEventListener('focus', mark)
     }
-  }, [userId, conversationId, loading, messages.length])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, conversationId, loading])
 
   // Grow the composer with its content (up to ~5 lines), then scroll inside.
   useEffect(() => {
@@ -953,14 +987,13 @@ export default function ChatPage() {
     inputRef.current?.focus({ preventScroll: true })
   }
 
-  // WhatsApp-style delivery state for my own messages (persisted server-side,
-  // so ticks only move forward and never regress when the partner goes off):
-  //   single tick      → delivered_at NULL (not yet reached the receiver);
-  //   white double tick → delivered_at set (receiver online/received);
-  //   blue double tick  → read_at set (receiver opened this chat).
-  function isDelivered(m: Message): boolean {
+  // WhatsApp-style ticks for my own messages:
+  //   single tick      → receiver offline (regresses when they go away);
+  //   white double tick → receiver currently online;
+  //   blue double tick  → receiver has read the message (permanent).
+  function isDelivered(): boolean {
     if (persona) return true
-    return !!m.delivered_at
+    return otherOnline
   }
 
   function isSeen(m: Message): boolean {
@@ -1469,7 +1502,7 @@ export default function ChatPage() {
                       {mine && !deleted && (
                         isSeen(m)
                           ? <CheckCheck size={13} strokeWidth={2.5} className="self-center text-sky-300 drop-shadow-[0_1px_1px_rgba(15,23,42,0.6)]" aria-label="Seen" />
-                          : isDelivered(m)
+                          : isDelivered()
                             ? <CheckCheck size={13} strokeWidth={2.5} className="self-center text-white drop-shadow-[0_1px_1px_rgba(15,23,42,0.6)]" aria-label="Delivered" />
                             : <Check size={13} strokeWidth={2.5} className="self-center opacity-50" aria-label="Sent" />
                       )}
