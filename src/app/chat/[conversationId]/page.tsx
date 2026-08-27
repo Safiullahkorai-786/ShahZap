@@ -218,8 +218,12 @@ export default function ChatPage() {
   useEffect(() => {
     const supabase = createClient()
     let channel: ReturnType<typeof supabase.channel> | undefined
-    let poll: number | undefined
     let active = true
+    // Smart fallback: only poll when Realtime is down or silent.
+    let lastRealtimeActivity = Date.now()
+    let channelStatus = ''
+    let smartPollTimer: number | undefined
+    let staleCheckTimer: number | undefined
     const otherRef: { current: OtherProfile | null } = { current: null }
     const otherIdRef: { current: string | null } = { current: null }
 
@@ -234,6 +238,55 @@ export default function ChatPage() {
       const online = !!iso && Date.now() - new Date(iso).getTime() < ONLINE_WINDOW_MS
       setOtherOnline(online)
       setPresenceLabel(online ? 'online' : lastSeen(iso))
+    }
+
+    // ── Smart fallback polling ───────────────────────────────────────────
+    // Only run when Realtime is down or silent. Saves ~1 200 req/hr.
+    const SMART_POLL_MS = 5_000
+    const STALE_MS = 30_000
+
+    async function pollMessages() {
+      if (!active) return
+      const { data: fresh } = await supabase.from('messages').select(MESSAGE_COLUMNS).eq('conversation_id', conversationId).order('created_at', { ascending: true })
+      if (!fresh || !active) return
+      const toggling = togglingMessages.current
+      setMessages((prev) => {
+        if (toggling.size > 0) {
+          const next = prev.map((m) => toggling.has(m.id) ? m : (fresh.find((f) => f.id === m.id) as Message) ?? m)
+          return next.length === prev.length && next.every((m, i) => m === prev[i]) ? prev : next
+        }
+        const changed = prev.length !== fresh.length || fresh[fresh.length - 1]?.id !== prev[prev.length - 1]?.id ||
+          fresh.some((fm, i) => {
+            const pm = prev[i]
+            return !pm || pm.id !== fm.id || pm.edited_at !== fm.edited_at || pm.deleted_at !== fm.deleted_at || pm.deleted_by_receiver_at !== fm.deleted_by_receiver_at ||
+              pm.delivered_at !== fm.delivered_at || pm.read_at !== fm.read_at ||
+              JSON.stringify(pm.reactions ?? {}) !== JSON.stringify(fm.reactions ?? {})
+          })
+        return changed ? (fresh as Message[]) : prev
+      })
+      const latest = fresh[fresh.length - 1]
+      if (latest && latest.sender_id !== userIdRef2.current) setBotTyping(false)
+      if (otherIdRef.current && !isBotProfile(otherIdRef.current)) {
+        const { data: op } = await supabase.from('profiles').select('last_active_at').eq('id', otherIdRef.current).maybeSingle()
+        if (op && active) refreshPresence(op.last_active_at ?? null)
+      }
+      refreshPresence()
+    }
+
+    function startSmartPoll() {
+      if (smartPollTimer) return
+      smartPollTimer = window.setInterval(() => void pollMessages(), SMART_POLL_MS)
+    }
+
+    function stopSmartPoll() {
+      if (smartPollTimer) { window.clearInterval(smartPollTimer); smartPollTimer = undefined }
+    }
+
+    function checkStaleness() {
+      if (!active || !channelStatus) return
+      if (channelStatus !== 'SUBSCRIBED') { startSmartPoll(); return }
+      if (Date.now() - lastRealtimeActivity > STALE_MS) { startSmartPoll(); return }
+      stopSmartPoll()
     }
 
     async function load() {
@@ -316,16 +369,19 @@ export default function ChatPage() {
 
       channel = supabase.channel(`conversation:${conversationId}`, { config: { broadcast: { self: false } } })
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload) => {
+          lastRealtimeActivity = Date.now()
           const message = payload.new as Message
           setMessages((current) => (current.some((item) => item.id === message.id) ? current : [...current, message]))
           if (isBotProfile(message.sender_id)) setBotTyping(false)
           if (message.sender_id !== user.id) playMessageSound()
         })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload) => {
+          lastRealtimeActivity = Date.now()
           const updated = payload.new as Message
           setMessages((current) => current.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)))
         })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${otherProfileId}` }, (payload) => {
+          lastRealtimeActivity = Date.now()
           const row = payload.new as Record<string, any>
           refreshPresence(row.last_active_at ?? null)
           // Update other profile fields in real time
@@ -342,6 +398,7 @@ export default function ChatPage() {
           }
         })
         .on('broadcast', { event: 'typing' }, ({ payload }) => {
+          lastRealtimeActivity = Date.now()
           const p = payload as { typing: boolean; from: string }
           if (p.from === user.id) return
           if (p.typing) {
@@ -353,6 +410,7 @@ export default function ChatPage() {
           }
         })
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'friend_requests', filter: `receiver_id=eq.${user.id}` }, async (payload) => {
+          lastRealtimeActivity = Date.now()
           const row = payload.new as { id: string; sender_id: string }
           trackFrRow(row.id, row.sender_id, user.id, 'pending')
           if (row.sender_id !== otherProfileId || isBotProfile(row.sender_id)) return
@@ -364,6 +422,7 @@ export default function ChatPage() {
           incomingTimer.current = window.setTimeout(() => setIncomingReq(null), 10_000)
         })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'friend_requests', filter: `sender_id=eq.${user.id}` }, async (payload) => {
+          lastRealtimeActivity = Date.now()
           const row = payload.new as { id: string; receiver_id: string; status: string }
           const entry = frRows.current.get(String(row.id))
           if (entry) entry.status = row.status
@@ -383,6 +442,7 @@ export default function ChatPage() {
           }
         })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'friend_requests', filter: `receiver_id=eq.${user.id}` }, (payload) => {
+          lastRealtimeActivity = Date.now()
           const row = payload.new as { id: string; sender_id: string; status: string }
           const entry = frRows.current.get(String(row.id))
           if (entry) entry.status = row.status
@@ -391,6 +451,7 @@ export default function ChatPage() {
           if (row.status === 'declined') { updateFriendState('none'); setIncomingReq(null); setStatusLine('Friend request declined.') }
         })
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'blocks' }, (payload) => {
+          lastRealtimeActivity = Date.now()
           // Live freeze / unfreeze while the chat is open.
           const row = (payload.eventType === 'DELETE' ? payload.old : payload.new) as { blocker_id?: string; blocked_id?: string } | null
           if (!row?.blocker_id || !row.blocked_id) return
@@ -408,6 +469,7 @@ export default function ChatPage() {
           }
         })
         .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'friend_requests' }, async (payload) => {
+          lastRealtimeActivity = Date.now()
           // Realtime strips deleted rows to their primary key — resolve via ledger.
           const old = payload.old as { id?: string | number }
           const key = old?.id != null ? String(old.id) : null
@@ -438,47 +500,17 @@ export default function ChatPage() {
             updateFriendState('none')
           }
         })
-.subscribe()
-      channelRef.current = channel
-
-      // Safety net if Realtime drops.
-      poll = window.setInterval(async () => {
-        const { data: fresh } = await supabase.from('messages').select(MESSAGE_COLUMNS).eq('conversation_id', conversationId).order('created_at', { ascending: true })
-        if (!fresh || !active) return
-        // Replace state only when something actually changed — including
-        // reaction/edited/deleted deltas that Realtime may have dropped.
-        // Skip messages with an in-flight toggle so stale server data doesn't
-        // overwrite the optimistic update before the RPC completes.
-        const toggling = togglingMessages.current
-        setMessages((prev) => {
-          // When a reaction/edit/delete toggle is in flight, only update
-          // non-toggling messages. This prevents the 3s poll from reverting
-          // the optimistic update with stale server data.
-          if (toggling.size > 0) {
-            const next = prev.map((m) => toggling.has(m.id) ? m : (fresh.find((f) => f.id === m.id) as Message) ?? m)
-            return next.length === prev.length && next.every((m, i) => m === prev[i]) ? prev : next
+.subscribe((status) => {
+          channelStatus = status
+          if (status === 'SUBSCRIBED') {
+            lastRealtimeActivity = Date.now()
+            stopSmartPoll()
+            if (!staleCheckTimer) staleCheckTimer = window.setInterval(checkStaleness, SMART_POLL_MS)
+          } else {
+            startSmartPoll()
           }
-          const changed = prev.length !== fresh.length || fresh[fresh.length - 1]?.id !== prev[prev.length - 1]?.id ||
-            fresh.some((fm, i) => {
-              const pm = prev[i]
-              return !pm || pm.id !== fm.id || pm.edited_at !== fm.edited_at || pm.deleted_at !== fm.deleted_at || pm.deleted_by_receiver_at !== fm.deleted_by_receiver_at ||
-                pm.delivered_at !== fm.delivered_at || pm.read_at !== fm.read_at ||
-                JSON.stringify(pm.reactions ?? {}) !== JSON.stringify(fm.reactions ?? {})
-            })
-          return changed ? (fresh as Message[]) : prev
         })
-        const latest = fresh[fresh.length - 1]
-        if (latest && latest.sender_id !== user.id) setBotTyping(false)
-        // Keep the partner's presence fresh EVERY tick (3s) so the dot and
-        // "last seen" label stay live even if Realtime hiccups.
-        if (otherProfileId && !isBotProfile(otherProfileId)) {
-          const { data: op } = await supabase.from('profiles').select('last_active_at').eq('id', otherProfileId).maybeSingle()
-          if (op && active) refreshPresence(op.last_active_at ?? null)
-        }
-        // Recompute label/online from the latest known timestamp every tick,
-        // so "last seen 1m ago" counts up and flips offline right on time.
-        refreshPresence()
-      }, 3000)
+      channelRef.current = channel
     }
 
     void load()
@@ -486,7 +518,8 @@ export default function ChatPage() {
       active = false
       channelRef.current = null
       if (channel) void supabase.removeChannel(channel)
-      if (poll) window.clearInterval(poll)
+      if (smartPollTimer) window.clearInterval(smartPollTimer)
+      if (staleCheckTimer) window.clearInterval(staleCheckTimer)
       window.clearTimeout(typingStopTimer.current)
       window.clearTimeout(partnerTypingExpiry.current)
       window.clearTimeout(pressTimer.current)
