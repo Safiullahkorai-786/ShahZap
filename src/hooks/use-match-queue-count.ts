@@ -3,54 +3,123 @@
 import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
+type QueueRow = {
+  id: string
+  profile_id: string
+  status: string
+  expires_at: string
+}
+
 /**
  * Live count of how many people are currently looking for a match.
  *
- * Strategy:
- * - Server-side RPC (match_queue_count) for the source of truth
- * - Realtime * on match_queue → full re-query (someone joined/left/matched)
- * - Visibility change / focus → full re-query (catch anything missed)
- * - 15s poll → full re-query (safety net + expiry churn)
+ * INSTANT strategy (no count-RPC round-trip on every event):
+ * - Load the authoritative count once via match_queue_count()
+ * - Then adjust the local figure by a DELTA computed straight off each
+ *   Realtime event's row payload:
+ *     INSERT waiting (not self)  -> +1
+ *     UPDATE leaving waiting     -> -1 / entering waiting -> +1
+ *     DELETE waiting (not self)  -> -1
+ *   Updates therefore appear the moment the row changes, not one RPC later.
+ * - Keep a slower safety-net correction (focus + 15s poll) so expiring rows
+ *   that never emit a DB event don't drift the count.
  */
 export function useMatchQueueCount() {
   const [count, setCount] = useState<number | null>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const channelRef = useRef<any>(null)
+  const countRef = useRef<number | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const selfRef = useRef<any>(null)
 
-  async function fetchCount(supabase: ReturnType<typeof createClient>) {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-    const { data, error } = await supabase.rpc('match_queue_count')
-    if (error || typeof data !== 'number') return
-    setCount(data)
+  countRef.current = count
+
+  function syncCount(supabase: ReturnType<typeof createClient>) {
+    void (async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      selfRef.current = user.id
+      const { data, error } = await supabase.rpc('match_queue_count')
+      if (error || typeof data !== 'number') return
+      countRef.current = data
+      setCount(data)
+    })()
+  }
+
+  function adjust(delta: number) {
+    const cur = countRef.current
+    if (cur === null) return
+    const next = Math.max(0, cur + delta)
+    countRef.current = next
+    setCount(next)
+  }
+
+  // True when an event represents a waiting entry for someone else.
+  function isActive(row: QueueRow | undefined, selfId: unknown) {
+    if (!row) return false
+    if (row.profile_id === selfId) return false
+    if (row.status !== 'waiting') return false
+    if (!row.expires_at) return false
+    return new Date(row.expires_at).getTime() > Date.now()
   }
 
   useEffect(() => {
     const supabase = createClient()
 
-    void fetchCount(supabase)
+    void (async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      selfRef.current = user.id
+    })()
 
-    // Realtime: match_queue changed → full re-query
+    syncCount(supabase)
+
     const channel = supabase
-      .channel('match-queue-count-v1')
+      .channel('match-queue-count-v2')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'match_queue' },
-        () => { void fetchCount(supabase) },
+        { event: 'INSERT', schema: 'public', table: 'match_queue' },
+        (payload) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const row = payload.new as unknown as QueueRow
+          if (isActive(row, selfRef.current)) adjust(1)
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'match_queue' },
+        (payload) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const was = payload.old as unknown as QueueRow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const now = payload.new as unknown as QueueRow
+          const wasActive = isActive(was, selfRef.current)
+          const nowActive = isActive(now, selfRef.current)
+          if (wasActive && !nowActive) adjust(-1)
+          else if (!wasActive && nowActive) adjust(1)
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'match_queue' },
+        (payload) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const old = payload.old as unknown as QueueRow
+          if (isActive(old, selfRef.current)) adjust(-1)
+        },
       )
       .subscribe()
 
     channelRef.current = channel
 
-    // Re-fetch on visibility change or focus (catches anything missed)
     function handleVisible() {
-      if (document.visibilityState === 'visible') void fetchCount(supabase)
+      if (document.visibilityState === 'visible') syncCount(supabase)
     }
     document.addEventListener('visibilitychange', handleVisible)
     window.addEventListener('focus', handleVisible)
 
-    // Safety-net poll every 15s (queue rows expire on a timer server-side)
-    const poll = window.setInterval(() => void fetchCount(supabase), 15_000)
+    // Safety-net correction (handles server-side expiries that emit no event)
+    const poll = window.setInterval(() => syncCount(supabase), 15_000)
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisible)
