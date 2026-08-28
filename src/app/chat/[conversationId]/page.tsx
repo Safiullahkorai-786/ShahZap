@@ -176,6 +176,7 @@ export default function ChatPage() {
   const incomingTimer = useRef<number | undefined>(undefined)
   const lastLocalFriendChange = useRef<number>(0)
   const [otherOnline, setOtherOnline] = useState(false)
+  const [selfViewing, setSelfViewing] = useState(true)
   const [presenceLabel, setPresenceLabel] = useState('')
   const [otherLastActiveAt, setOtherLastActiveAt] = useState<string | null>(null)
   const [showScrollDown, setShowScrollDown] = useState(false)
@@ -1053,13 +1054,31 @@ export default function ChatPage() {
   }
 
   // WhatsApp-style ticks for my own messages:
-  //   single tick      → message not yet delivered or receiver went offline;
-  //   white double tick → receiver is online and message delivered;
-  //   blue double tick  → receiver has read the message (permanent).
+  //   single tick        → message not yet delivered, or I'm not actively
+  //                        viewing this chat right now;
+  //   white double tick  → message is delivered (delivered_at set, permanent)
+  //                        and I'm online on the active tab;
+  //   blue double tick   → receiver has read the message (permanent).
   function isDelivered(m: Message): boolean {
     if (persona) return true
-    return !!m.delivered_at && otherOnline
+    return !!m.delivered_at && selfViewing
   }
+
+  // Track whether this chat tab is actually on screen (visible + focused).
+  // While viewing, delivered double ticks stay permanent; when the tab is
+  // hidden/blurred they fall back to a single "sent" tick until you return.
+  useEffect(() => {
+    const update = () => setSelfViewing(document.visibilityState === 'visible' && document.hasFocus())
+    update()
+    document.addEventListener('visibilitychange', update)
+    window.addEventListener('focus', update)
+    window.addEventListener('blur', update)
+    return () => {
+      document.removeEventListener('visibilitychange', update)
+      window.removeEventListener('focus', update)
+      window.removeEventListener('blur', update)
+    }
+  }, [])
 
   function isSeen(m: Message): boolean {
     if (persona) return true
