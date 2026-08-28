@@ -8,7 +8,12 @@ import { Shimmer } from '@/components/shimmer'
 import { CONTINENTS, getCountriesForRegion, getRegionForCountry, getCountryName, REGION_LABELS } from '@/lib/regions'
 
 const AGE_BANDS = [['18_20', '18–20'], ['21_29', '21–29'], ['30_44', '30–44'], ['45_59', '45–59'], ['60_plus', '60+']] as const
-const LANGUAGES = [['en', 'English'], ['ur', 'Urdu'], ['sd', 'Sindhi'], ['hi', 'Hindi'], ['pa', 'Punjabi'], ['ar', 'Arabic'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German'], ['tr', 'Turkish']] as const
+const LANGUAGES = [
+  ['en', 'English'], ['ur', 'Urdu'], ['hi', 'Hindi'], ['sd', 'Sindhi'], ['pa', 'Punjabi'],
+  ['bn', 'Bengali'], ['es', 'Spanish'], ['pt', 'Portuguese'], ['fr', 'French'], ['de', 'German'],
+  ['ru', 'Russian'], ['ar', 'Arabic'], ['tr', 'Turkish'], ['id', 'Indonesian'], ['vi', 'Vietnamese'],
+  ['tl', 'Tagalog'], ['th', 'Thai'], ['ja', 'Japanese'], ['ko', 'Korean'], ['zh_cn', 'Chinese (Simplified)'],
+] as const
 const LANG_MAP: Record<string, string> = Object.fromEntries(LANGUAGES)
 const GENERATIONS = [['gen_z', 'Gen Z'], ['millennial', 'Millennial'], ['gen_x', 'Gen X'], ['boomer', 'Boomer']] as const
 const GEN_MAP: Record<string, string> = Object.fromEntries(GENERATIONS)

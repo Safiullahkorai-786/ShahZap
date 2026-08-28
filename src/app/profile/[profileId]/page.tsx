@@ -11,8 +11,10 @@ import { Ban, Clock, ShieldAlert, UserCheck, UserMinus, UserPlus } from 'lucide-
 import { getRegionForCountry, REGION_LABELS, getCountryName } from '@/lib/regions'
 
 const LANG_LABELS: Record<string, string> = {
-  en: 'English', ur: 'Urdu', sd: 'Sindhi', hi: 'Hindi', pa: 'Punjabi', ar: 'Arabic',
-  es: 'Spanish', fr: 'French', de: 'German', tr: 'Turkish',
+  en: 'English', ur: 'Urdu', hi: 'Hindi', sd: 'Sindhi', pa: 'Punjabi', bn: 'Bengali',
+  es: 'Spanish', pt: 'Portuguese', fr: 'French', de: 'German', ru: 'Russian', ar: 'Arabic',
+  tr: 'Turkish', id: 'Indonesian', vi: 'Vietnamese', tl: 'Tagalog', th: 'Thai',
+  ja: 'Japanese', ko: 'Korean', zh_cn: 'Chinese (Simplified)',
 }
 const GEN_MAP: Record<string, string> = { gen_z: 'Gen Z', millennial: 'Millennial', gen_x: 'Gen X', boomer: 'Boomer' }
 const GENDER_MAP: Record<string, string> = { woman: 'Woman', man: 'Man', non_binary: 'Non-binary', prefer_not_to_say: 'Prefer not to say' }

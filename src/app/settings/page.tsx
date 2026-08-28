@@ -10,10 +10,10 @@ import { AppHeader } from '@/components/app-header'
 import { Shimmer } from '@/components/shimmer'
 
 const LANGUAGES = [
-  ['en', 'English'], ['ur', 'Urdu'], ['sd', 'Sindhi'], ['hi', 'Hindi'], ['pa', 'Punjabi'],
-  ['ar', 'Arabic'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German'], ['tr', 'Turkish'],
-  ['bn', 'Bengali'], ['zh', 'Chinese'], ['fa', 'Persian'], ['ru', 'Russian'], ['pt', 'Portuguese'],
-  ['id', 'Indonesian'], ['ms', 'Malay'], ['ja', 'Japanese'], ['ko', 'Korean'], ['it', 'Italian'],
+  ['en', 'English'], ['ur', 'Urdu'], ['hi', 'Hindi'], ['sd', 'Sindhi'], ['pa', 'Punjabi'],
+  ['bn', 'Bengali'], ['es', 'Spanish'], ['pt', 'Portuguese'], ['fr', 'French'], ['de', 'German'],
+  ['ru', 'Russian'], ['ar', 'Arabic'], ['tr', 'Turkish'], ['id', 'Indonesian'], ['vi', 'Vietnamese'],
+  ['tl', 'Tagalog'], ['th', 'Thai'], ['ja', 'Japanese'], ['ko', 'Korean'], ['zh_cn', 'Chinese (Simplified)'],
 ] as const
 const GENDER_OPTIONS = [['woman', 'Women'], ['man', 'Men'], ['non_binary', 'Non-binary'], ['prefer_not_to_say', 'Prefer not to say']] as const
 const GENERATION_OPTIONS = [['gen_alpha', 'Gen Alpha'], ['gen_z', 'Gen Z'], ['millennial', 'Millennial'], ['gen_x', 'Gen X'], ['boomer', 'Boomer']] as const

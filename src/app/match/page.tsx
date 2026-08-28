@@ -37,8 +37,8 @@ const LANGUAGES_CORE = [
   ['ar', 'Arabic'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German'], ['tr', 'Turkish'],
 ] as const
 const LANGUAGES_EXTRA = [
-  ['bn', 'Bengali'], ['zh', 'Chinese'], ['fa', 'Persian'], ['ru', 'Russian'], ['pt', 'Portuguese'],
-  ['id', 'Indonesian'], ['ms', 'Malay'], ['ja', 'Japanese'], ['ko', 'Korean'], ['it', 'Italian'],
+  ['bn', 'Bengali'], ['pt', 'Portuguese'], ['ru', 'Russian'], ['id', 'Indonesian'], ['vi', 'Vietnamese'],
+  ['tl', 'Tagalog'], ['th', 'Thai'], ['ja', 'Japanese'], ['ko', 'Korean'], ['zh_cn', 'Chinese (Simplified)'],
 ] as const
 
 const RELAX_ORDER: (keyof MatchFilterOverrides)[] = [

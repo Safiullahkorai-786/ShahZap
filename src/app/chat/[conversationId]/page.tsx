@@ -70,10 +70,10 @@ const GENDER_LABELS: Record<string, string> = {
 }
 
 const LANG_LABELS: Record<string, string> = {
-  en: 'English', ur: 'Urdu', sd: 'Sindhi', hi: 'Hindi', pa: 'Punjabi', ar: 'Arabic',
-  es: 'Spanish', fr: 'French', de: 'German', tr: 'Turkish', bn: 'Bengali', zh: 'Chinese',
-  fa: 'Persian', ru: 'Russian', pt: 'Portuguese', id: 'Indonesian', ms: 'Malay', ja: 'Japanese',
-  ko: 'Korean', it: 'Italian',
+  en: 'English', ur: 'Urdu', hi: 'Hindi', sd: 'Sindhi', pa: 'Punjabi', bn: 'Bengali',
+  es: 'Spanish', pt: 'Portuguese', fr: 'French', de: 'German', ru: 'Russian', ar: 'Arabic',
+  tr: 'Turkish', id: 'Indonesian', vi: 'Vietnamese', tl: 'Tagalog', th: 'Thai',
+  ja: 'Japanese', ko: 'Korean', zh_cn: 'Chinese (Simplified)',
 }
 const REPORT_REASONS = ['harassment','spam','hate_speech','sexual_content','scam','impersonation','underage_concern','threatening_behavior','other']
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '😘', '💦', '🤡', '🌚', '🌝']

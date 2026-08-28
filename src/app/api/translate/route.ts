@@ -12,6 +12,12 @@ const GLOBAL_DAILY_CAP = Number(process.env.TRANSLATION_GLOBAL_DAILY_CAP ?? 300)
 
 type M2MResponse = { result?: { translated_text?: string }; translated_text?: string }
 
+// Our language codes map 1:1 to Workers AI m2m100 codes, except Chinese:
+// the model uses the generic "zh", while we store "zh_cn".
+function aiLang(code: string | null | undefined): string {
+  return code === 'zh_cn' ? 'zh' : (code ?? '')
+}
+
 // Minimal shape of the Workers AI binding (@cf/meta/m2m100-1.2b); @cloudflare/
 // workers-types isn't installed, so declare just what we call.
 type AiBinding = { run: (model: string, input: Record<string, unknown>) => Promise<unknown> }
@@ -95,8 +101,8 @@ export async function POST(req: Request) {
     try {
       out = (await env.AI.run('@cf/meta/m2m100-1.2b', {
         text,
-        source_lang: sourceLang,
-        target_lang: targetLang,
+        source_lang: aiLang(sourceLang),
+        target_lang: aiLang(targetLang),
       })) as M2MResponse
     } catch (e) {
       await supabase.rpc('translation_refund', { p_user_id: userId }).then(() => {}, () => {})
