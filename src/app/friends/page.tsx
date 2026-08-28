@@ -857,7 +857,15 @@ export default function FriendsPage() {
                         const isDelivered = isLastFromMe && !isRead && !!p.lastMessageDeliveredAt
 
                         return (
-                          <FriendContextMenu key={p.id} friendId={p.id} friendName={p.display_name ?? 'Unknown'} isFriend={true} isBlocked={p.isBlocked} onAction={() => {}}>
+                          <FriendContextMenu key={p.id} friendId={p.id} friendName={p.display_name ?? 'Unknown'} isFriend={true} isBlocked={p.isBlocked} onAction={(action) => {
+                            if (action === 'block') {
+                              setFriends((prev) => prev.map((f) => f.id === p.id ? { ...f, isBlocked: true } : f))
+                            } else if (action === 'unblock') {
+                              setFriends((prev) => prev.map((f) => f.id === p.id ? { ...f, isBlocked: false } : f))
+                            } else if (action === 'unfriend' || action === 'delete') {
+                              setFriends((prev) => prev.filter((f) => f.id !== p.id))
+                            }
+                          }}>
                           <div
                             onClick={() => { if (!busy) void openChat(p.id) }}
                             className="flex cursor-pointer items-center gap-3 px-1 py-3 transition hover:bg-slate-900/40 sm:px-2">

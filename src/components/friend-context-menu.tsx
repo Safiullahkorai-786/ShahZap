@@ -10,7 +10,7 @@ type Props = {
   friendName: string
   isFriend: boolean
   isBlocked: boolean
-  onAction: () => void
+  onAction: (action: 'unfriend' | 'delete' | 'block' | 'unblock') => void
 }
 
 export function FriendContextMenu({ children, friendId, friendName, isFriend, isBlocked, onAction }: Props) {
@@ -50,7 +50,7 @@ export function FriendContextMenu({ children, friendId, friendName, isFriend, is
     await supabase.rpc('unfriend_user', { p_other_id: friendId })
     setLoading(false)
     setOpen(false)
-    onAction()
+    onAction('unfriend')
   }
 
   async function handleDelete() {
@@ -59,7 +59,7 @@ export function FriendContextMenu({ children, friendId, friendName, isFriend, is
     await supabase.rpc('delete_and_unfriend', { p_other_id: friendId })
     setLoading(false)
     setOpen(false)
-    onAction()
+    onAction('delete')
   }
 
   async function handleBlock(unfriend: boolean) {
@@ -69,7 +69,7 @@ export function FriendContextMenu({ children, friendId, friendName, isFriend, is
     setLoading(false)
     setOpen(false)
     setBlockMode(null)
-    onAction()
+    onAction('block')
   }
 
   async function handleUnblock() {
@@ -78,7 +78,7 @@ export function FriendContextMenu({ children, friendId, friendName, isFriend, is
     await supabase.rpc('unblock_user', { p_other_id: friendId })
     setLoading(false)
     setOpen(false)
-    onAction()
+    onAction('unblock')
   }
 
   return (
