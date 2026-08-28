@@ -563,6 +563,9 @@ export default function ChatPage() {
       //    Swallow errors — the direct update above is the primary path.
       await supabase.rpc('mark_conversation_read', { p_conversation_id: conversationId }).then(() => {}, () => {})
 
+      // 3. Mark message notifications for this conversation as read
+      await supabase.rpc('mark_message_notifications_read', { p_conversation_id: conversationId }).then(() => {}, () => {})
+
       // 3. Re-fetch messages to immediately pick up the server-stamped
       //    read_at values (don't wait for Realtime or the 3s poll).
       const { data } = await supabase

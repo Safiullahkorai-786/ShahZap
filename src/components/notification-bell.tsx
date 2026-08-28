@@ -18,6 +18,7 @@ type Notification = {
   href: string
   at: number
   read: boolean
+  unreadCount: number
 }
 
 function ago(ms: number): string {
@@ -64,7 +65,7 @@ export function NotificationBell() {
 
     const { data: rows } = await supabase
       .from('notifications')
-      .select('id, kind, from_user_id, conversation_id, text, read, created_at')
+      .select('id, kind, from_user_id, conversation_id, text, read, created_at, unread_count')
       .eq('user_id', user.id)
       .gt('created_at', cutoff)
       .order('created_at', { ascending: false })
@@ -89,19 +90,32 @@ export function NotificationBell() {
 
     const notifs: Notification[] = rows.map((r) => {
       const identity = r.from_user_id ? (identityMap.get(r.from_user_id) ?? { label: 'Someone', colorClass: 'text-slate-300' }) : { label: 'Someone', colorClass: 'text-slate-300' }
+      const unreadCount = r.unread_count ?? 1
+      const text = r.kind === 'message' && unreadCount > 1
+        ? `sent you a message (${unreadCount})`
+        : kindToText(r.kind)
       return {
         id: r.id,
         kind: r.kind,
         identity,
-        text: kindToText(r.kind),
+        text,
         href: kindToHref(r.kind, r.conversation_id),
         at: new Date(r.created_at).getTime(),
         read: r.read,
+        unreadCount,
       }
     })
 
     setItems(notifs)
-    setUnread(notifs.filter((n) => !n.read).length)
+    // Badge: count unique conversations with unread messages + pending requests
+    let badgeCount = 0
+    for (const n of notifs) {
+      if (!n.read) {
+        if (n.kind === 'message') badgeCount += 1 // count per conversation, not per message
+        else badgeCount += 1
+      }
+    }
+    setUnread(badgeCount)
     loadedRef.current = true
   }, [])
 
@@ -122,7 +136,7 @@ export function NotificationBell() {
           'postgres_changes',
           { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
           async (payload) => {
-            const row = payload.new as { id: string; kind: string; from_user_id: string | null; conversation_id: string | null; text: string; created_at: string }
+            const row = payload.new as { id: string; kind: string; from_user_id: string | null; conversation_id: string | null; text: string; created_at: string; unread_count: number }
             if (isBotProfile(row.from_user_id)) return
 
             // Play sound
@@ -142,29 +156,48 @@ export function NotificationBell() {
               if (p) identity = resolveIdentity(p as never)
             }
 
+            const unreadCount = row.unread_count ?? 1
+            const text = row.kind === 'message' && unreadCount > 1
+              ? `sent you a message (${unreadCount})`
+              : kindToText(row.kind)
+
             const notif: Notification = {
               id: row.id,
               kind: row.kind as Notification['kind'],
               identity,
-              text: kindToText(row.kind),
+              text,
               href: kindToHref(row.kind, row.conversation_id),
               at: new Date(row.created_at).getTime(),
               read: false,
+              unreadCount,
             }
 
             setItems((cur) => [notif, ...cur].slice(0, 50))
-            setUnread((c) => Math.min(c + 1, 99))
+            setUnread((c) => c + 1)
           },
         )
         .on(
           'postgres_changes',
           { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
           (payload) => {
-            const row = payload.new as { id: string; read: boolean }
-            setItems((cur) => cur.map((n) => n.id === row.id ? { ...n, read: row.read } : n))
+            const row = payload.new as { id: string; read: boolean; unread_count: number; kind: string; conversation_id: string | null }
             setItems((cur) => {
-              const updated = cur.map((n) => n.id === row.id ? { ...n, read: row.read } : n)
-              setUnread(updated.filter((n) => !n.read).length)
+              const updated = cur.map((n) => {
+                if (n.id !== row.id) return n
+                const unreadCount = row.unread_count ?? 0
+                const text = row.kind === 'message' && unreadCount > 1
+                  ? `sent you a message (${unreadCount})`
+                  : row.kind === 'message' && unreadCount <= 1
+                    ? 'sent you a message'
+                    : n.text
+                return { ...n, read: row.read, unreadCount, text }
+              })
+              // Recalculate badge: count unread notifications (message notifs count as 1 each)
+              let badgeCount = 0
+              for (const n of updated) {
+                if (!n.read) badgeCount += 1
+              }
+              setUnread(badgeCount)
               return updated
             })
           },
