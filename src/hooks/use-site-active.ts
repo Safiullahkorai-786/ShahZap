@@ -31,7 +31,7 @@ if (typeof window !== 'undefined') {
 }
 
 export function useSiteActive(): boolean {
-  const [active, setActive] = useState(false)
+  const [active, setActive] = useState(() => readActive())
 
   useEffect(() => {
     const update = () => setActive(readActive())
