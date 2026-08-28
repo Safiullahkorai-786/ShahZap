@@ -55,6 +55,8 @@ export function NotificationBell() {
   const [nowTick, setNowTick] = useState(0)
   const userIdRef = useRef<string | null>(null)
   const loadedRef = useRef(false)
+  // Track IDs whose dots have been visually cleared (on bell close)
+  const readDotIdsRef = useRef(new Set<string>())
 
   const fetchNotifications = useCallback(async () => {
     const supabase = createClient()
@@ -216,15 +218,16 @@ export function NotificationBell() {
   }, [fetchNotifications])
 
   async function handleOpen() {
-    const next = !open
-    setOpen(next)
-    if (next && unread > 0) {
-      // Mark all as read
-      const supabase = createClient()
-      await supabase.rpc('mark_notifications_read')
-      setItems((cur) => cur.map((n) => ({ ...n, read: true })))
-      setUnread(0)
-    }
+    setOpen((prev) => {
+      const next = !prev
+      if (!next) {
+        // Closing: mark all current unread dots as visually read
+        for (const n of items) {
+          if (!n.read) readDotIdsRef.current.add(n.id)
+        }
+      }
+      return next
+    })
   }
 
   return (
@@ -264,7 +267,7 @@ export function NotificationBell() {
                         </span>
                         <span className="mt-0.5 block text-[10px] text-slate-600">{ago((nowTick || Date.now()) - n.at)} ago</span>
                       </span>
-                      {!n.read && <span className="mt-2 h-2 w-2 flex-none rounded-full bg-cyan-400" />}
+                      {!n.read && !readDotIdsRef.current.has(n.id) && <span className="mt-2 h-2 w-2 flex-none rounded-full bg-cyan-400" />}
                     </Link>
                   </li>
                 ))}
