@@ -188,6 +188,7 @@ export default function FriendsPage() {
   friendsRef.current = friends
   const convToFriendRef = useRef<Record<string, string>>({})
   const friendToConvRef = useRef<Record<string, string>>({})
+  const frToFriendRef = useRef<Record<string, string>>({})
   const userIdRef = useRef<string>('')
   const aliveRef = useRef(true)
 
@@ -387,6 +388,13 @@ export default function FriendsPage() {
 
       sortFriends(friendsWithMeta)
       setRequests(visible)
+      // Build request→friend mapping for DELETE handler
+      const frMap: Record<string, string> = {}
+      for (const r of visible) {
+        const otherId = r.sender_id === user.id ? r.receiver_id : r.sender_id
+        frMap[r.id] = otherId
+      }
+      frToFriendRef.current = frMap
       setFriends(friendsWithMeta)
       setLoading(false)
     }
@@ -512,6 +520,7 @@ export default function FriendsPage() {
         if (row.sender_id !== uid && row.receiver_id !== uid) return
         // Fetch profile for the other person
         const otherId = row.sender_id === uid ? row.receiver_id : row.sender_id
+        frToFriendRef.current[row.id] = otherId
         const { data: p } = await supabase.from('profiles')
           .select('id,display_name,avatar_path,age_band,generation,country_code,profile_visible,gender,gender_visible,last_active_at,online_visible')
           .eq('id', otherId)
@@ -533,16 +542,14 @@ export default function FriendsPage() {
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'friend_requests' }, (payload) => {
         const old = payload.old as { id: string }
-        setRequests((prev) => {
-          const deleted = prev.find((r) => r.id === old.id)
-          if (deleted && deleted.status === 'accepted') {
-            const otherId = deleted.sender_id === uid ? deleted.receiver_id : deleted.sender_id
-            setFriends((prev) => prev.filter((f) => f.id !== otherId))
-            delete convToFriendRef.current[Object.keys(convToFriendRef.current).find((k) => convToFriendRef.current[k] === otherId) ?? '']
-            delete friendToConvRef.current[otherId]
-          }
-          return prev.filter((r) => r.id !== old.id)
-        })
+        const otherId = frToFriendRef.current[old.id]
+        if (otherId) {
+          setFriends((prev) => prev.filter((f) => f.id !== otherId))
+          delete convToFriendRef.current[Object.keys(convToFriendRef.current).find((k) => convToFriendRef.current[k] === otherId) ?? '']
+          delete friendToConvRef.current[otherId]
+          delete frToFriendRef.current[old.id]
+        }
+        setRequests((prev) => prev.filter((r) => r.id !== old.id))
       })
       .subscribe()
 
