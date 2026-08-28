@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { Bell, UserPlus, MessageCircle, UserMinus, UserCheck, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -8,14 +8,16 @@ import { playFriendRequestSound, playMessageSound, playUnfriendSound } from '@/l
 import { resolveIdentity, type Identity } from '@/lib/identity'
 import { isBotProfile } from '@/lib/bot'
 
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
+
 type Notification = {
   id: string
-  tag?: string
   kind: 'friend_request' | 'message' | 'unfriend' | 'accept' | 'reject'
   identity: Identity
   text: string
   href: string
   at: number
+  read: boolean
 }
 
 function ago(ms: number): string {
@@ -23,7 +25,25 @@ function ago(ms: number): string {
   if (s < 60) return 'now'
   const m = Math.floor(s / 60)
   if (m < 60) return `${m}m`
-  return `${Math.floor(m / 60)}h`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h`
+  return `${Math.floor(h / 24)}d`
+}
+
+function kindToHref(kind: string, conversationId?: string | null): string {
+  if (kind === 'message' && conversationId) return `/chat/${conversationId}`
+  return '/friends'
+}
+
+function kindToText(kind: string): string {
+  switch (kind) {
+    case 'friend_request': return 'sent you a friend request'
+    case 'unfriend': return 'unfriended you'
+    case 'accept': return 'accepted your friend request'
+    case 'reject': return 'rejected your friend request'
+    case 'message': return 'sent you a message'
+    default: return ''
+  }
 }
 
 export function NotificationBell() {
@@ -32,195 +52,152 @@ export function NotificationBell() {
   const [unread, setUnread] = useState(0)
   const [nowTick, setNowTick] = useState(0)
   const userIdRef = useRef<string | null>(null)
-  const acceptedRows = useRef<Map<string, string>>(new Map()) // rowId → other profile id
-  const pendingRows = useRef<Map<string, string>>(new Map()) // rowId → sender id
+  const loadedRef = useRef(false)
+
+  const fetchNotifications = useCallback(async () => {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    userIdRef.current = user.id
+
+    const cutoff = new Date(Date.now() - SEVEN_DAYS_MS).toISOString()
+
+    const { data: rows } = await supabase
+      .from('notifications')
+      .select('id, kind, from_user_id, conversation_id, text, read, created_at')
+      .eq('user_id', user.id)
+      .gt('created_at', cutoff)
+      .order('created_at', { ascending: false })
+      .limit(50)
+
+    if (!rows) return
+
+    // Resolve identities for all from_user_ids
+    const fromIds = [...new Set(rows.map((r) => r.from_user_id).filter(Boolean))]
+    const identityMap = new Map<string, Identity>()
+    if (fromIds.length) {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id,display_name,gender,gender_visible')
+        .in('id', fromIds)
+      if (profiles) {
+        for (const p of profiles) {
+          identityMap.set(p.id, resolveIdentity(p as never))
+        }
+      }
+    }
+
+    const notifs: Notification[] = rows.map((r) => {
+      const identity = r.from_user_id ? (identityMap.get(r.from_user_id) ?? { label: 'Someone', colorClass: 'text-slate-300' }) : { label: 'Someone', colorClass: 'text-slate-300' }
+      return {
+        id: r.id,
+        kind: r.kind,
+        identity,
+        text: kindToText(r.kind),
+        href: kindToHref(r.kind, r.conversation_id),
+        at: new Date(r.created_at).getTime(),
+        read: r.read,
+      }
+    })
+
+    setItems(notifs)
+    setUnread(notifs.filter((n) => !n.read).length)
+    loadedRef.current = true
+  }, [])
 
   useEffect(() => {
     const supabase = createClient()
-    let frChannel: ReturnType<typeof supabase.channel> | undefined
-    let msgChannel: ReturnType<typeof supabase.channel> | undefined
+    let channel: ReturnType<typeof supabase.channel> | undefined
 
-    async function identityOf(profileId: string): Promise<Identity> {
-      const { data } = await supabase
-        .from('profiles')
-        .select('display_name,gender,gender_visible')
-        .eq('id', profileId)
-        .maybeSingle()
-      return resolveIdentity(data as never)
-    }
+    async function init() {
+      await fetchNotifications()
 
-    async function load() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
-      userIdRef.current = user.id
-      const { data: accepted } = await supabase
-        .from('friend_requests')
-        .select('id,sender_id,receiver_id')
-        .eq('status', 'accepted')
-        .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
-      if (accepted) for (const r of accepted) {
-        const otherId2 = r.sender_id === user.id ? r.receiver_id : r.sender_id
-        acceptedRows.current.set(String(r.id), otherId2)
-      }
 
-      // Friend requests sent TO me — realtime.
-      frChannel = supabase
-        .channel(`fr-notif:${user.id}`)
+      // Subscribe to new notifications via Realtime
+      channel = supabase
+        .channel(`notif-bell:${user.id}`)
         .on(
           'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'friend_requests', filter: `receiver_id=eq.${user.id}` },
+          { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
           async (payload) => {
-            playFriendRequestSound()
-            const row = payload.new as { id?: string | number; sender_id: string }
-            if (row.id != null) pendingRows.current.set(String(row.id), row.sender_id)
-            const senderId = row.sender_id
-            const identity = await identityOf(senderId)
-            setItems((cur) => [
-              { id: `fr-${row.id}`, kind: 'friend_request', tag: senderId, identity, text: 'sent you a friend request', href: '/friends', at: Date.now() },
-              ...cur,
-            ])
-            setUnread((c) => c + 1)
-          },
-        )
-        .on(
-          'postgres_changes',
-          { event: 'DELETE', schema: 'public', table: 'friend_requests' },
-          async (payload) => {
-            // Realtime strips deleted rows to their id — resolve via ledger.
-            const key = payload.old?.id != null ? String(payload.old.id) : null
-            if (!key || !userIdRef.current) return
-            const pendingFrom = pendingRows.current.get(key)
-            if (pendingFrom) {
-              pendingRows.current.delete(key)
-              setItems((cur) => cur.filter((x) => !(x.kind === 'friend_request' && x.tag === pendingFrom)))
-              return
-            }
-            const other = acceptedRows.current.get(key)
-            if (!other || other === userIdRef.current) return
-            acceptedRows.current.delete(key)
-            playUnfriendSound()
-            const identity = await identityOf(other)
-            setItems((cur) => [
-              { id: `un-${key}`, kind: 'unfriend', identity, text: 'unfriended you', href: '/friends', at: Date.now() },
-              ...cur,
-            ])
-            setUnread((c) => Math.min(c + 1, 99))
-          },
-        )
-        .on(
-          'postgres_changes',
-          { event: 'UPDATE', schema: 'public', table: 'friend_requests', filter: `receiver_id=eq.${user.id}` },
-          async (payload) => {
-            const row = payload.new as { id: string; sender_id: string; receiver_id: string; status: string }
-            if (row.status !== 'accepted') return
-            {
-            const otherId2 = row.sender_id === userIdRef.current ? row.receiver_id : row.sender_id
-            acceptedRows.current.set(String(row.id), otherId2)
-          }
-            if (!userIdRef.current || row.sender_id === userIdRef.current) return
-            playFriendRequestSound()
-            const identity = await identityOf(row.sender_id)
-            setItems((cur) => [
-              { id: `ac-${row.sender_id}-${row.receiver_id}`, kind: 'accept', identity, text: 'accepted your friend request', href: '/friends', at: Date.now() },
-              ...cur,
-            ])
-            setUnread((c) => Math.min(c + 1, 99))
-          },
-        )
-        .on(
-          'postgres_changes',
-          { event: 'UPDATE', schema: 'public', table: 'friend_requests', filter: `sender_id=eq.${user.id}` },
-          async (payload) => {
-            const row = payload.new as { id: string; sender_id: string; receiver_id: string; status: string }
-            if (!userIdRef.current) return
-            const otherId2 = row.sender_id === userIdRef.current ? row.receiver_id : row.sender_id
-            if (row.status === 'accepted') {
-              acceptedRows.current.set(String(row.id), otherId2)
-              if (row.sender_id === userIdRef.current) {
-                playFriendRequestSound()
-                const identity = await identityOf(row.receiver_id)
-                setItems((cur) => [
-                  { id: `ac-${row.id}`, kind: 'accept', identity, text: 'accepted your friend request', href: '/friends', at: Date.now() },
-                  ...cur,
-                ])
-                setUnread((c) => Math.min(c + 1, 99))
-              }
-            }
-            if (row.status === 'declined' && row.sender_id === userIdRef.current) {
-              playUnfriendSound()
-              const identity = await identityOf(row.receiver_id)
-              setItems((cur) => [
-                { id: `rj-${row.id}`, kind: 'reject', identity, text: 'rejected your friend request', href: '/friends', at: Date.now() },
-                ...cur,
-              ])
-              setUnread((c) => Math.min(c + 1, 99))
-            }
-          },
-        )
-        .on(
-          'postgres_changes',
-          { event: 'DELETE', schema: 'public', table: 'friend_requests' },
-          async (payload) => {
-            // Realtime strips deleted rows to their id — resolve via ledger.
-            const key = payload.old?.id != null ? String(payload.old.id) : null
-            if (!key || !userIdRef.current) return
-            const pendingFrom = pendingRows.current.get(key)
-            if (pendingFrom) {
-              pendingRows.current.delete(key)
-              setItems((cur) => cur.filter((x) => !(x.kind === 'friend_request' && x.tag === pendingFrom)))
-              return
-            }
-            const other = acceptedRows.current.get(key)
-            if (!other || other === userIdRef.current) return
-            acceptedRows.current.delete(key)
-            playUnfriendSound()
-            const identity = await identityOf(other)
-            setItems((cur) => [
-              { id: `un-${key}`, kind: 'unfriend', identity, text: 'unfriended you', href: '/friends', at: Date.now() },
-              ...cur,
-            ])
-            setUnread((c) => Math.min(c + 1, 99))
-          },
-        )
-        .subscribe()
+            const row = payload.new as { id: string; kind: string; from_user_id: string | null; conversation_id: string | null; text: string; created_at: string }
+            if (isBotProfile(row.from_user_id)) return
 
-      // Message inserts anywhere — Supabase Realtime enforces RLS per listener,
-      // so only messages inside MY conversations are ever delivered here.
-      msgChannel = supabase
-        .channel('msg-notif')
+            // Play sound
+            if (row.kind === 'message') playMessageSound()
+            else if (row.kind === 'friend_request') playFriendRequestSound()
+            else if (row.kind === 'unfriend' || row.kind === 'reject') playUnfriendSound()
+            else playFriendRequestSound()
+
+            // Resolve identity
+            let identity: Identity = { label: 'Someone', colorClass: 'text-slate-300' }
+            if (row.from_user_id) {
+              const { data: p } = await supabase
+                .from('profiles')
+                .select('display_name,gender,gender_visible')
+                .eq('id', row.from_user_id)
+                .maybeSingle()
+              if (p) identity = resolveIdentity(p as never)
+            }
+
+            const notif: Notification = {
+              id: row.id,
+              kind: row.kind as Notification['kind'],
+              identity,
+              text: kindToText(row.kind),
+              href: kindToHref(row.kind, row.conversation_id),
+              at: new Date(row.created_at).getTime(),
+              read: false,
+            }
+
+            setItems((cur) => [notif, ...cur].slice(0, 50))
+            setUnread((c) => Math.min(c + 1, 99))
+          },
+        )
         .on(
           'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'messages' },
-          async (payload) => {
-            const row = payload.new as { id: string; sender_id: string; conversation_id: string }
-            if (!userIdRef.current || row.sender_id === userIdRef.current) return
-            if (isBotProfile(row.sender_id)) return // bots already ping in-chat
-            playMessageSound()
-            const identity = await identityOf(row.sender_id)
-            setItems((cur) => [
-              { id: `msg-${row.id}`, kind: 'message', identity, text: 'sent you a message', href: `/chat/${row.conversation_id}`, at: Date.now() },
-              ...cur.slice(0, 19),
-            ])
-            setUnread((c) => Math.min(c + 1, 99))
+          { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
+          (payload) => {
+            const row = payload.new as { id: string; read: boolean }
+            setItems((cur) => cur.map((n) => n.id === row.id ? { ...n, read: row.read } : n))
+            setItems((cur) => {
+              const updated = cur.map((n) => n.id === row.id ? { ...n, read: row.read } : n)
+              setUnread(updated.filter((n) => !n.read).length)
+              return updated
+            })
           },
         )
         .subscribe()
     }
 
-    void load()
+    void init()
     const ticker = window.setInterval(() => setNowTick(Date.now()), 30_000)
+
     return () => {
       window.clearInterval(ticker)
-      if (frChannel) void supabase.removeChannel(frChannel)
-      if (msgChannel) void supabase.removeChannel(msgChannel)
+      if (channel) void supabase.removeChannel(channel)
     }
-  }, [])
+  }, [fetchNotifications])
+
+  async function handleOpen() {
+    const next = !open
+    setOpen(next)
+    if (next && unread > 0) {
+      // Mark all as read
+      const supabase = createClient()
+      await supabase.rpc('mark_notifications_read')
+      setItems((cur) => cur.map((n) => ({ ...n, read: true })))
+      setUnread(0)
+    }
+  }
 
   return (
     <div className="relative">
       <button
         aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}
-        onClick={() => { setOpen((v) => !v); if (!open) setUnread(0) }}
+        onClick={handleOpen}
         className="relative flex h-9 w-9 items-center justify-center rounded-full border border-slate-700 transition hover:border-slate-500 hover:text-white"
       >
         <Bell size={17} />
@@ -237,7 +214,7 @@ export function NotificationBell() {
           <div className="absolute right-0 top-full z-40 mt-2 w-80 overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl shadow-black/60">
             <p className="border-b border-slate-800 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-400">Notifications</p>
             {items.length === 0 ? (
-              <p className="px-4 py-6 text-center text-xs text-slate-500">You&apos;re all caught up 🎉</p>
+              <p className="px-4 py-6 text-center text-xs text-slate-500">You&apos;re all caught up</p>
             ) : (
               <ul className="max-h-96 divide-y divide-slate-800 overflow-y-auto">
                 {items.map((n) => (
@@ -251,8 +228,9 @@ export function NotificationBell() {
                           <span className={`font-semibold ${n.identity.colorClass}`}>{n.identity.label}</span>{' '}
                           <span className="text-slate-400">{n.text}</span>
                         </span>
-                        <span className="mt-0.5 block text-[10px] text-slate-600">{ago((nowTick || n.at) - n.at)} ago</span>
+                        <span className="mt-0.5 block text-[10px] text-slate-600">{ago((nowTick || Date.now()) - n.at)} ago</span>
                       </span>
+                      {!n.read && <span className="mt-2 h-2 w-2 flex-none rounded-full bg-cyan-400" />}
                     </Link>
                   </li>
                 ))}
