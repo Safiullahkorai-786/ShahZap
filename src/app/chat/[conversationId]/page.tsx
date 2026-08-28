@@ -872,7 +872,7 @@ export default function ChatPage() {
     setBlockChoiceOpen(false)
     setStatusLine('')
     const supabase = createClient()
-    const { error: e } = await supabase.from('blocks').upsert({ blocker_id: userId!, blocked_id: otherId! })
+    const { error: e } = await supabase.rpc('block_user', { p_other_id: otherId, p_unfriend: false })
     if (e) { setStatusLine(friendlyError(e, 'Could not block.')); return }
     setBlockedByMe(true)
     setStatusLine('Blocked.')
@@ -890,11 +890,11 @@ export default function ChatPage() {
     setStatusLine('')
     const supabase = createClient()
     if (blockedByMe) {
-      const { error: e } = await supabase.from('blocks').delete().eq('blocker_id', userId).eq('blocked_id', otherId)
+      const { error: e } = await supabase.rpc('unblock_user', { p_other_id: otherId })
       if (e) setStatusLine(friendlyError(e, 'Could not unblock.'))
       else { setBlockedByMe(false); setStatusLine('Unblocked.') }
     } else {
-      const { error: e } = await supabase.from('blocks').upsert({ blocker_id: userId, blocked_id: otherId }, { onConflict: 'blocker_id,blocked_id' })
+      const { error: e } = await supabase.rpc('block_user', { p_other_id: otherId, p_unfriend: false })
       if (e) setStatusLine(friendlyError(e, 'Could not block.'))
       else { setBlockedByMe(true); setStatusLine('Blocked. They can no longer match with you.') }
     }
