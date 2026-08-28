@@ -1514,6 +1514,10 @@ export default function ChatPage() {
                       <div
                         role="button" tabIndex={0}
                         onClick={(e) => { e.stopPropagation(); const el = document.getElementById(`msg-${replied.id}`); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('highlight-msg'); setTimeout(() => el.classList.remove('highlight-msg'), 1500) } }}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onPointerUp={(e) => e.stopPropagation()}
+                        onPointerMove={(e) => e.stopPropagation()}
+                        onPointerCancel={(e) => e.stopPropagation()}
                         onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.click() }}
                         className={`mb-1.5 cursor-pointer rounded-lg border-l-[3px] px-2 py-1 transition hover:brightness-110 ${mine ? 'border-slate-900/40 bg-black/10' : 'border-cyan-400/70 bg-black/20'}`}
                       >
