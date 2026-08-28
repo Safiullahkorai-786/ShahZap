@@ -19,34 +19,36 @@ export function FriendContextMenu({ children, friendId, friendName, isFriend, is
   const [blockMode, setBlockMode] = useState<'choose' | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const didLongPressRef = useRef(false)
+  const suppressClickRef = useRef(false)
+
+  function clearTimer() {
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
+  }
 
   function handlePointerDown(e: React.PointerEvent) {
-    didLongPressRef.current = false
+    suppressClickRef.current = false
+    clearTimer()
     timerRef.current = setTimeout(() => {
-      didLongPressRef.current = true
+      timerRef.current = null
+      suppressClickRef.current = true
       e.preventDefault()
       setOpen(true)
     }, 500)
   }
 
   function handlePointerUp() {
-    if (timerRef.current) clearTimeout(timerRef.current)
+    clearTimer()
   }
 
-  // Block click if we just long-pressed
+  // Block the click event if it follows a long-press
   function handleClick(e: React.MouseEvent) {
-    if (didLongPressRef.current) {
+    if (suppressClickRef.current) {
       e.preventDefault()
       e.stopPropagation()
-      didLongPressRef.current = false
+      // Reset after a tick so future normal clicks work
+      setTimeout(() => { suppressClickRef.current = false }, 100)
+      return
     }
-  }
-
-  // Block touch-start text selection
-  function handleTouchStart(e: React.TouchEvent) {
-    // Allow default for scrolling, but mark that touch started
-    // The long-press timer handles the context menu
   }
 
   useEffect(() => {
@@ -106,7 +108,7 @@ export function FriendContextMenu({ children, friendId, friendName, isFriend, is
         onPointerLeave={handlePointerUp}
         onContextMenu={handleContextMenu}
         onClick={handleClick}
-        style={{ userSelect: 'none', WebkitUserSelect: 'none', touchAction: 'manipulation' }}
+        style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
         className="cursor-pointer select-none"
       >
         {children}
@@ -129,80 +131,43 @@ export function FriendContextMenu({ children, friendId, friendName, isFriend, is
             {blockMode === 'choose' ? (
               <div className="p-3 space-y-2">
                 <p className="text-xs text-slate-400 mb-2">How do you want to block {friendName}?</p>
-                <button
-                  disabled={loading}
-                  onClick={() => handleBlock(false)}
-                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition hover:bg-slate-800"
-                >
+                <button disabled={loading} onClick={() => handleBlock(false)}
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition hover:bg-slate-800">
                   <Ban size={16} className="text-amber-400" />
-                  <div>
-                    <p className="font-medium text-white">Block only</p>
-                    <p className="text-xs text-slate-400">Stay friends but stop messages from them</p>
-                  </div>
+                  <div><p className="font-medium text-white">Block only</p><p className="text-xs text-slate-400">Stay friends but stop messages from them</p></div>
                 </button>
-                <button
-                  disabled={loading}
-                  onClick={() => handleBlock(true)}
-                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition hover:bg-slate-800"
-                >
-                  <Ban size={16} className="text-red-400" />
-                  <UserMinus size={16} className="text-red-400 -ml-1" />
-                  <div>
-                    <p className="font-medium text-white">Block &amp; unfriend</p>
-                    <p className="text-xs text-slate-400">Remove friendship and block them</p>
-                  </div>
+                <button disabled={loading} onClick={() => handleBlock(true)}
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition hover:bg-slate-800">
+                  <Ban size={16} className="text-red-400" /><UserMinus size={16} className="text-red-400 -ml-1" />
+                  <div><p className="font-medium text-white">Block &amp; unfriend</p><p className="text-xs text-slate-400">Remove friendship and block them</p></div>
                 </button>
               </div>
             ) : (
               <div className="p-3 space-y-1">
                 {isBlocked ? (
-                  <button
-                    disabled={loading}
-                    onClick={handleUnblock}
-                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition hover:bg-slate-800"
-                  >
+                  <button disabled={loading} onClick={handleUnblock}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition hover:bg-slate-800">
                     <ShieldCheck size={16} className="text-emerald-400" />
-                    <div>
-                      <p className="font-medium text-white">Unblock</p>
-                      <p className="text-xs text-slate-400">Allow them to message you again</p>
-                    </div>
+                    <div><p className="font-medium text-white">Unblock</p><p className="text-xs text-slate-400">Allow them to message you again</p></div>
                   </button>
                 ) : (
                   <>
                     {isFriend && (
-                      <button
-                        disabled={loading}
-                        onClick={handleUnfriend}
-                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition hover:bg-slate-800"
-                      >
+                      <button disabled={loading} onClick={handleUnfriend}
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition hover:bg-slate-800">
                         <UserMinus size={16} className="text-amber-400" />
-                        <div>
-                          <p className="font-medium text-white">Unfriend</p>
-                          <p className="text-xs text-slate-400">Chats auto-delete after 7 days</p>
-                        </div>
+                        <div><p className="font-medium text-white">Unfriend</p><p className="text-xs text-slate-400">Chats auto-delete after 7 days</p></div>
                       </button>
                     )}
-                    <button
-                      disabled={loading}
-                      onClick={handleDelete}
-                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition hover:bg-slate-800"
-                    >
+                    <button disabled={loading} onClick={handleDelete}
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition hover:bg-slate-800">
                       <Trash2 size={16} className="text-red-400" />
-                      <div>
-                        <p className="font-medium text-white">Delete chat</p>
-                        <p className="text-xs text-slate-400">Unfriend and remove all messages instantly</p>
-                      </div>
+                      <div><p className="font-medium text-white">Delete chat</p><p className="text-xs text-slate-400">Unfriend and remove all messages instantly</p></div>
                     </button>
-                    <button
-                      disabled={loading}
-                      onClick={() => setBlockMode('choose')}
-                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition hover:bg-slate-800"
-                    >
+                    <button disabled={loading} onClick={() => setBlockMode('choose')}
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition hover:bg-slate-800">
                       <Ban size={16} className="text-red-500" />
-                      <div>
-                        <p className="font-medium text-white">Block</p>
-                        <p className="text-xs text-slate-400">Stop them from messaging you</p>
-                      </div>
+                      <div><p className="font-medium text-white">Block</p><p className="text-xs text-slate-400">Stop them from messaging you</p></div>
                     </button>
                   </>
                 )}
