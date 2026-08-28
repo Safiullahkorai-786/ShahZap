@@ -857,7 +857,7 @@ export default function FriendsPage() {
                         const isDelivered = isLastFromMe && !isRead && !!p.lastMessageDeliveredAt
 
                         return (
-                          <FriendContextMenu key={p.id} friendId={p.id} friendName={p.display_name ?? 'Unknown'} isFriend={true} onAction={() => {}}>
+                          <FriendContextMenu key={p.id} friendId={p.id} friendName={p.display_name ?? 'Unknown'} isFriend={true} isBlocked={p.isBlocked} onAction={() => {}}>
                           <div
                             onClick={() => { if (!busy) void openChat(p.id) }}
                             className="flex cursor-pointer items-center gap-3 px-1 py-3 transition hover:bg-slate-900/40 sm:px-2">

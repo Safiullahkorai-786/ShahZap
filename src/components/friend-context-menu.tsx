@@ -2,24 +2,24 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { UserMinus, Trash2, Ban, X } from 'lucide-react'
+import { UserMinus, Trash2, Ban, ShieldCheck, X } from 'lucide-react'
 
 type Props = {
   children: React.ReactNode
   friendId: string
   friendName: string
   isFriend: boolean
+  isBlocked: boolean
   onAction: () => void
 }
 
-export function FriendContextMenu({ children, friendId, friendName, isFriend, onAction }: Props) {
+export function FriendContextMenu({ children, friendId, friendName, isFriend, isBlocked, onAction }: Props) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [blockMode, setBlockMode] = useState<'choose' | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Long press handler
   function handlePointerDown(e: React.PointerEvent) {
     timerRef.current = setTimeout(() => {
       e.preventDefault()
@@ -30,7 +30,6 @@ export function FriendContextMenu({ children, friendId, friendName, isFriend, on
     if (timerRef.current) clearTimeout(timerRef.current)
   }
 
-  // Close on outside click
   useEffect(() => {
     if (!open) return
     function handleClick(e: MouseEvent) {
@@ -40,7 +39,6 @@ export function FriendContextMenu({ children, friendId, friendName, isFriend, on
     return () => document.removeEventListener('mousedown', handleClick)
   }, [open])
 
-  // Right-click on desktop
   function handleContextMenu(e: React.MouseEvent) {
     e.preventDefault()
     setOpen(true)
@@ -71,6 +69,15 @@ export function FriendContextMenu({ children, friendId, friendName, isFriend, on
     setLoading(false)
     setOpen(false)
     setBlockMode(null)
+    onAction()
+  }
+
+  async function handleUnblock() {
+    setLoading(true)
+    const supabase = createClient()
+    await supabase.rpc('unblock_user', { p_other_id: friendId })
+    setLoading(false)
+    setOpen(false)
     onAction()
   }
 
@@ -129,41 +136,57 @@ export function FriendContextMenu({ children, friendId, friendName, isFriend, on
               </div>
             ) : (
               <div className="p-3 space-y-1">
-                {isFriend && (
+                {isBlocked ? (
                   <button
                     disabled={loading}
-                    onClick={handleUnfriend}
+                    onClick={handleUnblock}
                     className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition hover:bg-slate-800"
                   >
-                    <UserMinus size={16} className="text-amber-400" />
+                    <ShieldCheck size={16} className="text-emerald-400" />
                     <div>
-                      <p className="font-medium text-white">Unfriend</p>
-                      <p className="text-xs text-slate-400">Chats auto-delete after 7 days</p>
+                      <p className="font-medium text-white">Unblock</p>
+                      <p className="text-xs text-slate-400">Allow them to message you again</p>
                     </div>
                   </button>
+                ) : (
+                  <>
+                    {isFriend && (
+                      <button
+                        disabled={loading}
+                        onClick={handleUnfriend}
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition hover:bg-slate-800"
+                      >
+                        <UserMinus size={16} className="text-amber-400" />
+                        <div>
+                          <p className="font-medium text-white">Unfriend</p>
+                          <p className="text-xs text-slate-400">Chats auto-delete after 7 days</p>
+                        </div>
+                      </button>
+                    )}
+                    <button
+                      disabled={loading}
+                      onClick={handleDelete}
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition hover:bg-slate-800"
+                    >
+                      <Trash2 size={16} className="text-red-400" />
+                      <div>
+                        <p className="font-medium text-white">Delete chat</p>
+                        <p className="text-xs text-slate-400">Unfriend and remove all messages instantly</p>
+                      </div>
+                    </button>
+                    <button
+                      disabled={loading}
+                      onClick={() => setBlockMode('choose')}
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition hover:bg-slate-800"
+                    >
+                      <Ban size={16} className="text-red-500" />
+                      <div>
+                        <p className="font-medium text-white">Block</p>
+                        <p className="text-xs text-slate-400">Stop them from messaging you</p>
+                      </div>
+                    </button>
+                  </>
                 )}
-                <button
-                  disabled={loading}
-                  onClick={handleDelete}
-                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition hover:bg-slate-800"
-                >
-                  <Trash2 size={16} className="text-red-400" />
-                  <div>
-                    <p className="font-medium text-white">Delete chat</p>
-                    <p className="text-xs text-slate-400">Unfriend and remove all messages instantly</p>
-                  </div>
-                </button>
-                <button
-                  disabled={loading}
-                  onClick={() => setBlockMode('choose')}
-                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition hover:bg-slate-800"
-                >
-                  <Ban size={16} className="text-red-500" />
-                  <div>
-                    <p className="font-medium text-white">Block</p>
-                    <p className="text-xs text-slate-400">Stop them from messaging you</p>
-                  </div>
-                </button>
               </div>
             )}
           </div>
