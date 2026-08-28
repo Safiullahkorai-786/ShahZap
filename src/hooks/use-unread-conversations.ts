@@ -4,9 +4,9 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 /**
- * Returns the number of conversations that have unread messages for the
- * current user. Updates in real-time via Supabase Realtime on new message
- * INSERTs and message UPDATEs (when read_at gets set).
+ * Returns the number of items needing attention: conversations with unread
+ * messages + pending friend requests. Updates in real-time via Supabase
+ * Realtime on new messages, message reads, and friend request changes.
  */
 export function useUnreadConversations() {
   const [count, setCount] = useState(0)
@@ -20,17 +20,23 @@ export function useUnreadConversations() {
     if (!user) return
     userIdRef.current = user.id
 
-    // Count distinct conversations where I have unread inbound messages
-    const { data, error } = await supabase
+    // Count distinct conversations with unread inbound messages
+    const { data: msgData } = await supabase
       .from('messages')
       .select('conversation_id')
       .neq('sender_id', user.id)
       .is('read_at', null)
 
-    if (error || !data) return
+    const unreadMsgConvs = msgData ? new Set(msgData.map((m) => m.conversation_id)).size : 0
 
-    const uniqueConvs = new Set(data.map((m) => m.conversation_id))
-    setCount(uniqueConvs.size)
+    // Count pending friend requests sent TO me
+    const { count: reqCount } = await supabase
+      .from('friend_requests')
+      .select('id', { count: 'exact', head: true })
+      .eq('receiver_id', user.id)
+      .eq('status', 'pending')
+
+    setCount(unreadMsgConvs + (reqCount ?? 0))
   }, [])
 
   useEffect(() => {
@@ -45,31 +51,44 @@ export function useUnreadConversations() {
       }
     })
 
-    // Subscribe to new messages (to increment count)
     const channel = supabase
-      .channel('unread-convos-badge')
+      .channel('unread-badge-all')
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages' },
-        async (payload) => {
-          const row = payload.new as { sender_id: string; conversation_id: string; read_at: string | null }
-          if (!userIdRef.current) return
-          if (row.sender_id === userIdRef.current) return
-          // New inbound message — if it's from a new conversation, increment
-          if (!row.read_at) {
-            setCount((prev) => prev + 1)
-          }
+        (payload) => {
+          const row = payload.new as { sender_id: string; read_at: string | null }
+          if (!userIdRef.current || row.sender_id === userIdRef.current) return
+          if (!row.read_at) setCount((prev) => prev + 1)
         },
       )
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'messages' },
         (payload) => {
-          const row = payload.new as { sender_id: string; conversation_id: string; read_at: string | null }
+          const row = payload.new as { sender_id: string; read_at: string | null }
+          if (!userIdRef.current || row.sender_id === userIdRef.current) return
+          if (row.read_at) setCount((prev) => Math.max(0, prev - 1))
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'friend_requests' },
+        (payload) => {
+          const row = payload.new as { receiver_id: string; status: string }
           if (!userIdRef.current) return
-          if (row.sender_id === userIdRef.current) return
-          // Message was read — check if this conversation still has unread
-          if (row.read_at) {
+          if (row.receiver_id === userIdRef.current && row.status === 'pending') {
+            setCount((prev) => prev + 1)
+          }
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'friend_requests' },
+        (payload) => {
+          const row = payload.new as { receiver_id: string; status: string }
+          if (!userIdRef.current) return
+          if (row.receiver_id === userIdRef.current && row.status !== 'pending') {
             setCount((prev) => Math.max(0, prev - 1))
           }
         },

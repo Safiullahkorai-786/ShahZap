@@ -56,7 +56,7 @@ export function BottomNav() {
                 <span className="relative">
                   <Icon size={21} strokeWidth={active ? 2.4 : 1.9} />
                   {showBadge && (
-                    <span className="absolute -right-1.5 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-red-500 px-1 text-[7px] font-bold text-white">
+                    <span className="absolute -right-1.5 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-cyan-400 px-1 text-[7px] font-bold text-slate-950">
                       {unreadConversations > 9 ? '9+' : unreadConversations}
                     </span>
                   )}
