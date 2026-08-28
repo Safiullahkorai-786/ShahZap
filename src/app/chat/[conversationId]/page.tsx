@@ -687,6 +687,23 @@ export default function ChatPage() {
     }
   }, [menuOpen])
 
+  // Close the hover reaction picker when clicking/tapping anywhere outside it,
+  // or pressing Escape. Uses a document listener because a `fixed` backdrop
+  // inside the bubble is broken by the bubble's CSS transform.
+  useEffect(() => {
+    if (!reactFor) return
+    function onPointer(e: PointerEvent) {
+      if (!(e.target as Element | null)?.closest('[data-react-picker]')) setReactFor(null)
+    }
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setReactFor(null) }
+    document.addEventListener('pointerdown', onPointer)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onPointer)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [reactFor])
+
   useEffect(() => {
     if (!botTyping) return
     const timer = window.setTimeout(() => setBotTyping(false), 8000)
@@ -1642,14 +1659,13 @@ export default function ChatPage() {
                     {/* Reaction-only picker for the smile hover button. */}
                     {reactFor === m.id && (
                       <>
-                        <div className="fixed inset-0 z-20" onClick={() => setReactFor(null)} />
-                        <div className={`absolute bottom-full z-30 mb-1 grid w-max shrink-0 grid-cols-6 gap-1 overflow-visible rounded-2xl border border-slate-700 bg-slate-900 p-1.5 shadow-xl ${mine ? 'right-0' : 'left-0'}`}>
+                        <div data-react-picker className={`absolute bottom-full z-30 mb-1 grid w-max shrink-0 grid-cols-6 gap-0.5 overflow-visible rounded-xl border border-slate-700 bg-slate-900 p-1 shadow-xl ${mine ? 'right-0' : 'left-0'}`}>
                           {QUICK_EMOJIS.map((emoji) => {
                             const mineAlready = m.reactions?.[emoji]?.includes(userId ?? '') ?? false
                             return (
                               <button key={emoji} type="button" onClick={(e) => { e.stopPropagation(); void toggleReaction(m, emoji) }}
                                 title={mineAlready ? 'Remove your reaction' : 'React'}
-                                className={`flex h-9 w-9 flex-none items-center justify-center rounded-full align-middle text-base leading-none transition hover:scale-110 ${mineAlready ? 'bg-cyan-400/25 ring-2 ring-cyan-400' : ''}`}>
+                                className={`flex h-7 w-7 flex-none items-center justify-center rounded-full align-middle text-sm leading-none transition hover:scale-110 ${mineAlready ? 'bg-cyan-400/25 ring-2 ring-cyan-400' : ''}`}>
                                 <span className="flex h-full w-full flex-none items-center justify-center text-center leading-none">{emoji}</span>
                               </button>
                             )
