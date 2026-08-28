@@ -39,8 +39,8 @@ export function useUnreadConversations() {
     const { data } = await supabase
       .from('friend_requests')
       .select('sender_id,receiver_id')
-      .or(`and(sender_id.eq.${user.id},receiver_id.eq.${user.id})`)
       .eq('status', 'accepted')
+      .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
     const friendIds = new Set<string>()
     if (data) {
       for (const r of data) {
