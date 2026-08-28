@@ -157,8 +157,9 @@ export default function ChatPage() {
   const [allAccents, setAllAccents] = useState(false)
 
   // Chat wallpaper: ShahZap image or a solid color, with an intensity
-  // slider ("dim" = how much dark scrim sits over it).
-  const [wallpaper, setWallpaperState] = useState<WallpaperPrefs>({ mode: 'wallpaper', solid: '#0f172a', dim: 0.55 })
+  // slider ("dim" = how much dark scrim sits over it). Default 0 so the
+  // image shows fully/most vividly; users can dim it as they prefer.
+  const [wallpaper, setWallpaperState] = useState<WallpaperPrefs>({ mode: 'wallpaper', solid: '#0f172a', dim: 0 })
   function setWallpaper(next: WallpaperPrefs) {
     setWallpaperState(next)
     try { localStorage.setItem('shahzap:wallpaper', JSON.stringify(next)) } catch {}
@@ -1109,6 +1110,18 @@ export default function ChatPage() {
 
   return (
     <main className="relative flex h-dvh max-h-dvh w-full flex-col overflow-hidden bg-slate-950 text-white">
+      {/* ── Fixed wallpaper/solid background layer ──────────────
+          Kept OUTSIDE the scrolling message list and pinned to the
+          container so the image does NOT move/jitter when the mobile
+          keyboard appears or a status notification shifts layout. */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 z-0"
+        style={{
+          backgroundColor: wallpaper.solid,
+          backgroundImage: `linear-gradient(rgba(2,6,23,${wallpaper.dim}), rgba(2,6,23,${wallpaper.dim}))${wallpaper.mode === 'wallpaper' ? ', url(/ShahZap_Bg.png)' : ''}`,
+          backgroundSize: wallpaper.mode === 'wallpaper' ? 'cover' : 'auto',
+          backgroundPosition: 'center',
+        }}
+      />
       {/* ── Header ─────────────────────────────────────────── */}
       <header className="relative z-20 flex-none border-b border-slate-800 bg-slate-900 px-2 py-2.5 backdrop-blur">
         <div className="mx-auto flex max-w-3xl items-center gap-1.5">
@@ -1446,7 +1459,7 @@ export default function ChatPage() {
       </div>
 
       {(statusLine || blockedByMe) && (
-        <div className="mx-auto w-full max-w-3xl px-3">
+        <div className="relative z-10 mx-auto w-full max-w-3xl px-3">
           <p className={`pt-2 text-xs ${blockedByMe ? 'text-red-300' : 'text-emerald-300'}`}>
             {blockedByMe ? 'You blocked this user. Use the ⋮ menu to unblock.' : statusLine}
           </p>
@@ -1454,14 +1467,7 @@ export default function ChatPage() {
       )}
 
       {/* ── Messages ───────────────────────────────────────── */}
-      <div ref={scrollRef} className="relative mx-auto min-h-0 w-full max-w-3xl flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-4 text-left"
-        style={{
-          // Wallpaper (or solid color) under a scrim — intensity is user-controlled.
-          backgroundColor: wallpaper.solid,
-          backgroundImage: `linear-gradient(rgba(2,6,23,${wallpaper.dim}), rgba(2,6,23,${wallpaper.dim}))${wallpaper.mode === 'wallpaper' ? ', url(/ShahZap_Bg.png)' : ''}`,
-          backgroundSize: wallpaper.mode === 'wallpaper' ? 'cover' : 'auto',
-          backgroundPosition: 'center',
-        }}>
+      <div ref={scrollRef} className="relative z-10 mx-auto min-h-0 w-full max-w-3xl flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-4 text-left">
         {loading && (
             <div aria-busy="true" className="space-y-3 pt-2">
               {[['62%','justify-end'],['45%','justify-start'],['68%','justify-end'],['40%','justify-start'],['56%','justify-end']].map(([w,side],i)=>(
@@ -1619,7 +1625,7 @@ export default function ChatPage() {
       {error && <p className="mx-auto w-full max-w-3xl px-3 pb-2 text-xs text-red-300">{error}</p>}
 
       {/* ── Composer ───────────────────────────────────────── */}
-      <form ref={formRef} onSubmit={send} className="flex-none border-t border-slate-800 bg-slate-900 px-3 pt-2"
+      <form ref={formRef} onSubmit={send} className="relative z-10 flex-none border-t border-slate-800 bg-slate-900 px-3 pt-2"
         style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
         <div className="mx-auto max-w-3xl">
           {composerQuote && (
