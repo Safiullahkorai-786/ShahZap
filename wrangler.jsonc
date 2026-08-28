@@ -23,7 +23,7 @@
     //   npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
   },
   "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
-  // Workers AI binding for live message translation (@cf/meta/m2m100).
+  // Workers AI binding for live message translation (@cf/meta/m2m100-1.2b).
   // Requires Workers AI enabled on the account; no external API key. Billed on
   // AI inference credits, not the request quota. Daily usage is capped via
   // TRANSLATION_USER_DAILY_CAP / TRANSLATION_GLOBAL_DAILY_CAP above.
