@@ -16,7 +16,7 @@ type Props = {
 export function FriendContextMenu({ children, friendId, friendName, isFriend, isBlocked, onAction }: Props) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [blockMode, setBlockMode] = useState<'choose' | null>(null)
+  const [confirm, setConfirm] = useState<{ action: 'unfriend' | 'delete' | 'block' } | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const suppressClickRef = useRef(false)
@@ -56,7 +56,7 @@ export function FriendContextMenu({ children, friendId, friendName, isFriend, is
     function handleOutsideClick(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setOpen(false)
-        setBlockMode(null)
+        setConfirm(null)
       }
     }
     document.addEventListener('mousedown', handleOutsideClick)
@@ -73,7 +73,7 @@ export function FriendContextMenu({ children, friendId, friendName, isFriend, is
     const supabase = createClient()
     const { error } = await supabase.rpc('unfriend_user', { p_other_id: friendId })
     setLoading(false)
-    if (!error) { setOpen(false); onAction('unfriend') }
+    if (!error) { setOpen(false); setConfirm(null); onAction('unfriend') }
   }
 
   async function handleDelete() {
@@ -81,7 +81,7 @@ export function FriendContextMenu({ children, friendId, friendName, isFriend, is
     const supabase = createClient()
     const { error } = await supabase.rpc('delete_and_unfriend', { p_other_id: friendId })
     setLoading(false)
-    if (!error) { setOpen(false); onAction('delete') }
+    if (!error) { setOpen(false); setConfirm(null); onAction('delete') }
   }
 
   async function handleBlock(unfriend: boolean) {
@@ -89,7 +89,7 @@ export function FriendContextMenu({ children, friendId, friendName, isFriend, is
     const supabase = createClient()
     const { error } = await supabase.rpc('block_user', { p_other_id: friendId, p_unfriend: unfriend })
     setLoading(false)
-    if (!error) { setOpen(false); setBlockMode(null); onAction('block') }
+    if (!error) { setOpen(false); setConfirm(null); onAction('block') }
   }
 
   async function handleUnblock() {
@@ -98,6 +98,11 @@ export function FriendContextMenu({ children, friendId, friendName, isFriend, is
     const { error } = await supabase.rpc('unblock_user', { p_other_id: friendId })
     setLoading(false)
     if (!error) { setOpen(false); onAction('unblock') }
+  }
+
+  function closeMenu() {
+    setOpen(false)
+    setConfirm(null)
   }
 
   return (
@@ -116,31 +121,59 @@ export function FriendContextMenu({ children, friendId, friendName, isFriend, is
 
       {open && (
         <>
-          <div className="fixed inset-0 z-50" onClick={() => { setOpen(false); setBlockMode(null) }} />
+          <div className="fixed inset-0 z-50" onClick={() => { setOpen(false); setConfirm(null) }} />
           <div
             ref={menuRef}
             className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 w-72 overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl shadow-black/60"
           >
             <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
               <p className="text-sm font-semibold text-white truncate">{friendName}</p>
-              <button onClick={() => { setOpen(false); setBlockMode(null) }} className="text-slate-400 hover:text-white">
+              <button onClick={closeMenu} className="text-slate-400 hover:text-white">
                 <X size={16} />
               </button>
             </div>
 
-            {blockMode === 'choose' ? (
-              <div className="p-3 space-y-2">
-                <p className="text-xs text-slate-400 mb-2">How do you want to block {friendName}?</p>
-                <button disabled={loading} onClick={() => handleBlock(false)}
-                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition hover:bg-slate-800">
-                  <Ban size={16} className="text-amber-400" />
-                  <div><p className="font-medium text-white">Block only</p><p className="text-xs text-slate-400">Stay friends but stop messages from them</p></div>
-                </button>
-                <button disabled={loading} onClick={() => handleBlock(true)}
-                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition hover:bg-slate-800">
-                  <Ban size={16} className="text-red-400" /><UserMinus size={16} className="text-red-400 -ml-1" />
-                  <div><p className="font-medium text-white">Block &amp; unfriend</p><p className="text-xs text-slate-400">Remove friendship and block them</p></div>
-                </button>
+            {confirm && confirm.action === 'block' ? (
+              <div className="p-3">
+                <div className="mb-3 rounded-xl bg-red-950/30 p-3">
+                  <p className="text-sm font-semibold text-red-200">Really block {friendName}?</p>
+                  <p className="mt-0.5 text-xs text-slate-400">They won't be able to message you anymore.</p>
+                </div>
+                <div className="space-y-2">
+                  <button disabled={loading} onClick={() => handleBlock(false)}
+                    className="flex w-full items-center justify-center gap-3 rounded-xl bg-red-500 px-3 py-2.5 text-center text-sm font-bold text-white transition hover:bg-red-400">
+                    <Ban size={16} /> Yes, block only
+                  </button>
+                  <button disabled={loading} onClick={() => handleBlock(true)}
+                    className="flex w-full items-center justify-center gap-3 rounded-xl bg-red-600 px-3 py-2.5 text-center text-sm font-bold text-white transition hover:bg-red-500">
+                    <UserMinus size={16} /> Yes, block &amp; unfriend
+                  </button>
+                  <button disabled={loading} onClick={() => setConfirm(null)}
+                    className="w-full rounded-xl border border-slate-600 px-3 py-2.5 text-sm font-semibold text-slate-300 transition hover:bg-slate-800">
+                    No
+                  </button>
+                </div>
+              </div>
+            ) : confirm ? (
+              <div className="p-3">
+                <div className="mb-3 rounded-xl bg-red-950/30 p-3">
+                  <p className="text-sm font-semibold text-red-200">{confirm.action === 'unfriend' ? `Really unfriend ${friendName}?` : `Delete chat with ${friendName}?`}</p>
+                  <p className="mt-0.5 text-xs text-slate-400">
+                    {confirm.action === 'unfriend'
+                      ? 'Your chats auto-delete after 7 days.'
+                      : 'Your messages will be removed instantly and you will no longer be friends.'}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button disabled={loading} onClick={() => setConfirm(null)}
+                    className="flex-1 rounded-xl border border-slate-600 px-3 py-2.5 text-sm font-semibold text-slate-300 transition hover:bg-slate-800">
+                    No
+                  </button>
+                  <button disabled={loading} onClick={() => confirm.action === 'unfriend' ? void handleUnfriend() : void handleDelete()}
+                    className="flex-1 rounded-xl bg-red-500 px-3 py-2.5 text-sm font-bold text-white transition hover:bg-red-400">
+                    Yes
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="p-3 space-y-1">
@@ -153,18 +186,18 @@ export function FriendContextMenu({ children, friendId, friendName, isFriend, is
                 ) : (
                   <>
                     {isFriend && (
-                      <button disabled={loading} onClick={handleUnfriend}
+                      <button disabled={loading} onClick={() => setConfirm({ action: 'unfriend' })}
                         className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition hover:bg-slate-800">
                         <UserMinus size={16} className="text-amber-400" />
                         <div><p className="font-medium text-white">Unfriend</p><p className="text-xs text-slate-400">Chats auto-delete after 7 days</p></div>
                       </button>
                     )}
-                    <button disabled={loading} onClick={handleDelete}
+                    <button disabled={loading} onClick={() => setConfirm({ action: 'delete' })}
                       className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition hover:bg-slate-800">
                       <Trash2 size={16} className="text-red-400" />
                       <div><p className="font-medium text-white">Delete chat</p><p className="text-xs text-slate-400">Unfriend and remove all messages instantly</p></div>
                     </button>
-                    <button disabled={loading} onClick={() => setBlockMode('choose')}
+                    <button disabled={loading} onClick={() => setConfirm({ action: 'block' })}
                       className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition hover:bg-slate-800">
                       <Ban size={16} className="text-red-500" />
                       <div><p className="font-medium text-white">Block</p><p className="text-xs text-slate-400">Stop them from messaging you</p></div>
