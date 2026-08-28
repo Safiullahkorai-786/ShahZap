@@ -47,38 +47,33 @@ export function FriendContextMenu({ children, friendId, friendName, isFriend, is
   async function handleUnfriend() {
     setLoading(true)
     const supabase = createClient()
-    await supabase.rpc('unfriend_user', { p_other_id: friendId })
+    const { error } = await supabase.rpc('unfriend_user', { p_other_id: friendId })
     setLoading(false)
-    setOpen(false)
-    onAction('unfriend')
+    if (!error) { setOpen(false); onAction('unfriend') }
   }
 
   async function handleDelete() {
     setLoading(true)
     const supabase = createClient()
-    await supabase.rpc('delete_and_unfriend', { p_other_id: friendId })
+    const { error } = await supabase.rpc('delete_and_unfriend', { p_other_id: friendId })
     setLoading(false)
-    setOpen(false)
-    onAction('delete')
+    if (!error) { setOpen(false); onAction('delete') }
   }
 
   async function handleBlock(unfriend: boolean) {
     setLoading(true)
     const supabase = createClient()
-    await supabase.rpc('block_user', { p_other_id: friendId, p_unfriend: unfriend })
+    const { error } = await supabase.rpc('block_user', { p_other_id: friendId, p_unfriend: unfriend })
     setLoading(false)
-    setOpen(false)
-    setBlockMode(null)
-    onAction('block')
+    if (!error) { setOpen(false); setBlockMode(null); onAction('block') }
   }
 
   async function handleUnblock() {
     setLoading(true)
     const supabase = createClient()
-    await supabase.rpc('unblock_user', { p_other_id: friendId })
+    const { error } = await supabase.rpc('unblock_user', { p_other_id: friendId })
     setLoading(false)
-    setOpen(false)
-    onAction('unblock')
+    if (!error) { setOpen(false); onAction('unblock') }
   }
 
   return (
