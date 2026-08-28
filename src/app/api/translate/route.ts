@@ -7,7 +7,7 @@ const MAX_LEN = 1000
 
 type M2MResponse = { result?: { translated_text?: string }; translated_text?: string }
 
-// Minimal shape of the Workers AI binding (@cf/meta/m2m100-1.2b); @cloudflare/
+// Minimal shape of the Workers AI binding (@cf/meta/m2m100); @cloudflare/
 // workers-types isn't installed, so declare just what we call.
 type AiBinding = { run: (model: string, input: Record<string, unknown>) => Promise<unknown> }
 
@@ -74,7 +74,7 @@ export async function POST(req: Request) {
     const env = (await getCloudflareContext()).env as { AI: AiBinding }
     let out: M2MResponse
     try {
-      out = (await env.AI.run('@cf/meta/m2m100-1.2b', {
+      out = (await env.AI.run('@cf/meta/m2m100', {
         text,
         source_lang: sourceLang,
         target_lang: targetLang,
