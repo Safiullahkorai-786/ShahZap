@@ -1,4 +1,4 @@
--- Returns count of (conversations with unread messages from friends) + (pending friend requests)
+-- Fix: count distinct CONVERSATIONS with unread messages, not total messages
 create or replace function unread_count_for_user(uid uuid)
 returns integer
 language sql
