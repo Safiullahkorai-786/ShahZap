@@ -3,6 +3,7 @@
 import { ChevronLeft, Home, Radar, Radio, Users, Settings, Zap, Gift, Crown, UserRound, ShieldCheck } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { NotificationBell } from '@/components/notification-bell'
 
 // Icons are resolved INSIDE this client component by name. Passing actual
 // icon components as props breaks whenever a SERVER component renders this
@@ -47,6 +48,7 @@ export function AppHeader({
           <Icon size={30} strokeWidth={2} />
         </span>
         <h1 className="flex-1 truncate px-0.5 text-lg font-semibold">{title}</h1>
+        <NotificationBell />
       </div>
     </header>
   )
