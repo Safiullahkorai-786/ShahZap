@@ -12,7 +12,7 @@ const ONLINE_WINDOW_MS = 20 * 1000
 const TYPING_WINDOW_MS = 5000
 const POLL_MS = 3000
 
-type Request = { id: string; sender_id: string; receiver_id: string; status: string; created_at: string }
+type Request = { id: string; sender_id: string; receiver_id: string; status: string; created_at: string; updated_at: string }
 type Profile = { id: string; display_name: string | null; avatar_path: string | null; age_band: string | null; generation: string | null; country_code: string | null; profile_visible: boolean; gender: string | null; gender_visible: boolean; last_active_at: string | null; online_visible: boolean | null }
 type FriendWithMeta = Profile & {
   lastMessage: string | null
@@ -26,6 +26,7 @@ type FriendWithMeta = Profile & {
   partnerLastReadAt: string | null
   lastMessageDeliveredAt: string | null
   lastMessageReadAt: string | null
+  friendSince: string | null
 }
 type Tab = 'friends' | 'pending'
 type FilterGender = 'all' | 'woman' | 'man' | 'non_binary'
@@ -156,8 +157,8 @@ function TypingDots() {
 
 function sortFriends(arr: FriendWithMeta[]) {
   arr.sort((a, b) => {
-    const aTime = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0
-    const bTime = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0
+    const aTime = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : (a.friendSince ? new Date(a.friendSince).getTime() : 0)
+    const bTime = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : (b.friendSince ? new Date(b.friendSince).getTime() : 0)
     return bTime - aTime
   })
 }
@@ -200,7 +201,7 @@ export default function FriendsPage() {
       if (mounted) { setUserId(user.id); userIdRef.current = user.id }
 
       const { data: reqs, error: reqError } = await supabase.from('friend_requests')
-        .select('id,sender_id,receiver_id,status,created_at')
+        .select('id,sender_id,receiver_id,status,created_at,updated_at')
         .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
         .order('created_at', { ascending: false })
       if (reqError) { if (mounted) { setError(friendlyError(reqError, 'Could not load friend data.')); setLoading(false) } return }
@@ -208,6 +209,11 @@ export default function FriendsPage() {
       const visible = (reqs ?? []) as Request[]
       const accepted = visible.filter((r) => r.status === 'accepted')
       const friendIds = accepted.map((r) => r.sender_id === user.id ? r.receiver_id : r.sender_id)
+      const friendSinceMap: Record<string, string> = {}
+      for (const r of accepted) {
+        const friendId = r.sender_id === user.id ? r.receiver_id : r.sender_id
+        friendSinceMap[friendId] = r.updated_at
+      }
 
       const pendingIncoming = visible.filter((r) => r.status === 'pending' && r.receiver_id === user.id)
       const pendingOutgoing = visible.filter((r) => r.status === 'pending' && r.sender_id === user.id)
@@ -227,7 +233,7 @@ export default function FriendsPage() {
       const friendMeta: Record<string, {
         lastMessage: string | null; lastMessageTime: string | null; lastSenderId: string | null;
         lastMessageId: string | null; conversationId: string | null; unreadCount: number; partnerLastReadAt: string | null;
-        lastMessageDeliveredAt: string | null; lastMessageReadAt: string | null
+        lastMessageDeliveredAt: string | null; lastMessageReadAt: string | null; friendSince: string | null
       }> = {}
 
       convToFriendRef.current = {}
@@ -282,6 +288,7 @@ export default function FriendsPage() {
                 lastMessageId: null, conversationId: convId, unreadCount: 0,
                 partnerLastReadAt: partnerLastRead[convId] ?? null,
                 lastMessageDeliveredAt: null, lastMessageReadAt: null,
+                friendSince: friendSinceMap[other] ?? null,
               }
             }
 
@@ -357,6 +364,7 @@ export default function FriendsPage() {
             partnerLastReadAt: meta?.partnerLastReadAt ?? null,
             lastMessageDeliveredAt: meta?.lastMessageDeliveredAt ?? null,
             lastMessageReadAt: meta?.lastMessageReadAt ?? null,
+            friendSince: meta?.friendSince ?? null,
           }
         })
         .filter(Boolean) as FriendWithMeta[]
@@ -684,7 +692,7 @@ export default function FriendsPage() {
           if (prev.some((f) => f.id === otherId)) return prev
           const profile = p as Profile | null
           if (!profile) return prev
-          return [...prev, { ...profile, lastMessage: null, lastMessageTime: null, lastSenderId: null, lastMessageId: null, conversationId: null, isOnline: false, unreadCount: 0, isTyping: false, partnerLastReadAt: null, lastMessageDeliveredAt: null, lastMessageReadAt: null }]
+          return [...prev, { ...profile, lastMessage: null, lastMessageTime: null, lastSenderId: null, lastMessageId: null, conversationId: null, isOnline: false, unreadCount: 0, isTyping: false, partnerLastReadAt: null, lastMessageDeliveredAt: null, lastMessageReadAt: null, friendSince: new Date().toISOString() }]
         })
       }
     }
