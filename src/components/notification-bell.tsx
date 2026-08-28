@@ -9,6 +9,7 @@ import { resolveIdentity, type Identity } from '@/lib/identity'
 import { isBotProfile } from '@/lib/bot'
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
+const STORAGE_KEY = 'shahzap:dismissed-notifs'
 
 type Notification = {
   id: string
@@ -50,18 +51,29 @@ function kindToText(kind: string): string {
   }
 }
 
+function loadDismissed(): Set<string> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return new Set()
+    return new Set(JSON.parse(raw))
+  } catch { return new Set() }
+}
+
+function saveDismissed(ids: Set<string>) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify([...ids])) } catch {}
+}
+
 export function NotificationBell() {
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState<Notification[]>([])
   const [nowTick, setNowTick] = useState(0)
   const userIdRef = useRef<string | null>(null)
-  // IDs whose dots have been visually cleared (on bell close)
-  const dismissedIdsRef = useRef(new Set<string>())
+  const dismissedRef = useRef<Set<string>>(loadDismissed())
 
   function calcBadge(list: Notification[]) {
     let c = 0
     for (const n of list) {
-      if (!dismissedIdsRef.current.has(n.id)) c++
+      if (!dismissedRef.current.has(n.id)) c++
     }
     return c
   }
@@ -212,8 +224,11 @@ export function NotificationBell() {
 
   function handleToggle() {
     if (open) {
-      // Closing: dismiss all current dots and badge
-      dismissedIdsRef.current = new Set(items.map((n) => n.id))
+      // Closing: dismiss all current items and persist to localStorage
+      const newDismissed = new Set(dismissedRef.current)
+      for (const n of items) newDismissed.add(n.id)
+      dismissedRef.current = newDismissed
+      saveDismissed(newDismissed)
       setBadge(0)
     }
     setOpen((p) => !p)
@@ -244,7 +259,7 @@ export function NotificationBell() {
             ) : (
               <ul className="max-h-96 divide-y divide-slate-800 overflow-y-auto">
                 {items.map((n) => {
-                  const isFresh = !dismissedIdsRef.current.has(n.id)
+                  const isFresh = !dismissedRef.current.has(n.id)
                   return (
                     <li key={n.id}>
                       <Link href={n.href} onClick={handleToggle} className="flex items-start gap-3 px-4 py-3 transition hover:bg-slate-800">
