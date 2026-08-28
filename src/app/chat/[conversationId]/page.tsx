@@ -1491,7 +1491,7 @@ export default function ChatPage() {
           const dragging = rawDx !== 0
           const reactions = Object.entries(m.reactions ?? {}).filter(([, users]) => users.length > 0)
           return (
-            <div key={m.id} className="w-full">
+            <div key={m.id} id={`msg-${m.id}`} className="w-full scroll-mt-20">
               {showDay && (
                 <div className="py-2 text-center">
                   <span className="rounded-full bg-slate-800/80 px-3 py-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">{dayLabel(m.created_at)}</span>
@@ -1511,7 +1511,12 @@ export default function ChatPage() {
                     className={`relative w-fit max-w-full select-none rounded-2xl px-3.5 py-2 shadow-sm ${mine ? 'rounded-br-md bg-gradient-to-br from-cyan-500 to-cyan-400 text-slate-950' : 'rounded-bl-md bg-slate-800 text-slate-100'} ${deleted || hiddenForMe ? 'italic opacity-70' : ''} ${dragging ? '' : 'transition-transform duration-150 ease-out'}`}
                   >
                     {replied && (
-                      <div className={`mb-1.5 rounded-lg border-l-[3px] px-2 py-1 ${mine ? 'border-slate-900/40 bg-black/10' : 'border-cyan-400/70 bg-black/20'}`}>
+                      <div
+                        role="button" tabIndex={0}
+                        onClick={(e) => { e.stopPropagation(); const el = document.getElementById(`msg-${replied.id}`); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('highlight-msg'); setTimeout(() => el.classList.remove('highlight-msg'), 1500) } }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.click() }}
+                        className={`mb-1.5 cursor-pointer rounded-lg border-l-[3px] px-2 py-1 transition hover:brightness-110 ${mine ? 'border-slate-900/40 bg-black/10' : 'border-cyan-400/70 bg-black/20'}`}
+                      >
                         <p className={`text-[11px] font-semibold ${mine ? 'text-slate-900/80' : 'text-cyan-300'}`}>{labelFor(replied)}</p>
                         <p className={`line-clamp-2 text-left text-xs ${mine ? 'text-slate-900/70' : 'text-slate-400'}`}>{replied.deleted_at ? 'This message was deleted' : replied.original_message}</p>
                       </div>
