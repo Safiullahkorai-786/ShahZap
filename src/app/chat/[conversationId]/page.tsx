@@ -10,6 +10,7 @@ import { friendlyError } from '@/lib/errors'
 import { getBotPersona, isBotProfile } from '@/lib/bot'
 import { AdsterraBanner } from '@/components/adsterra-banner'
 import { resolveIdentity, type Identity } from '@/lib/identity'
+import { useSiteActive } from '@/hooks/use-site-active'
 import { Shimmer } from '@/components/shimmer'
 import { RichText } from '@/components/rich-text'
 import { EmojiPicker } from '@/components/emoji-picker'
@@ -176,7 +177,6 @@ export default function ChatPage() {
   const incomingTimer = useRef<number | undefined>(undefined)
   const lastLocalFriendChange = useRef<number>(0)
   const [otherOnline, setOtherOnline] = useState(false)
-  const [selfViewing, setSelfViewing] = useState(true)
   const [presenceLabel, setPresenceLabel] = useState('')
   const [otherLastActiveAt, setOtherLastActiveAt] = useState<string | null>(null)
   const [showScrollDown, setShowScrollDown] = useState(false)
@@ -1055,30 +1055,16 @@ export default function ChatPage() {
 
   // WhatsApp-style ticks for my own messages:
   //   single tick        → message not yet delivered, or I'm not actively
-  //                        viewing this chat right now;
+  //                        on the site right now;
   //   white double tick  → message is delivered (delivered_at set, permanent)
-  //                        and I'm online on the active tab;
+  //                        and I'm online on the site (any page/tab);
   //   blue double tick   → receiver has read the message (permanent).
+  const siteActive = useSiteActive()
+
   function isDelivered(m: Message): boolean {
     if (persona) return true
-    return !!m.delivered_at && selfViewing
+    return !!m.delivered_at && siteActive
   }
-
-  // Track whether this chat tab is actually on screen (visible + focused).
-  // While viewing, delivered double ticks stay permanent; when the tab is
-  // hidden/blurred they fall back to a single "sent" tick until you return.
-  useEffect(() => {
-    const update = () => setSelfViewing(document.visibilityState === 'visible' && document.hasFocus())
-    update()
-    document.addEventListener('visibilitychange', update)
-    window.addEventListener('focus', update)
-    window.addEventListener('blur', update)
-    return () => {
-      document.removeEventListener('visibilitychange', update)
-      window.removeEventListener('focus', update)
-      window.removeEventListener('blur', update)
-    }
-  }, [])
 
   function isSeen(m: Message): boolean {
     if (persona) return true
