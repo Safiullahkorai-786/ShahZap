@@ -15,13 +15,17 @@
     // Adsterra (public values — account 3436789, website 6001372):
     "NEXT_PUBLIC_ADSTERRA_728X90": "5c8597ab83f246476e006bfb0146b5ea",
     "NEXT_PUBLIC_ADSTERRA_300X250": "60c67d6facfea2048a5a7c45be05b541",
-    "NEXT_PUBLIC_ADSTERRA_160X600": "079fc3d49517794bd4da514f8b4e76fc"
+    "NEXT_PUBLIC_ADSTERRA_160X600": "079fc3d49517794bd4da514f8b4e76fc",
+    // Daily translation budget caps (tunable at runtime):
+    "TRANSLATION_USER_DAILY_CAP": "50",
+    "TRANSLATION_GLOBAL_DAILY_CAP": "300"
     // Rewards: store the service key as a secret (never commit it):
     //   npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
   },
   "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
-  // Workers AI binding for live message translation (@cf/meta/m2m100-1.2b).
-  // Requires Workers AI enabled on the account (paid Workers plan); no external
-  // API key. Billed on AI inference credits, not the request quota.
+  // Workers AI binding for live message translation (@cf/meta/m2m100).
+  // Requires Workers AI enabled on the account; no external API key. Billed on
+  // AI inference credits, not the request quota. Daily usage is capped via
+  // TRANSLATION_USER_DAILY_CAP / TRANSLATION_GLOBAL_DAILY_CAP above.
   "ai": { "binding": "AI" }
 }

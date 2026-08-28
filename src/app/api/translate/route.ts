@@ -5,6 +5,11 @@ export const dynamic = 'force-dynamic'
 
 const MAX_LEN = 1000
 
+// Free-tier Workers AI has a small daily neuron allowance. Caps are read from
+// runtime env so they can be tuned without rebuilding; generous-but-safe tops.
+const USER_DAILY_CAP = Number(process.env.TRANSLATION_USER_DAILY_CAP ?? 50)
+const GLOBAL_DAILY_CAP = Number(process.env.TRANSLATION_GLOBAL_DAILY_CAP ?? 300)
+
 type M2MResponse = { result?: { translated_text?: string }; translated_text?: string }
 
 // Minimal shape of the Workers AI binding (@cf/meta/m2m100); @cloudflare/
@@ -41,12 +46,13 @@ export async function POST(req: Request) {
   const supabase = db()
   if (!supabase) return NextResponse.json({ error: 'Missing server config.' }, { status: 500 })
 
-  let payload: { messageId?: string; targetLang?: string } = {}
+  let payload: { messageId?: string; targetLang?: string; userId?: string } = {}
   try { payload = await req.json() } catch { /* ignore */ }
   const messageId = typeof payload.messageId === 'string' ? payload.messageId.trim() : ''
   const targetLang = typeof payload.targetLang === 'string' ? payload.targetLang.trim() : ''
-  if (!messageId || !targetLang) {
-    return NextResponse.json({ error: 'messageId and targetLang are required.' }, { status: 400 })
+  const userId = typeof payload.userId === 'string' ? payload.userId.trim() : ''
+  if (!messageId || !targetLang || !userId) {
+    return NextResponse.json({ error: 'messageId, targetLang and userId are required.' }, { status: 400 })
   }
 
   const resolved = await resolveMessage(supabase, messageId)
@@ -70,6 +76,19 @@ export async function POST(req: Request) {
   if (!sourceLang || sourceLang === targetLang) {
     reused = true
   } else {
+    // Reserve a slot against the daily budget; only real model calls consume it.
+    const { data: reserved } = await supabase.rpc('translation_reserve', {
+      p_user_id: userId,
+      p_user_cap: USER_DAILY_CAP,
+      p_global_cap: GLOBAL_DAILY_CAP,
+    })
+    const allow = typeof reserved === 'object' && reserved !== null && (reserved as { allowed?: boolean }).allowed
+    if (!allow) {
+      return NextResponse.json(
+        { error: 'Daily translation limit reached. Try again tomorrow.' },
+        { status: 429 }
+      )
+    }
     const { getCloudflareContext } = await import('@opennextjs/cloudflare')
     const env = (await getCloudflareContext()).env as { AI: AiBinding }
     let out: M2MResponse
@@ -80,6 +99,7 @@ export async function POST(req: Request) {
         target_lang: targetLang,
       })) as M2MResponse
     } catch (e) {
+      await supabase.rpc('translation_refund', { p_user_id: userId }).then(() => {}, () => {})
       return NextResponse.json(
         { error: `Translation failed. ${e instanceof Error ? e.message : ''}` },
         { status: 502 }

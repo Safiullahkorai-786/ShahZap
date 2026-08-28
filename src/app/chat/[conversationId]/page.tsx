@@ -979,7 +979,7 @@ export default function ChatPage() {
       const res = await fetch('/api/translate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messageId: m.id, targetLang: myChatLang }),
+        body: JSON.stringify({ messageId: m.id, targetLang: myChatLang, userId: userId ?? '' }),
       })
       const data = await res.json().catch(() => null)
       if (res.ok && data?.translatedText) {
