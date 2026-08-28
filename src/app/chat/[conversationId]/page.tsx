@@ -1111,12 +1111,14 @@ export default function ChatPage() {
   return (
     <main className="relative flex h-dvh max-h-dvh w-full flex-col overflow-hidden bg-slate-950 text-white">
       {/* ── Fixed wallpaper/solid background layer ──────────────
-          Kept OUTSIDE the scrolling message list and pinned to the
-          container so the image does NOT move/jitter when the mobile
-          keyboard appears or a status notification shifts layout.
-          Constrained to the centered chat column (max-w-3xl) so the
-          image only shows behind the message area, not the full screen. */}
-      <div aria-hidden className="pointer-events-none absolute bottom-0 left-1/2 top-0 z-0 w-full max-w-3xl -translate-x-1/2"
+          Pinned to the layout viewport with a CONSTANT height (100vh,
+          the full/large-viewport height) so the image does NOT move or
+          rescale when the mobile keyboard opens or a status banner
+          shifts the chat layout. Using 100vh (not 100dvh) keeps the
+          height stable while the keyboard is up. Constrained to the
+          centered chat column (max-w-3xl) so it only shows behind the
+          message area, not the full screen. */}
+      <div aria-hidden className="pointer-events-none fixed left-1/2 top-0 z-0 h-screen w-full max-w-3xl -translate-x-1/2"
         style={{
           backgroundColor: wallpaper.solid,
           backgroundImage: `linear-gradient(rgba(2,6,23,${wallpaper.dim}), rgba(2,6,23,${wallpaper.dim}))${wallpaper.mode === 'wallpaper' ? ', url(/ShahZap_Bg.png)' : ''}`,
