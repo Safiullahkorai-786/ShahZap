@@ -33,11 +33,7 @@ if (typeof window !== 'undefined') {
 }
 
 export function useSiteActive(): boolean {
-  const [active, setActive] = useState(() =>
-    typeof window !== 'undefined' && document.visibilityState === 'visible'
-      ? true
-      : readActive()
-  )
+  const [active, setActive] = useState(() => readActive())
 
   useEffect(() => {
     let graceTimer: number | undefined
@@ -92,7 +88,11 @@ export function useSiteActive(): boolean {
       }
     }
 
-    mark(true)
+    // Do NOT force active here: the initial value comes from the persisted
+    // heartbeat freshness (readActive). If the site was recently active we
+    // start active; if it's been idle (tabs closed), we start inactive and the
+    // beat() below flips it back on the moment this tab is visible + online.
+
     document.addEventListener('visibilitychange', onVis)
     window.addEventListener('focus', onFocus)
     window.addEventListener('blur', onBlur)
