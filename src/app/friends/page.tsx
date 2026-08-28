@@ -496,10 +496,26 @@ export default function FriendsPage() {
         const row = payload.new as Request
         if (row.sender_id !== uid && row.receiver_id !== uid) return
         setRequests((prev) => prev.map((r) => r.id === row.id ? { ...r, status: row.status } : r))
+        // If a previously accepted request changed to something else, unfriend
+        if (row.status !== 'accepted') {
+          const otherId = row.sender_id === uid ? row.receiver_id : row.sender_id
+          setFriends((prev) => prev.filter((f) => f.id !== otherId))
+          delete convToFriendRef.current[Object.keys(convToFriendRef.current).find((k) => convToFriendRef.current[k] === otherId) ?? '']
+          delete friendToConvRef.current[otherId]
+        }
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'friend_requests' }, (payload) => {
         const old = payload.old as { id: string }
-        setRequests((prev) => prev.filter((r) => r.id !== old.id))
+        setRequests((prev) => {
+          const deleted = prev.find((r) => r.id === old.id)
+          if (deleted && deleted.status === 'accepted') {
+            const otherId = deleted.sender_id === uid ? deleted.receiver_id : deleted.sender_id
+            setFriends((prev) => prev.filter((f) => f.id !== otherId))
+            delete convToFriendRef.current[Object.keys(convToFriendRef.current).find((k) => convToFriendRef.current[k] === otherId) ?? '']
+            delete friendToConvRef.current[otherId]
+          }
+          return prev.filter((r) => r.id !== old.id)
+        })
       })
       .subscribe()
 
