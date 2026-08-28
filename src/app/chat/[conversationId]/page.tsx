@@ -1335,7 +1335,7 @@ export default function ChatPage() {
                   <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${autoTranslate ? 'left-[18px]' : 'left-0.5'}`} />
                 </span>
               </button>
-              <p className="px-4 pb-2 text-[10px] leading-relaxed text-slate-500">{autoTranslate ? 'Showing translated text when available.' : 'Showing original messages.'}</p>
+              <p className="px-4 pb-2 text-[10px] leading-relaxed text-slate-500">{autoTranslate ? 'Showing translated messages. Tap a message to flip back to the original.' : 'Turn on to translate messages. Choose your chat language in Settings.'}</p>
 
               {!persona && (
                 <>
@@ -1579,7 +1579,7 @@ export default function ChatPage() {
           const translatedShown = ((autoTranslate || translatedShownRef.current.get(m.id)) && !!m.translated_message)
           const body = translatedShown && m.translated_message ? m.translated_message : m.original_message
           const translating = translatingRef.current.has(m.id)
-          const showTranslateAction = !mine && !deleted && !hiddenForMe && !persona && usableTranslations(m)
+          const showTranslateAction = autoTranslate && !mine && !deleted && !hiddenForMe && !persona && usableTranslations(m)
           const replied = m.reply_to_message_id ? messages.find((x) => x.id === m.reply_to_message_id) : null
           const rawDx = drag?.id === m.id ? drag.dx : 0
           const dragDx = Math.max(-36, Math.min(36, rawDx))
