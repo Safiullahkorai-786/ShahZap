@@ -1576,7 +1576,10 @@ export default function ChatPage() {
           const hiddenForMe = !mine && !!m.deleted_by_receiver_at && !deleted
           // Per-message: autoTranslate shows stored translations; otherwise the
           // reader flips a specific message via the per-message Translate button.
-          const translatedShown = ((autoTranslate || translatedShownRef.current.get(m.id)) && !!m.translated_message)
+          // Default to the global autoTranslate toggle, but honor an explicit
+          // per-message flip (tap "Show original"/"Show translation") so it wins.
+          const flipped = translatedShownRef.current.get(m.id)
+          const translatedShown = !!m.translated_message && (flipped === undefined ? autoTranslate : flipped)
           const body = translatedShown && m.translated_message ? m.translated_message : m.original_message
           const translating = translatingRef.current.has(m.id)
           const showTranslateAction = autoTranslate && !mine && !deleted && !hiddenForMe && !persona && usableTranslations(m)
