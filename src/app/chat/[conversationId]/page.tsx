@@ -722,9 +722,9 @@ export default function ChatPage() {
 
   function broadcastTyping(typing: boolean) {
     const ch = channelRef.current
-    if (!ch) return
-    void ch.send({ type: 'broadcast', event: 'typing', payload: { typing, from: userId } })
-    // Also persist to DB so friends list can show typing indicator
+    if (ch) void ch.send({ type: 'broadcast', event: 'typing', payload: { typing, from: userId } })
+    // Persist to DB so friends list can show typing indicator, independent of the
+    // broadcast channel being ready.
     void createClient().rpc('set_typing', { p_conversation_id: conversationId, p_typing: typing })
   }
 
