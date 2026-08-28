@@ -481,6 +481,17 @@ export default function FriendsPage() {
           ))
         }
       })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'conversation_participants' }, (payload) => {
+        if (!aliveRef.current) return
+        const row = payload.old as { conversation_id?: string; profile_id?: string }
+        if (!row.conversation_id) return
+        const friendId = convToFriendRef.current[row.conversation_id]
+        if (!friendId) return
+        // Conversation was deleted — remove the DM link from the friend
+        setFriends((prev) => prev.map((f) =>
+          f.id === friendId ? { ...f, conversationId: null, lastMessage: null, lastMessageTime: null, lastSenderId: null, unreadCount: 0 } : f
+        ))
+      })
       .subscribe()
 
     return () => {

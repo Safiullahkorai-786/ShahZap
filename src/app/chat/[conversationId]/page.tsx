@@ -501,6 +501,13 @@ export default function ChatPage() {
             updateFriendState('none')
           }
         })
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'conversation_participants' }, (payload) => {
+          const row = payload.old as { conversation_id?: string; profile_id?: string }
+          if (row.conversation_id === conversationId && row.profile_id !== userId) {
+            // The other person's participant row was deleted — conversation is gone for them too
+            router.push('/friends')
+          }
+        })
 .subscribe((status) => {
           channelStatus = status
           if (status === 'SUBSCRIBED') {
