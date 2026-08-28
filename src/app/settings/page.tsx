@@ -95,6 +95,19 @@ function Select({ value, onChange, label, options }: { value: number; onChange: 
   )
 }
 
+function SelectStr({ value, onChange, label, hint, options }: { value: string; onChange: (v: string) => void; label: string; hint?: string; options: readonly (readonly [string, string])[] }) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-semibold">{label}</span>
+      {hint && <p className="mb-2 -mt-1 text-xs text-slate-500">{hint}</p>}
+      <select value={value} onChange={(e) => onChange(e.target.value)}
+        className="w-full appearance-none rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20">
+        {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      </select>
+    </label>
+  )
+}
+
 function Section({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   return (
     <section className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5 sm:p-6">
@@ -153,6 +166,8 @@ export default function SettingsPage() {
   })
   const [sel, setSel] = useState<Selection>({ base: 'dark', accent: 'none' })
   const [sound, setSound] = useState<SoundPrefs>({ mode: 'sound', bundle: 'classic' })
+  const [interfaceLanguage, setInterfaceLanguage] = useState('en')
+  const [chatLanguage, setChatLanguage] = useState('en')
 
   useEffect(() => {
     let active = true
@@ -162,8 +177,13 @@ export default function SettingsPage() {
       setSel(getSelection())
       setSound(getSoundPrefs())
       const { data: p } = await supabase.from('match_preferences').select('preferred_age_bands,preferred_genders,preferred_orientations,preferred_generations,preferred_languages,preferred_continents,preferred_interests,language_filter_enabled,interest_wait_seconds,country_targeting_enabled').eq('profile_id', user.id).maybeSingle()
+      const { data: profile } = await supabase.from('profiles').select('interface_language,chat_language').eq('id', user.id).maybeSingle()
       if (!active) return
       if (p) setPrefs((cur) => ({ ...cur, ...(p as Partial<Prefs>) }))
+      if (profile) {
+        setInterfaceLanguage(profile.interface_language ?? 'en')
+        setChatLanguage(profile.chat_language ?? 'en')
+      }
       setLoading(false)
     })()
     return () => { active = false }
@@ -190,6 +210,11 @@ export default function SettingsPage() {
       country_targeting_enabled: prefs.country_targeting_enabled,
     })
     if (e1) { setError(friendlyError(e1, 'Could not save your matching preferences.')); setBusy(false); return }
+    const { error: e2 } = await supabase.from('profiles').update({
+      interface_language: interfaceLanguage,
+      chat_language: chatLanguage,
+    }).eq('id', user.id)
+    if (e2) { setError(friendlyError(e2, 'Could not save your languages.')); setBusy(false); return }
     setSaved(true); setBusy(false)
   }
 
@@ -207,7 +232,7 @@ export default function SettingsPage() {
       <AppHeader title="Settings" icon="settings" />
       <div className="mx-auto max-w-2xl w-full px-4 pb-24 pt-4 md:pb-10 lg:max-w-4xl">
         <p className="text-xs leading-relaxed text-slate-500">
-          Matching preferences and appearance. Your name, languages, privacy and interests are edited under <b>Profile</b>.
+          Matching preferences, appearance, languages and alerts. Your name, privacy and interests are edited under <b>Profile</b>.
         </p>
 
         {error && <p className="mt-4 rounded-xl bg-red-950/40 p-3 text-sm text-red-200">{error}</p>}
@@ -265,6 +290,13 @@ export default function SettingsPage() {
                     <span className="mt-2 block text-[10px] font-semibold uppercase tracking-wide text-cyan-300/80">{sound.bundle === b ? 'Selected · tap to preview' : 'Tap to preview'}</span>
                   </button>
                 ))}
+              </div>
+            </div>
+            <div className="space-y-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Languages</p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <SelectStr label="Interface language" hint="The language the app is shown in." value={interfaceLanguage} onChange={setInterfaceLanguage} options={LANGUAGES} />
+                <SelectStr label="Chat language" hint="The language you chat and receive translations in." value={chatLanguage} onChange={setChatLanguage} options={LANGUAGES} />
               </div>
             </div>
           </Section>

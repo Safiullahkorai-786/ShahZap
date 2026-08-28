@@ -30,18 +30,6 @@ function Pill({ selected, onClick, children }: { selected: boolean; onClick: () 
   )
 }
 
-function Select({ value, onChange, label, options }: { value: string; onChange: (v: string) => void; label: string; options: readonly (readonly [string, string])[] }) {
-  return (
-    <label className="block">
-      <span className="mb-2 block text-sm font-semibold text-white">{label}</span>
-      <select value={value} onChange={(e) => onChange(e.target.value)}
-        className="w-full appearance-none rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20">
-        {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-      </select>
-    </label>
-  )
-}
-
 function Toggle({ checked, onChange, label, hint }: { checked: boolean; onChange: (v: boolean) => void; label: string; hint: string }) {
   return (
     <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)}
@@ -68,8 +56,6 @@ export default function MyProfilePage() {
   const [orientation, setOrientation] = useState('')
   const [generation, setGeneration] = useState('')
   const [bio, setBio] = useState('')
-  const [interfaceLanguage, setInterfaceLanguage] = useState('en')
-  const [chatLanguage, setChatLanguage] = useState('en')
   const [interests, setInterests] = useState<string[]>([])
   const [selectedRegion, setSelectedRegion] = useState('')
   const [countryCode, setCountryCode] = useState('')
@@ -110,8 +96,6 @@ export default function MyProfilePage() {
         setOrientation(profile.orientation ?? '')
         setGeneration(profile.generation ?? '')
         setBio((profile as any).bio ?? '')
-        setInterfaceLanguage(profile.interface_language ?? 'en')
-        setChatLanguage(profile.chat_language ?? 'en')
         const cc = (profile as { country_code?: string | null }).country_code
         setCountryCode(cc ?? '')
         setSelectedRegion(cc ? getRegionForCountry(cc) ?? '' : '')
@@ -154,8 +138,6 @@ export default function MyProfilePage() {
       generation: generation || null,
       bio: bio.trim().slice(0, 150) || null,
       country_code: countryCode || null,
-      interface_language: interfaceLanguage,
-      chat_language: chatLanguage,
       online_visible: onlineVisible,
       profile_visible: profileVisible,
       gender_visible: genderVisible,
@@ -238,7 +220,6 @@ export default function MyProfilePage() {
                     <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Country: {getCountryName(countryCode) ?? countryCode}</div>
                   )}
                   {orientDisplay && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Orientation: {orientDisplay}</div>}
-                  {languageVisible && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Chat language: {LANG_MAP[chatLanguage] ?? chatLanguage}</div>}
                   {languagesKnownVisible && languagesKnown.length > 0 && (
                     <div className="rounded-xl bg-slate-900 p-2.5 text-sm">
                       <span className="font-semibold">Languages: </span>
@@ -329,10 +310,6 @@ export default function MyProfilePage() {
             <section className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5 sm:p-6">
               <h2 className="text-[15px] font-semibold">Languages & interests</h2>
               <div className="mt-4 space-y-4">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Select label="Interface language" value={interfaceLanguage} onChange={setInterfaceLanguage} options={LANGUAGES} />
-                  <Select label="Chat language" value={chatLanguage} onChange={setChatLanguage} options={LANGUAGES} />
-                </div>
                 <div>
                   <span className="mb-2 block text-sm font-semibold">Languages I know</span>
                   <p className="mb-2 text-xs text-slate-500">All the languages you speak — used for matching.</p>

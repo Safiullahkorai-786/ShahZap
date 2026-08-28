@@ -6,9 +6,8 @@ import { createClient } from '@/lib/supabase/client'
 import { friendlyError } from '@/lib/errors'
 import { CONTINENTS, getCountriesForRegion } from '@/lib/regions'
 
-const STEPS = ['You', 'About you', 'Interests', 'Language & privacy'] as const
+const STEPS = ['You', 'About you', 'Interests', 'Privacy'] as const
 const AGE_BANDS = [['18_20', '18–20'], ['21_29', '21–29'], ['30_44', '30–44'], ['45_59', '45–59'], ['60_plus', '60+']] as const
-const LANGUAGES = [['en', 'English'], ['ur', 'Urdu'], ['hi', 'Hindi'], ['ar', 'Arabic'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German'], ['tr', 'Turkish']] as const
 const GENERATIONS = [['gen_z', 'Gen Z'], ['millennial', 'Millennial'], ['gen_x', 'Gen X'], ['boomer', 'Boomer']] as const
 const GENDERS = [['woman', 'Woman'], ['man', 'Man'], ['non_binary', 'Non-binary'], ['prefer_not_to_say', 'Prefer not to say']] as const
 const INTERESTS = [
@@ -41,18 +40,6 @@ function Pill({ selected, onClick, children }: { selected: boolean; onClick: () 
   )
 }
 
-function Select({ value, onChange, label, options }: { value: string; onChange: (v: string) => void; label: string; options: readonly (readonly [string, string])[] }) {
-  return (
-    <label className="block">
-      <span className="mb-2 block text-sm font-semibold text-white">{label}</span>
-      <select value={value} onChange={(e) => onChange(e.target.value)}
-        className="w-full appearance-none rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20">
-        {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-      </select>
-    </label>
-  )
-}
-
 export default function OnboardingPage() {
   const router = useRouter()
   const [step, setStep] = useState(1)
@@ -65,8 +52,6 @@ export default function OnboardingPage() {
   const [generation, setGeneration] = useState('')
   const [selectedRegion, setSelectedRegion] = useState('')
   const [countryCode, setCountryCode] = useState('')
-  const [interfaceLanguage, setInterfaceLanguage] = useState('en')
-  const [chatLanguage, setChatLanguage] = useState('en')
   const [selectedInterests, setSelectedInterests] = useState<string[]>([])
   const [onlineVisible, setOnlineVisible] = useState(true)
   const [profileVisible, setProfileVisible] = useState(true)
@@ -98,11 +83,11 @@ export default function OnboardingPage() {
       id: user.id, display_name: name.trim().slice(0, 32), age_band: ageBand, gender: gender || null,
       orientation: orientation || null, generation: generation || null,
       country_code: countryCode || null,
-      interface_language: interfaceLanguage,
-      chat_language: chatLanguage, online_visible: onlineVisible, profile_visible: profileVisible, last_active_at: new Date().toISOString(),
+      interface_language: 'en',
+      chat_language: 'en', online_visible: onlineVisible, profile_visible: profileVisible, last_active_at: new Date().toISOString(),
     })
     if (profileError) { setError(friendlyError(profileError, 'Could not save your profile. Please try again.')); setBusy(false); return }
-    const { error: preferenceError } = await supabase.from('match_preferences').upsert({ profile_id: user.id, preferred_languages: [chatLanguage] })
+    const { error: preferenceError } = await supabase.from('match_preferences').upsert({ profile_id: user.id, preferred_languages: ['en'] })
     if (preferenceError) { setError(friendlyError(preferenceError, 'Could not save your preferences. Please try again.')); setBusy(false); return }
     const { data: rows, error: interestError } = await supabase.from('interests').select('id,slug').in('slug', selectedInterests)
     if (interestError) { setError(friendlyError(interestError, 'Could not load interests. Please try again.')); setBusy(false); return }
@@ -239,13 +224,9 @@ export default function OnboardingPage() {
 
           {step === 4 && (
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">Language &amp; privacy</h1>
-              <p className="mt-2 text-sm leading-relaxed text-slate-400">Your app language and chat language can be different.</p>
+              <h1 className="text-2xl font-bold tracking-tight">Privacy</h1>
+              <p className="mt-2 text-sm leading-relaxed text-slate-400">Your app and chat language are set later in Settings.</p>
               <div className="mt-8 space-y-7">
-                <div className="grid gap-5 sm:grid-cols-2">
-                  <Select label="Interface language" value={interfaceLanguage} onChange={setInterfaceLanguage} options={LANGUAGES} />
-                  <Select label="Chat language" value={chatLanguage} onChange={setChatLanguage} options={LANGUAGES} />
-                </div>
                 <div className="space-y-3">
                   <Toggle checked={onlineVisible} onChange={setOnlineVisible} label="Show me online" hint="Appear in the optional online directory." />
                   <Toggle checked={profileVisible} onChange={setProfileVisible} label="Profile discoverable" hint="Let compatible users see your profile." />
