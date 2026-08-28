@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Home, Radar, Radio, Users, Settings, UserRound } from 'lucide-react'
 import { useUnreadConversations } from '@/hooks/use-unread-conversations'
+import { useMatchQueueCount } from '@/hooks/use-match-queue-count'
 
 const TABS = [
   { href: '/app', label: 'Home', icon: Home },
@@ -17,6 +18,7 @@ const TABS = [
 export function BottomNav() {
   const pathname = usePathname()
   const unreadConversations = useUnreadConversations()
+  const matchQueueCount = useMatchQueueCount()
 
   // The bar belongs to the logged-in app experience only. Public marketing
   // pages, the start wizard, onboarding, and immersive chats go without it.
@@ -44,7 +46,8 @@ export function BottomNav() {
         <div className="flex items-center gap-0.5 px-2 py-1.5">
           {TABS.map(({ href, label, icon: Icon, badge }) => {
             const active = isActive(href)
-            const showBadge = badge && unreadConversations > 0
+            const showFriendsBadge = badge && unreadConversations > 0
+            const showMatchCount = href === '/match' && matchQueueCount !== null && matchQueueCount > 0
             return (
               <Link
                 key={href}
@@ -55,7 +58,12 @@ export function BottomNav() {
               >
                 <span className="relative">
                   <Icon size={21} strokeWidth={active ? 2.4 : 1.9} />
-                  {showBadge && (
+                  {showMatchCount && (
+                    <span className="absolute -right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-cyan-400 px-1 text-[7px] font-bold text-slate-950">
+                      {matchQueueCount! > 99 ? '99+' : matchQueueCount}
+                    </span>
+                  )}
+                  {showFriendsBadge && (
                     <span className="absolute -right-1.5 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-cyan-400 px-1 text-[7px] font-bold text-slate-950">
                       {unreadConversations > 9 ? '9+' : unreadConversations}
                     </span>
