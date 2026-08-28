@@ -19,24 +19,46 @@ export function FriendContextMenu({ children, friendId, friendName, isFriend, is
   const [blockMode, setBlockMode] = useState<'choose' | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const didLongPressRef = useRef(false)
 
   function handlePointerDown(e: React.PointerEvent) {
+    didLongPressRef.current = false
     timerRef.current = setTimeout(() => {
+      didLongPressRef.current = true
       e.preventDefault()
       setOpen(true)
     }, 500)
   }
+
   function handlePointerUp() {
     if (timerRef.current) clearTimeout(timerRef.current)
   }
 
+  // Block click if we just long-pressed
+  function handleClick(e: React.MouseEvent) {
+    if (didLongPressRef.current) {
+      e.preventDefault()
+      e.stopPropagation()
+      didLongPressRef.current = false
+    }
+  }
+
+  // Block touch-start text selection
+  function handleTouchStart(e: React.TouchEvent) {
+    // Allow default for scrolling, but mark that touch started
+    // The long-press timer handles the context menu
+  }
+
   useEffect(() => {
     if (!open) return
-    function handleClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpen(false)
+    function handleOutsideClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpen(false)
+        setBlockMode(null)
+      }
     }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
   }, [open])
 
   function handleContextMenu(e: React.MouseEvent) {
@@ -83,6 +105,8 @@ export function FriendContextMenu({ children, friendId, friendName, isFriend, is
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
         onContextMenu={handleContextMenu}
+        onClick={handleClick}
+        style={{ userSelect: 'none', WebkitUserSelect: 'none', touchAction: 'manipulation' }}
         className="cursor-pointer select-none"
       >
         {children}
