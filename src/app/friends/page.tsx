@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import { resolveIdentity } from '@/lib/identity'
 import { AppHeader } from '@/components/app-header'
 import { Shimmer } from '@/components/shimmer'
+import { FriendContextMenu } from '@/components/friend-context-menu'
 
 const ONLINE_WINDOW_MS = 20 * 1000
 const TYPING_WINDOW_MS = 5000
@@ -27,6 +28,7 @@ type FriendWithMeta = Profile & {
   lastMessageDeliveredAt: string | null
   lastMessageReadAt: string | null
   friendSince: string | null
+  isBlocked: boolean
 }
 type Tab = 'friends' | 'pending'
 type FilterGender = 'all' | 'woman' | 'man' | 'non_binary'
@@ -239,6 +241,19 @@ export default function FriendsPage() {
       convToFriendRef.current = {}
       friendToConvRef.current = {}
 
+      // Fetch blocks involving me
+      const blockedIds = new Set<string>()
+      if (friendIds.length) {
+        const { data: blocks } = await supabase.from('blocks')
+          .select('blocker_id,blocked_id')
+          .or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`)
+        if (blocks) {
+          for (const b of blocks) {
+            blockedIds.add(b.blocker_id === user.id ? b.blocked_id : b.blocker_id)
+          }
+        }
+      }
+
       if (friendIds.length) {
         const { data: myParts } = await supabase.from('conversation_participants')
           .select('conversation_id,last_read_at,conversations!inner(status)')
@@ -365,6 +380,7 @@ export default function FriendsPage() {
             lastMessageDeliveredAt: meta?.lastMessageDeliveredAt ?? null,
             lastMessageReadAt: meta?.lastMessageReadAt ?? null,
             friendSince: meta?.friendSince ?? null,
+            isBlocked: blockedIds.has(id),
           }
         })
         .filter(Boolean) as FriendWithMeta[]
@@ -708,7 +724,7 @@ export default function FriendsPage() {
           if (prev.some((f) => f.id === otherId)) return prev
           const profile = p as Profile | null
           if (!profile) return prev
-          return [...prev, { ...profile, lastMessage: null, lastMessageTime: null, lastSenderId: null, lastMessageId: null, conversationId: null, isOnline: false, unreadCount: 0, isTyping: false, partnerLastReadAt: null, lastMessageDeliveredAt: null, lastMessageReadAt: null, friendSince: new Date().toISOString() }]
+          return [...prev, { ...profile, lastMessage: null, lastMessageTime: null, lastSenderId: null, lastMessageId: null, conversationId: null, isOnline: false, unreadCount: 0, isTyping: false, partnerLastReadAt: null, lastMessageDeliveredAt: null, lastMessageReadAt: null, friendSince: new Date().toISOString(), isBlocked: false }]
         })
       }
     }
@@ -841,7 +857,8 @@ export default function FriendsPage() {
                         const isDelivered = isLastFromMe && !isRead && !!p.lastMessageDeliveredAt
 
                         return (
-                          <div key={p.id}
+                          <FriendContextMenu key={p.id} friendId={p.id} friendName={p.display_name ?? 'Unknown'} isFriend={true} onAction={() => {}}>
+                          <div
                             onClick={() => { if (!busy) void openChat(p.id) }}
                             className="flex cursor-pointer items-center gap-3 px-1 py-3 transition hover:bg-slate-900/40 sm:px-2">
 
@@ -857,6 +874,7 @@ export default function FriendsPage() {
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2">
                                 <span className={`truncate text-sm font-semibold ${identity.colorClass}`}>{identity.label}</span>
+                                {p.isBlocked && <span className="text-[10px] font-medium text-red-400 bg-red-400/10 px-1.5 py-0.5 rounded-full">Blocked</span>}
                               </div>
                               <div className="mt-0.5 flex items-center gap-1.5">
                                 {p.isTyping ? (
@@ -895,6 +913,7 @@ export default function FriendsPage() {
                               </button>
                             </div>
                           </div>
+                          </FriendContextMenu>
                         )
                       })}
                     </div>
