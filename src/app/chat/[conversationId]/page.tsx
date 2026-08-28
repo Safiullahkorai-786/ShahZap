@@ -1643,14 +1643,14 @@ export default function ChatPage() {
                     {reactFor === m.id && (
                       <>
                         <div className="fixed inset-0 z-20" onClick={() => setReactFor(null)} />
-                        <div className={`absolute bottom-full z-30 mb-1 grid grid-cols-6 gap-0.5 rounded-2xl border border-slate-700 bg-slate-900 p-1.5 shadow-xl ${mine ? 'right-0' : 'left-0'}`}>
+                        <div className={`absolute bottom-full z-30 mb-1 grid w-fit grid-cols-6 gap-1 rounded-2xl border border-slate-700 bg-slate-900 p-1.5 shadow-xl ${mine ? 'right-0' : 'left-0'}`}>
                           {QUICK_EMOJIS.map((emoji) => {
                             const mineAlready = m.reactions?.[emoji]?.includes(userId ?? '') ?? false
                             return (
                               <button key={emoji} type="button" onClick={(e) => { e.stopPropagation(); void toggleReaction(m, emoji) }}
                                 title={mineAlready ? 'Remove your reaction' : 'React'}
-                                className={`flex h-9 w-9 items-center justify-center rounded-full text-lg transition hover:scale-110 ${mineAlready ? 'bg-cyan-400/25 ring-2 ring-cyan-400' : ''}`}>
-                                {emoji}
+                                className={`flex h-9 w-9 items-center justify-center rounded-full align-middle text-base leading-none transition hover:scale-110 ${mineAlready ? 'bg-cyan-400/25 ring-2 ring-cyan-400' : ''}`}>
+                                <span className="flex h-full w-full items-center justify-center text-center leading-none">{emoji}</span>
                               </button>
                             )
                           })}
@@ -1849,9 +1849,9 @@ export default function ChatPage() {
                 const mineAlready = actionsMsg.msg.reactions?.[emoji]?.includes(userId ?? '') ?? false
                 return (
                   <button key={emoji} onClick={() => void toggleReaction(actionsMsg.msg, emoji)}
-                    className={`flex h-12 items-center justify-center rounded-xl text-2xl transition hover:scale-110 hover:bg-slate-800 active:scale-95 ${mineAlready ? 'bg-cyan-400/20 ring-2 ring-cyan-400' : ''}`}
+                    className={`flex h-12 items-center justify-center rounded-xl text-xl leading-none transition hover:scale-110 hover:bg-slate-800 active:scale-95 ${mineAlready ? 'bg-cyan-400/20 ring-2 ring-cyan-400' : ''}`}
                     title={mineAlready ? 'Remove your reaction' : 'React'}>
-                    {emoji}
+                    <span className="flex h-full w-full items-center justify-center text-center leading-none">{emoji}</span>
                   </button>
                 )
               })}
