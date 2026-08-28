@@ -1113,8 +1113,10 @@ export default function ChatPage() {
       {/* ── Fixed wallpaper/solid background layer ──────────────
           Kept OUTSIDE the scrolling message list and pinned to the
           container so the image does NOT move/jitter when the mobile
-          keyboard appears or a status notification shifts layout. */}
-      <div aria-hidden className="pointer-events-none absolute inset-0 z-0"
+          keyboard appears or a status notification shifts layout.
+          Constrained to the centered chat column (max-w-3xl) so the
+          image only shows behind the message area, not the full screen. */}
+      <div aria-hidden className="pointer-events-none absolute bottom-0 left-1/2 top-0 z-0 w-full max-w-3xl -translate-x-1/2"
         style={{
           backgroundColor: wallpaper.solid,
           backgroundImage: `linear-gradient(rgba(2,6,23,${wallpaper.dim}), rgba(2,6,23,${wallpaper.dim}))${wallpaper.mode === 'wallpaper' ? ', url(/ShahZap_Bg.png)' : ''}`,
