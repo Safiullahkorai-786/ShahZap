@@ -50,7 +50,7 @@ export function useUnreadConversations() {
     window.addEventListener('focus', handleVisible)
 
     // Safety-net poll every 15s
-    const poll = window.setInterval(() => void fetchCount(supabase), 15_000)
+    const poll = window.setInterval(() => void fetchCount(supabase), 30_000)
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisible)

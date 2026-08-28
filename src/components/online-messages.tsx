@@ -11,7 +11,7 @@ import { Shimmer } from '@/components/shimmer'
 // offline (last_active_at older than this) — and it stays gone unless you
 // become friends (in which case they live on the Friends page instead).
 const OFFLINE_REMOVE_MS = 5 * 60 * 1000
-const ONLINE_WINDOW_MS = 20 * 1000
+const ONLINE_WINDOW_MS = 90 * 1000
 
 type MsgThread = {
   conversationId: string
@@ -222,7 +222,7 @@ export default function OnlineMessages() {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'conversation_participants' }, () => { void refresh() })
       .subscribe()
 
-    const poll = window.setInterval(() => void refresh(), 5_000)
+    const poll = window.setInterval(() => void refresh(), 30_000)
 
     return () => { active = false; window.clearInterval(poll); void supabase.removeChannel(channel) }
   }, [hiddenReady])

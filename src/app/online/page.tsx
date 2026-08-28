@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'
 
 export const metadata = { title: 'Online now' }
 
-const ONLINE_WINDOW_MS = 20 * 1000
+const ONLINE_WINDOW_MS = 90 * 1000
 
 export default async function OnlinePage() {
   const supabase = await createSupabaseServerClient()

@@ -78,10 +78,10 @@ const LANG_LABELS: Record<string, string> = {
 const REPORT_REASONS = ['harassment','spam','hate_speech','sexual_content','scam','impersonation','underage_concern','threatening_behavior','other']
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '😘', '💦', '🤡', '🌚', '🌝']
 // Presence flips to offline 20s after the last heartbeat. The global
-// PresenceHeartbeat beats every 10s while the tab/PWA is visible, and
-// instantly on focus — so closing/backgrounding shows "last seen" within
-// 20s, and returning goes green again in near real time.
-const ONLINE_WINDOW_MS = 20 * 1000
+// PresenceHeartbeat beats every 30s while the tab/PWA is visible, and
+// instantly on focus — so closing/backgrounding shows "last seen" once the
+// last beat goes stale, and returning goes green again in near real time.
+const ONLINE_WINDOW_MS = 90 * 1000
 const EDIT_WINDOW_MS = 15 * 60 * 1000
 const MESSAGE_COLUMNS = 'id,sender_id,original_message,translated_message,created_at,reactions,edited_at,deleted_at,reply_to_message_id,deleted_by_receiver_at,delivered_at,read_at'
 
@@ -590,7 +590,7 @@ export default function ChatPage() {
     }
 
     mark()
-    const iv = window.setInterval(safeMark, 4000)
+    const iv = window.setInterval(safeMark, 30_000)
     document.addEventListener('visibilitychange', safeMark)
     window.addEventListener('focus', safeMark)
     return () => {

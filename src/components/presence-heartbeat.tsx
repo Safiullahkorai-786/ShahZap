@@ -18,7 +18,7 @@ import { createClient } from '@/lib/supabase/client'
  * is re-resolved and the beat retries once.
  */
 
-const HEARTBEAT_MS = 10_000
+const HEARTBEAT_MS = 30_000
 
 export function PresenceHeartbeat() {
   useEffect(() => {

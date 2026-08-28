@@ -119,7 +119,7 @@ export function useMatchQueueCount() {
     window.addEventListener('focus', handleVisible)
 
     // Safety-net correction (handles server-side expiries that emit no event)
-    const poll = window.setInterval(() => syncCount(supabase), 15_000)
+    const poll = window.setInterval(() => syncCount(supabase), 30_000)
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisible)

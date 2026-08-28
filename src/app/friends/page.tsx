@@ -9,9 +9,9 @@ import { AppHeader } from '@/components/app-header'
 import { Shimmer } from '@/components/shimmer'
 import { FriendContextMenu } from '@/components/friend-context-menu'
 
-const ONLINE_WINDOW_MS = 20 * 1000
+const ONLINE_WINDOW_MS = 90 * 1000
 const TYPING_WINDOW_MS = 5000
-const POLL_MS = 3000
+const POLL_MS = 30_000
 
 type Request = { id: string; sender_id: string; receiver_id: string; status: string; created_at: string; updated_at: string }
 type Profile = { id: string; display_name: string | null; avatar_path: string | null; age_band: string | null; generation: string | null; country_code: string | null; profile_visible: boolean; gender: string | null; gender_visible: boolean; last_active_at: string | null; online_visible: boolean | null }

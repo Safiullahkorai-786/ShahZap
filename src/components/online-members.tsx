@@ -9,7 +9,7 @@ import { friendlyError } from '@/lib/errors'
 import { resolveIdentity } from '@/lib/identity'
 import { Shimmer } from '@/components/shimmer'
 
-const ONLINE_WINDOW_MS = 20 * 1000
+const ONLINE_WINDOW_MS = 90 * 1000
 
 export type OnlineMember = {
   id: string
@@ -236,7 +236,7 @@ export default function OnlineMembers({ members: initialMembers, loading: server
       })
     }
 
-    const pollIv = window.setInterval(poll, 5_000)
+    const pollIv = window.setInterval(poll, 30_000)
     void poll()
 
     return () => { active = false; window.clearInterval(pollIv); void supabase.removeChannel(channel) }
