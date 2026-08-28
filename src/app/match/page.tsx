@@ -166,6 +166,24 @@ export default function MatchPage() {
     await updateMatchPreferences({ [key]: [] })
   }, [])
 
+  // Put the user's saved filters back after a match/cancel so relaxing one
+  // session never permanently wipes their preferences in the DB or the UI.
+  const restoreOriginalFilters = useCallback(() => {
+    const original = originalFiltersRef.current
+    const restored = {
+      preferred_genders: original.preferred_genders ?? [],
+      preferred_generations: original.preferred_generations ?? [],
+      preferred_age_bands: original.preferred_age_bands ?? [],
+      preferred_continents: original.preferred_continents ?? [],
+      preferred_languages: original.preferred_languages ?? [],
+      preferred_orientations: original.preferred_orientations ?? [],
+      preferred_interests: original.preferred_interests ?? [],
+    }
+    filtersRef.current = restored
+    setFilters(restored)
+    void updateMatchPreferences(restored)
+  }, [])
+
   // Main polling + relaxation timer
   useEffect(() => {
     if (!waiting) return
@@ -179,6 +197,7 @@ export default function MatchPage() {
       if ('conversationId' in result) {
         window.clearInterval(timer)
         setWaiting(false); setRelaxing(false)
+        restoreOriginalFilters()
         setMatched({ conversationId: result.conversationId })
         return
       }
@@ -186,6 +205,7 @@ export default function MatchPage() {
       if (partnerMatch) {
         window.clearInterval(timer)
         setWaiting(false); setRelaxing(false)
+        restoreOriginalFilters()
         setMatched({ conversationId: partnerMatch })
         return
       }
@@ -212,7 +232,7 @@ export default function MatchPage() {
       }
     }, 1500)
     return () => window.clearInterval(timer)
-  }, [waiting, applyRelaxStep])
+  }, [waiting, applyRelaxStep, restoreOriginalFilters])
 
   // Auto-enter chat on match
   useEffect(() => {
@@ -241,6 +261,7 @@ export default function MatchPage() {
     if ('error' in result) setMessage(friendlyError(result.error, 'Unable to leave the matching queue.'))
     setWaiting(false); setRelaxing(false); setRelaxStep(0)
     relaxStepRef.current = 0
+    restoreOriginalFilters()
   }
 
   const activeFilters = filtersActiveCount(filters)
