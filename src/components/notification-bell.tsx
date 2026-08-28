@@ -224,10 +224,11 @@ export function NotificationBell() {
     setOpen((prev) => {
       const next = !prev
       if (!next) {
-        // Closing: mark all current unread dots as visually read
+        // Closing: clear dots and badge count
         for (const n of items) {
           if (!n.read) readDotIdsRef.current.add(n.id)
         }
+        setUnread(0)
       }
       return next
     })
