@@ -148,6 +148,14 @@ export default function ChatPage() {
     setFriendState(next)
   }
   const [autoTranslate, setAutoTranslate] = useState(false)
+  // The reader's own chat language (translation target). Loaded from profile.
+  const [myChatLang, setMyChatLang] = useState<string | null>(null)
+  // Per-message UI state: whether we're showing the translation, and which
+  // message IDs currently have a translate call in flight.
+  const translatedShownRef = useRef<Map<string, boolean>>(new Map())
+  const translatingRef = useRef<Set<string>>(new Set())
+  const [translateVersion, setTranslateVersion] = useState(0)
+  function bumpTranslate() { setTranslateVersion((v) => v + 1) }
   const [menuOpen, setMenuOpen] = useState(false)
   const [cardOpen, setCardOpen] = useState(false)
   const [reqBlocked, setReqBlocked] = useState(false)
@@ -321,6 +329,8 @@ export default function ChatPage() {
       if (!user) { router.replace('/'); return }
       setUserId(user.id)
       userIdRef2.current = user.id
+      const { data: myProfile } = await supabase.from('profiles').select('chat_language').eq('id', user.id).maybeSingle()
+      if (active) setMyChatLang(myProfile?.chat_language ?? null)
 
       const { data: participants } = await supabase.from('conversation_participants').select('profile_id').eq('conversation_id', conversationId)
       const otherProfileId = participants?.find((p) => p.profile_id !== user.id)?.profile_id ?? null
@@ -953,6 +963,44 @@ export default function ChatPage() {
     setAutoTranslate((v) => { localStorage.setItem('shahzap:autoTranslate', v ? '0' : '1'); return !v })
   }
 
+  // Per-message opt-in translation (Workers AI). Translates once, persists
+  // server-side to translated_message, then flips original <-> translated.
+  async function translateMessage(m: Message) {
+    if (m.translated_message) {
+      translatedShownRef.current.set(m.id, !(translatedShownRef.current.get(m.id) ?? false))
+      bumpTranslate()
+      return
+    }
+    if (translatingRef.current.has(m.id)) return
+    if (!myChatLang) { setStatusLine('Set a chat language in your profile to translate.'); return }
+    translatingRef.current.add(m.id)
+    bumpTranslate()
+    try {
+      const res = await fetch('/api/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageId: m.id, targetLang: myChatLang }),
+      })
+      const data = await res.json().catch(() => null)
+      if (res.ok && data?.translatedText) {
+        setMessages((prev) => prev.map((x) => x.id === m.id ? { ...x, translated_message: data.translatedText } : x))
+        translatedShownRef.current.set(m.id, true)
+      } else {
+        setStatusLine(data?.error ?? 'Translation failed. Please try again.')
+      }
+    } finally {
+      translatingRef.current.delete(m.id)
+      bumpTranslate()
+    }
+  }
+
+  // Whether this inbound message has anything to translate: a stored
+  // translation exists, or the sender speaks a different language than I do.
+  function usableTranslations(m: Message): boolean {
+    if (!!m.translated_message) return true
+    return !!myChatLang && !!other?.chat_language && myChatLang !== other.chat_language
+  }
+
   function copyMessage(m: Message) {
     void navigator.clipboard.writeText(m.original_message).then(() => {
       setActionsMsg(null)
@@ -1526,8 +1574,12 @@ export default function ChatPage() {
           const deleted = !!m.deleted_at
           // Receiver hid their own copy → tombstone on their side only.
           const hiddenForMe = !mine && !!m.deleted_by_receiver_at && !deleted
-          const body = autoTranslate && m.translated_message ? m.translated_message : m.original_message
-          const translatedShown = autoTranslate && !!m.translated_message
+          // Per-message: autoTranslate shows stored translations; otherwise the
+          // reader flips a specific message via the per-message Translate button.
+          const translatedShown = ((autoTranslate || translatedShownRef.current.get(m.id)) && !!m.translated_message)
+          const body = translatedShown && m.translated_message ? m.translated_message : m.original_message
+          const translating = translatingRef.current.has(m.id)
+          const showTranslateAction = !mine && !deleted && !hiddenForMe && !persona && usableTranslations(m)
           const replied = m.reply_to_message_id ? messages.find((x) => x.id === m.reply_to_message_id) : null
           const rawDx = drag?.id === m.id ? drag.dx : 0
           const dragDx = Math.max(-36, Math.min(36, rawDx))
@@ -1608,6 +1660,15 @@ export default function ChatPage() {
                       </p>
                     ) : (
                       <RichText text={body} className="text-[15px] leading-relaxed [overflow-wrap:anywhere]" />
+                    )}
+                    {showTranslateAction && (
+                      <button type="button"
+                        onClick={(e) => { e.stopPropagation(); void translateMessage(m) }}
+                        disabled={translating}
+                        className="mt-1 flex items-center gap-1 text-[10px] font-medium text-cyan-300 underline decoration-cyan-400/40 underline-offset-2 transition hover:text-cyan-200 disabled:opacity-50">
+                        <Languages size={11} />
+                        {translating ? 'Translating…' : (translatedShown ? 'Show original' : (m.translated_message ? 'Show translation' : `Translate to ${LANG_LABELS[myChatLang ?? ''] ?? myChatLang ?? 'my language'}`))}
+                      </button>
                     )}
                     <p className={`mt-0.5 flex items-center justify-end gap-1 text-right text-[10px] ${mine ? 'text-slate-900/60' : 'text-slate-500'}`}>
                       {!deleted && !hiddenForMe && translatedShown && <span className="italic">translated ·</span>}

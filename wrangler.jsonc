@@ -19,5 +19,9 @@
     // Rewards: store the service key as a secret (never commit it):
     //   npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
   },
-  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" }
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  // Workers AI binding for live message translation (@cf/meta/m2m100-1.2b).
+  // Requires Workers AI enabled on the account (paid Workers plan); no external
+  // API key. Billed on AI inference credits, not the request quota.
+  "ai": { "binding": "AI" }
 }
