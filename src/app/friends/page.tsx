@@ -465,6 +465,39 @@ export default function FriendsPage() {
     }
   }, [friends.length, userId])
 
+  // ---- Realtime: friend_requests (instant pending tab updates) ----
+  useEffect(() => {
+    if (!userId) return
+    const supabase = createClient()
+    const uid = userIdRef.current
+
+    const channel = supabase.channel('friends-requests-rt')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'friend_requests' }, async (payload) => {
+        const row = payload.new as Request
+        if (row.sender_id !== uid && row.receiver_id !== uid) return
+        // Fetch profile for the other person
+        const otherId = row.sender_id === uid ? row.receiver_id : row.sender_id
+        const { data: p } = await supabase.from('profiles')
+          .select('id,display_name,avatar_path,age_band,generation,country_code,profile_visible,gender,gender_visible,last_active_at,online_visible')
+          .eq('id', otherId)
+          .maybeSingle()
+        if (p) setAllProfiles((prev) => ({ ...prev, [p.id]: p as Profile }))
+        setRequests((prev) => [row, ...prev])
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'friend_requests' }, (payload) => {
+        const row = payload.new as Request
+        if (row.sender_id !== uid && row.receiver_id !== uid) return
+        setRequests((prev) => prev.map((r) => r.id === row.id ? { ...r, status: row.status } : r))
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'friend_requests' }, (payload) => {
+        const old = payload.old as { id: string }
+        setRequests((prev) => prev.filter((r) => r.id !== old.id))
+      })
+      .subscribe()
+
+    return () => { void supabase.removeChannel(channel) }
+  }, [userId])
+
   // ---- Polling: sync typing + online presence every 3s ----
   useEffect(() => {
     if (!userId || !friends.length) return
@@ -634,8 +667,27 @@ export default function FriendsPage() {
   async function updateRequest(id: string, status: 'accepted' | 'declined' | 'cancelled') {
     const supabase = createClient()
     const { error: updateError } = await supabase.from('friend_requests').update({ status }).eq('id', id)
-    if (updateError) setError(friendlyError(updateError, 'Could not update this request. Please try again.'))
-    else window.location.reload()
+    if (updateError) { setError(friendlyError(updateError, 'Could not update this request. Please try again.')); return }
+    // Update local state instantly (Realtime will also fire but this is instant)
+    setRequests((prev) => prev.map((r) => r.id === id ? { ...r, status } : r))
+    // If accepted, refresh the friends list
+    if (status === 'accepted') {
+      const req = requests.find((r) => r.id === id)
+      if (req) {
+        const otherId = req.sender_id === userId ? req.receiver_id : req.sender_id
+        const { data: p } = await supabase.from('profiles')
+          .select('id,display_name,avatar_path,age_band,generation,country_code,profile_visible,gender,gender_visible,last_active_at,online_visible')
+          .eq('id', otherId)
+          .maybeSingle()
+        if (p) setAllProfiles((prev) => ({ ...prev, [p.id]: p as Profile }))
+        setFriends((prev) => {
+          if (prev.some((f) => f.id === otherId)) return prev
+          const profile = p as Profile | null
+          if (!profile) return prev
+          return [...prev, { ...profile, lastMessage: null, lastMessageTime: null, lastSenderId: null, lastMessageId: null, conversationId: null, isOnline: false, unreadCount: 0, isTyping: false, partnerLastReadAt: null, lastMessageDeliveredAt: null, lastMessageReadAt: null }]
+        })
+      }
+    }
   }
 
   const openChat = useCallback(async (profileId: string) => {
