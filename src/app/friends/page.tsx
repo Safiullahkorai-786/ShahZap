@@ -556,90 +556,30 @@ export default function FriendsPage() {
     return () => { void supabase.removeChannel(channel) }
   }, [userId])
 
-  // ---- Polling: sync typing + online presence every 3s ----
+  // ---- Presence: local tick re-evaluates the online window as time passes ----
+  // All data (online, typing, read receipts, ticks) arrives live via the
+  // 'friends-rt' realtime channel. The only thing that needs a timer is the
+  // time-based online flip when a friend's last_active_at goes stale, which is
+  // pure client-clock math on cached state — so we do it locally with ZERO DB
+  // requests instead of polling profiles/conversation_participants.
   useEffect(() => {
     if (!userId || !friends.length) return
-    const supabase = createClient()
-    const uid = userIdRef.current
 
-    async function poll() {
+    const tick = () => {
       if (!aliveRef.current) return
-
-      // Poll online presence for each friend
-      const friendIds = friendsRef.current.map((f) => f.id)
-      if (friendIds.length) {
-        const now = Date.now()
-        const { data: profiles } = await supabase.from('profiles')
-          .select('id,last_active_at,online_visible')
-          .in('id', friendIds)
-        if (profiles && aliveRef.current) {
-          setFriends((prev) => {
-            let changed = false
-            const next = prev.map((f) => {
-              const p = profiles.find((x) => x.id === f.id)
-              if (!p) return f
-              const isOnline = p.online_visible !== false && !!p.last_active_at && (now - new Date(p.last_active_at).getTime()) < ONLINE_WINDOW_MS
-              if (f.isOnline !== isOnline) { changed = true; return { ...f, isOnline, last_active_at: p.last_active_at } }
-              return f
-            })
-            return changed ? next : prev
-          })
-        }
-      }
-
-      // Poll typing + read receipts
-      const convIds = Object.keys(convToFriendRef.current)
-      if (!convIds.length) return
-
-      const { data: parts } = await supabase.from('conversation_participants')
-        .select('conversation_id,profile_id,typing_at,last_read_at')
-        .in('conversation_id', convIds)
-
-      if (!parts || !aliveRef.current) return
-
       const now = Date.now()
-      const friendTyping: Record<string, boolean> = {}
-      const partsByConv: Record<string, typeof parts> = {}
-      for (const p of parts) {
-        if (!partsByConv[p.conversation_id]) partsByConv[p.conversation_id] = []
-        partsByConv[p.conversation_id].push(p)
-        if (p.profile_id !== uid) {
-          friendTyping[p.conversation_id] = !!p.typing_at && (now - new Date(p.typing_at).getTime()) < TYPING_WINDOW_MS
-        }
-      }
-
-      const updates: { friendId: string; isTyping: boolean; partnerLastReadAt: string | null }[] = []
-
-      for (const convId of convIds) {
-        const friendId = convToFriendRef.current[convId]
-        if (!friendId) continue
-        const isTyping = friendTyping[convId] ?? false
-        const friendParts = partsByConv[convId] ?? []
-        const friendRow = friendParts.find((p) => p.profile_id !== uid)
-        const partnerLastReadAt = friendRow?.last_read_at ?? null
-        updates.push({ friendId, isTyping, partnerLastReadAt })
-      }
-
-      if (!aliveRef.current) return
-
       setFriends((prev) => {
         let changed = false
         const next = prev.map((f) => {
-          const u = updates.find((x) => x.friendId === f.id)
-          if (!u) return f
-          if (f.isTyping !== u.isTyping || f.partnerLastReadAt !== u.partnerLastReadAt) {
-            changed = true
-            return { ...f, isTyping: u.isTyping, partnerLastReadAt: u.partnerLastReadAt }
-          }
+          const isOnline = f.online_visible !== false && !!f.last_active_at && (now - new Date(f.last_active_at).getTime()) < ONLINE_WINDOW_MS
+          if (f.isOnline !== isOnline) { changed = true; return { ...f, isOnline } }
           return f
         })
-        if (changed) sortFriends(next)
         return changed ? next : prev
       })
     }
 
-    const interval = window.setInterval(poll, POLL_MS)
-    void poll()
+    const interval = window.setInterval(tick, POLL_MS)
     return () => window.clearInterval(interval)
   }, [userId, friends.length])
 

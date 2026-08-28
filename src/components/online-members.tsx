@@ -202,9 +202,7 @@ export default function OnlineMembers({ members: initialMembers, loading: server
           const exists = prev.some((m) => m.id === row.id)
           if (!isOnline && exists) return prev.filter((m) => m.id !== row.id)
           if (isOnline && !exists && ts) {
-            void supabase.from('profiles').select(MEMBER_COLS).eq('id', row.id).maybeSingle().then(({ data }) => {
-              if (active && data) setMembers((cur) => [...cur, data as OnlineMember])
-            })
+            setMembers((cur) => cur.some((m) => m.id === row.id) ? cur : [...cur, row as unknown as OnlineMember])
             return prev
           }
           if (isOnline && exists && ts) return prev.map((m) => m.id === row.id ? { ...m, ...row, last_active_at: ts } : m)

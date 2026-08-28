@@ -195,6 +195,7 @@ export default function ChatPage() {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const formRef = useRef<HTMLFormElement>(null)
   const channelRef = useRef<RealtimeChannel | null>(null)
+  const markRef = useRef<() => void>(() => {})
   const lastTypingSent = useRef(0)
   const typingStopTimer = useRef<number | undefined>(undefined)
   const partnerTypingExpiry = useRef<number | undefined>(undefined)
@@ -376,7 +377,12 @@ export default function ChatPage() {
           const message = payload.new as Message
           setMessages((current) => (current.some((item) => item.id === message.id) ? current : [...current, message]))
           if (isBotProfile(message.sender_id)) setBotTyping(false)
-          if (message.sender_id !== user.id) playMessageSound()
+          if (message.sender_id !== user.id) {
+            playMessageSound()
+            // Inbound message just arrived → stamp my read receipt now (free:
+            // triggered by the event, not a blind timer).
+            if (document.visibilityState === 'visible') markRef.current()
+          }
         })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload) => {
           lastRealtimeActivity = Date.now()
@@ -522,13 +528,13 @@ export default function ChatPage() {
         })
       channelRef.current = channel
 
-      // ── Presence poll: check other person's last_active_at every 10s ──
-      // Detects when they go offline (heartbeat stops → last_active_at goes stale).
+      // ── Presence: re-evaluate the online window as time passes. ──
+      // last_active_at is kept fresh by the realtime profiles UPDATE handler;
+      // online/offline flipping is pure client-clock math, so we just need a
+      // local ticker (no DB request) to recalc when the timestamp goes stale.
       if (!isBotProfile(otherProfileId)) {
-        presenceCheckTimer = window.setInterval(async () => {
-          if (!active) return
-          const { data: op } = await supabase.from('profiles').select('last_active_at').eq('id', otherIdRef.current).maybeSingle()
-          if (op && active) refreshPresence(op.last_active_at ?? null)
+        presenceCheckTimer = window.setInterval(() => {
+          if (active) refreshPresence()
         }, 30_000)
       }
     }
@@ -588,13 +594,16 @@ export default function ChatPage() {
     function safeMark() {
       if (document.visibilityState === 'visible') void mark()
     }
+    markRef.current = safeMark
 
+    // Event-driven: stamp read receipts when there's actually something new,
+    // not on a blind timer. safeMark is also invoked from the realtime INSERT
+    // handler the moment an inbound message arrives, and on focus/visibility.
     mark()
-    const iv = window.setInterval(safeMark, 30_000)
     document.addEventListener('visibilitychange', safeMark)
     window.addEventListener('focus', safeMark)
     return () => {
-      window.clearInterval(iv)
+      markRef.current = () => {}
       document.removeEventListener('visibilitychange', safeMark)
       window.removeEventListener('focus', safeMark)
     }
