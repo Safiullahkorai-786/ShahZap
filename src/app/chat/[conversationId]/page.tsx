@@ -196,6 +196,7 @@ export default function ChatPage() {
   const formRef = useRef<HTMLFormElement>(null)
   const channelRef = useRef<RealtimeChannel | null>(null)
   const markRef = useRef<() => void>(() => {})
+  const lastMarkedMsgIdRef = useRef<string | null>(null)
   const lastTypingSent = useRef(0)
   const typingStopTimer = useRef<number | undefined>(undefined)
   const partnerTypingExpiry = useRef<number | undefined>(undefined)
@@ -270,6 +271,14 @@ export default function ChatPage() {
       })
       const latest = fresh[fresh.length - 1]
       if (latest && latest.sender_id !== userIdRef2.current) setBotTyping(false)
+      // Degraded-realtime fallback: this poll is the only way new inbound
+      // messages surface when the websocket is down/silent, so stamp the read
+      // receipt here too (only for a genuinely-new inbound message, so it stays
+      // event-driven and costs nothing when nothing is new).
+      if (latest && latest.sender_id !== userIdRef2.current && !isBotProfile(latest.sender_id) && document.visibilityState === 'visible' && latest.id !== lastMarkedMsgIdRef.current) {
+        lastMarkedMsgIdRef.current = latest.id
+        markRef.current()
+      }
       if (otherIdRef.current && !isBotProfile(otherIdRef.current)) {
         const { data: op } = await supabase.from('profiles').select('last_active_at').eq('id', otherIdRef.current).maybeSingle()
         if (op && active) refreshPresence(op.last_active_at ?? null)
@@ -381,7 +390,10 @@ export default function ChatPage() {
             playMessageSound()
             // Inbound message just arrived → stamp my read receipt now (free:
             // triggered by the event, not a blind timer).
-            if (document.visibilityState === 'visible') markRef.current()
+            if (document.visibilityState === 'visible') {
+              lastMarkedMsgIdRef.current = message.id
+              markRef.current()
+            }
           }
         })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload) => {
@@ -591,8 +603,13 @@ export default function ChatPage() {
       if (data) setMessages(data as Message[])
     }
 
+    let markTimer: number | undefined = undefined
     function safeMark() {
-      if (document.visibilityState === 'visible') void mark()
+      if (document.visibilityState !== 'visible') return
+      // Debounce bursts of inbound messages into a single stamp (one 5-request
+      // mark instead of one per message).
+      window.clearTimeout(markTimer)
+      markTimer = window.setTimeout(() => { markTimer = undefined; void mark() }, 700)
     }
     markRef.current = safeMark
 
@@ -603,6 +620,7 @@ export default function ChatPage() {
     document.addEventListener('visibilitychange', safeMark)
     window.addEventListener('focus', safeMark)
     return () => {
+      if (markTimer) window.clearTimeout(markTimer)
       markRef.current = () => {}
       document.removeEventListener('visibilitychange', safeMark)
       window.removeEventListener('focus', safeMark)
