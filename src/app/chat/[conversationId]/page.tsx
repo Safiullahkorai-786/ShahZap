@@ -995,16 +995,17 @@ export default function ChatPage() {
         // Plain two-finger / right click → message options sheet.
         setActionsMsg({ msg: m, canEdit: m.sender_id === userId && now - new Date(m.created_at).getTime() < EDIT_WINDOW_MS })
       }
-    } else if (!cancelled && !g.pressed && !g.moved && g.pointerType !== 'mouse' && now - g.startT < 350) {
-      // Quick touch TAP → options sheet. pointercancel (browser stealing the
-      // gesture to SCROLL) and slow presses never open it.
-      setActionsMsg({ msg: m, canEdit: m.sender_id === userId && now - new Date(m.created_at).getTime() < EDIT_WINDOW_MS })
-    } else if (!cancelled && !g.pressed && g.moved && Math.abs(g.dx) >= 26) {
-      setReplyTo(m)
-      setEditing(null)
-      inputRef.current?.focus({ preventScroll: true })
-    }
-    gesture.current = { id: null, startX: 0, dx: 0, moved: false, pressed: false, pointerType: 'mouse', mode: 'press', startT: 0 }
+      } else if (!cancelled && !g.pressed && g.moved && Math.abs(g.dx) >= 26) {
+        setReplyTo(m)
+        setEditing(null)
+        inputRef.current?.focus({ preventScroll: true })
+      }
+      // NOTE: A quick, non-held touch TAP intentionally does nothing now.
+      // The options sheet / emoji picker only opens on a real HOLD (the
+      // 450ms timer in startPress sets g.pressed=true and opens the sheet).
+      // Previously a tap < 350ms opened the sheet, which on mobile caused
+      // the popup + accidental emoji reactions on normal single taps.
+      gesture.current = { id: null, startX: 0, dx: 0, moved: false, pressed: false, pointerType: 'mouse', mode: 'press', startT: 0 }
   }
 
   async function showReactors(m: Message, emoji: string) {
