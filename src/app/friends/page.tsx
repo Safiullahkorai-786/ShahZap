@@ -706,10 +706,15 @@ export default function FriendsPage() {
 
   async function updateRequest(id: string, status: 'accepted' | 'declined' | 'cancelled') {
     const supabase = createClient()
-    const { error: updateError } = await supabase.from('friend_requests').update({ status }).eq('id', id)
-    if (updateError) { setError(friendlyError(updateError, 'Could not update this request. Please try again.')); return }
+    if (status === 'cancelled') {
+      const { error: rpcError } = await supabase.rpc('withdraw_friend_request', { p_request_id: id })
+      if (rpcError) { setError(friendlyError(rpcError, 'Could not cancel this request. Please try again.')); return }
+    } else {
+      const { error: updateError } = await supabase.from('friend_requests').update({ status }).eq('id', id)
+      if (updateError) { setError(friendlyError(updateError, 'Could not update this request. Please try again.')); return }
+    }
     // Update local state instantly (Realtime will also fire but this is instant)
-    setRequests((prev) => prev.map((r) => r.id === id ? { ...r, status } : r))
+    setRequests((prev) => prev.filter((r) => r.id !== id))
     // If accepted, refresh the friends list
     if (status === 'accepted') {
       const req = requests.find((r) => r.id === id)
