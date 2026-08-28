@@ -1,9 +1,8 @@
 import { redirect } from 'next/navigation'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { friendlyError } from '@/lib/errors'
-import OnlineMembers from '@/components/online-members'
+import OnlineTabs from '@/components/online-tabs'
 import { AppHeader } from '@/components/app-header'
-import { Shimmer } from '@/components/shimmer'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,13 +31,10 @@ export default async function OnlinePage() {
   return (
     <main className="min-h-screen bg-slate-950 text-white">
       <AppHeader title="Online" icon="radio" />
-      <div className="mx-auto max-w-2xl w-full px-4 pb-10 pt-4 lg:max-w-3xl">
-        <p className="text-xs text-slate-500">Tap anyone to start chatting instantly.</p>
 
-        {error && <p className="mt-4 rounded-xl bg-red-950/40 p-3 text-sm text-red-200">{friendlyError(error, 'Could not load the online list.')}</p>}
+      {error && <div className="mx-auto max-w-2xl w-full px-4"><p className="mt-4 rounded-xl bg-red-950/40 p-3 text-sm text-red-200">{friendlyError(error, 'Could not load the online list.')}</p></div>}
 
-        <OnlineMembers members={members ?? []} />
-      </div>
+      <OnlineTabs members={members ?? []} />
     </main>
   )
 }
