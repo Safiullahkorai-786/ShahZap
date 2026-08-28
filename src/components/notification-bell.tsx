@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import Link from 'next/link'
-import { Bell, UserPlus, MessageCircle, UserMinus, UserCheck, X } from 'lucide-react'
+import { Bell, UserPlus, MessageCircle, UserMinus, UserCheck, X, Ban } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { playFriendRequestSound, playMessageSound, playUnfriendSound } from '@/lib/notification-sound'
 import { resolveIdentity, type Identity } from '@/lib/identity'
@@ -12,7 +12,7 @@ const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 
 type Notification = {
   id: string
-  kind: 'friend_request' | 'message' | 'unfriend' | 'accept' | 'reject'
+  kind: 'friend_request' | 'message' | 'unfriend' | 'accept' | 'reject' | 'blocked'
   identity: Identity
   text: string
   href: string
@@ -42,6 +42,7 @@ function kindToText(kind: string): string {
     case 'unfriend': return 'unfriended you'
     case 'accept': return 'accepted your friend request'
     case 'reject': return 'rejected your friend request'
+    case 'blocked': return 'blocked you'
     case 'message': return 'sent you a message'
     default: return ''
   }
@@ -253,8 +254,8 @@ export function NotificationBell() {
                 {items.map((n) => (
                   <li key={n.id}>
                     <Link href={n.href} onClick={() => setOpen(false)} className="flex items-start gap-3 px-4 py-3 transition hover:bg-slate-800">
-                      <span className={`mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-xl ${n.kind === 'friend_request' ? 'bg-cyan-400/10 text-cyan-300' : n.kind === 'unfriend' || n.kind === 'reject' ? 'bg-red-400/10 text-red-300' : n.kind === 'accept' ? 'bg-emerald-400/10 text-emerald-300' : 'bg-violet-400/10 text-violet-300'}`}>
-                        {n.kind === 'friend_request' ? <UserPlus size={15} /> : n.kind === 'unfriend' ? <UserMinus size={15} /> : n.kind === 'accept' ? <UserCheck size={15} /> : n.kind === 'reject' ? <X size={15} /> : <MessageCircle size={15} />}
+                      <span className={`mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-xl ${n.kind === 'friend_request' ? 'bg-cyan-400/10 text-cyan-300' : n.kind === 'blocked' ? 'bg-red-400/10 text-red-400' : n.kind === 'unfriend' || n.kind === 'reject' ? 'bg-red-400/10 text-red-300' : n.kind === 'accept' ? 'bg-emerald-400/10 text-emerald-300' : 'bg-violet-400/10 text-violet-300'}`}>
+                        {n.kind === 'friend_request' ? <UserPlus size={15} /> : n.kind === 'blocked' ? <Ban size={15} /> : n.kind === 'unfriend' ? <UserMinus size={15} /> : n.kind === 'accept' ? <UserCheck size={15} /> : n.kind === 'reject' ? <X size={15} /> : <MessageCircle size={15} />}
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm">
