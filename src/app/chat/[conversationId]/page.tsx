@@ -1321,10 +1321,21 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
       {/* ── Header ─────────────────────────────────────────── */}
       <header className="relative z-20 flex-none border-b border-slate-800 bg-slate-900 px-2 py-2.5 backdrop-blur">
         <div className={`mx-auto flex ${col} items-center gap-1.5`}>
-          <button aria-label="More options" onClick={() => setMenuOpen((v) => !v)}
-            className="flex h-10 w-10 flex-none items-center justify-center rounded-full text-slate-300 transition hover:bg-slate-800 hover:text-white">
-            <MoreVertical size={20} />
-          </button>
+          {isFriend ? (
+            <button
+              type="button"
+              aria-label="Back to friends"
+              onClick={() => router.push('/friends')}
+              className="flex h-10 w-10 flex-none items-center justify-center rounded-full text-slate-300 transition hover:bg-slate-800 hover:text-white"
+            >
+              <ArrowLeft size={20} />
+            </button>
+          ) : (
+            <button aria-label="More options" onClick={() => setMenuOpen((v) => !v)}
+              className="flex h-10 w-10 flex-none items-center justify-center rounded-full text-slate-300 transition hover:bg-slate-800 hover:text-white">
+              <MoreVertical size={20} />
+            </button>
+          )}
 
           <button type="button" aria-label="View profile" onClick={() => persona ? undefined : setCardOpen(true)}
             className={`flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1 py-1 text-left transition ${persona ? '' : 'hover:bg-slate-800/60'}`}>
@@ -1357,6 +1368,10 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
               >
                 <Video size={24} />
               </button>
+              <button aria-label="More options" onClick={() => setMenuOpen((v) => !v)}
+                className="flex h-10 w-10 flex-none items-center justify-center rounded-full text-slate-300 transition hover:bg-slate-800 hover:text-white">
+                <MoreVertical size={20} />
+              </button>
             </div>
           ) : entry === 'match' ? (
             <button onClick={() => router.push('/match')} className="mr-1 flex flex-none items-center gap-1.5 rounded-full bg-cyan-400/10 px-4 py-2 text-xs font-bold text-cyan-300 transition hover:bg-cyan-400/20">Next</button>
@@ -1375,7 +1390,7 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
 
         {menuOpen && (
           <>
-            <div ref={menuRef} className="absolute left-2 top-full z-20 mt-1 max-h-[calc(100dvh-4.5rem)] w-72 overflow-y-auto overscroll-contain overflow-x-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl shadow-black/60 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div ref={menuRef} className="absolute right-2 top-full z-20 mt-1 max-h-[calc(100dvh-4.5rem)] w-72 overflow-y-auto overscroll-contain overflow-x-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl shadow-black/60 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <div className="px-3 pb-3 pt-2.5">
                 <p className="mb-2 flex items-center gap-3 text-sm"><BellRing size={17} className="text-cyan-300" /> Sounds</p>
                 <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-slate-950 p-1">
