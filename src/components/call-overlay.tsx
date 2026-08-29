@@ -34,19 +34,32 @@ export function CallOverlay(props: {
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null)
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null)
 
-  // Attach local preview whenever the local stream (re)appears.
+  // Attach local preview whenever the local stream (re)appears; release it when
+  // the call ends so the browser's camera/mic indicator turns off.
   useEffect(() => {
     const v = localVideoRef.current
-    if (v && localStream && v.srcObject !== localStream) v.srcObject = localStream
+    if (!v) return
+    if (localStream && v.srcObject !== localStream) {
+      v.srcObject = localStream
+    } else if (!localStream && v.srcObject) {
+      v.pause()
+      v.srcObject = null
+    }
   }, [status, mode, localStream])
 
   // Attach remote video/audio whenever the remote stream (re)appears, so a
   // track arriving a beat after the UI is shown still lights up the feed.
+  // Release the srcObject when the stream is gone so the indicator clears.
   useEffect(() => {
     const rv = remoteVideoRef.current
     const ra = remoteAudioRef.current
-    if (rv && remoteStream && rv.srcObject !== remoteStream) rv.srcObject = remoteStream
-    if (ra && remoteStream && ra.srcObject !== remoteStream) ra.srcObject = remoteStream
+    if (remoteStream) {
+      if (rv && rv.srcObject !== remoteStream) rv.srcObject = remoteStream
+      if (ra && ra.srcObject !== remoteStream) ra.srcObject = remoteStream
+    } else {
+      if (rv && rv.srcObject) { rv.pause(); rv.srcObject = null }
+      if (ra && ra.srcObject) { ra.pause(); ra.srcObject = null }
+    }
   }, [status, mode, remoteStream])
 
   if (!open) return null
