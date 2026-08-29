@@ -720,9 +720,11 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
 
   // Focus the composer reliably whenever the chat mounts so you can type
   // immediately (the autoFocus attribute is flaky, especially when the chat
-  // is embedded in the call panel).
+  // is embedded in the call panel). On touch devices skip this so the mobile
+  // keyboard doesn't pop up on its own when a call screen or DM is opened.
   useEffect(() => {
     if (loading || blockedAny || !userId || persona) return
+    if (typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches) return
     const id = window.setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 80)
     return () => window.clearTimeout(id)
   }, [loading, blockedAny, userId, persona])
@@ -730,8 +732,10 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
   // While the chat is embedded in the call panel, keep the composer focused
   // if focus falls back to a blank area (e.g. after clicking the call video).
   // This matches WhatsApp Desktop: you can just start typing at any time.
+  // Skipped on touch devices so the keyboard never auto-appears during a call.
   useEffect(() => {
     if (!suppressCalls || blockedAny) return
+    if (typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches) return
     const id = window.setInterval(() => {
       const ae = document.activeElement
       if (!ae || ae === document.body) inputRef.current?.focus({ preventScroll: true })

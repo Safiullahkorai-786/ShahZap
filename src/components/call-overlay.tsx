@@ -8,6 +8,7 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
 import { usePathname, useRouter } from 'next/navigation'
 import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, MessageCircle, Minimize2, Maximize2 } from 'lucide-react'
 import { CallChatPanel } from '@/components/call-chat-panel'
+import { createClient } from '@/lib/supabase/client'
 
 type Status = 'idle' | 'outgoing' | 'incoming' | 'active' | 'ended'
 
@@ -37,6 +38,7 @@ export function CallOverlay(props: {
   const [chatOpen, setChatOpen] = useState(false)
   const [controlsVisible, setControlsVisible] = useState(true)
   const [minimized, setMinimized] = useState(false)
+  const [unread, setUnread] = useState(0)
   const hideTimer = useRef<number | undefined>(undefined)
   const pathname = usePathname()
   const router = useRouter()
@@ -85,6 +87,51 @@ export function CallOverlay(props: {
     setChatOpen(false)
     router.push(`/chat/${conversationId}`)
   }
+
+  // Live unread-message badge for the chat button, so you can see when the
+  // person on the call is texting you. Count = inbound messages without read_at.
+  const uidRef = useRef<string | null>(null)
+  const convRef = useRef<string | undefined>(conversationId)
+  convRef.current = conversationId
+  useEffect(() => {
+    const supabase = createClient()
+    let alive = true
+    let channel: { unsubscribe: () => void } | null = null
+    async function load() {
+      let uid = uidRef.current
+      if (!uid) {
+        const { data: us } = await supabase.auth.getUser()
+        uid = us?.user?.id ?? null
+        uidRef.current = uid
+      }
+      if (!alive) return
+      const conv = convRef.current
+      if (!conv || !uid) { setUnread(0); return }
+      const { count } = await supabase.from('messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('conversation_id', conv)
+        .neq('sender_id', uid)
+        .is('read_at', null)
+      if (alive) setUnread(count ?? 0)
+    }
+    function refresh() {
+      const conv = convRef.current
+      if (!conv) return
+      void supabase.from('messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('conversation_id', conv)
+        .neq('sender_id', uidRef.current ?? '')
+        .is('read_at', null)
+        .then(({ count }) => { if (alive) setUnread(count ?? 0) })
+    }
+    void load()
+    channel = supabase
+      .channel('call-chat-unread')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, refresh)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, refresh)
+      .subscribe()
+    return () => { alive = false; channel?.unsubscribe() }
+  }, [conversationId])
 
   function onPipPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
     const left = pipPos ? pipPos.x : e.currentTarget.getBoundingClientRect().left
@@ -288,7 +335,6 @@ export function CallOverlay(props: {
         <div
           className={`relative flex h-full flex-col overflow-hidden ${showChat ? 'flex-1' : 'w-full'}`}
           onMouseMove={wake}
-          onTouchStart={wake}
         >
           {/* Remote video (full screen) or avatar for audio; tap toggles controls */}
           <div className="relative min-h-0 flex-1 cursor-default" onClick={toggleOnTap}>
@@ -332,9 +378,14 @@ export function CallOverlay(props: {
                   onClick={goToDm}
                   aria-label="Open chat"
                   title={`Chat with ${otherName}`}
-                  className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-800/80 text-white shadow-lg backdrop-blur transition hover:bg-slate-700"
+                  className="relative flex h-11 w-11 items-center justify-center rounded-full bg-slate-800/80 text-white shadow-lg backdrop-blur transition hover:bg-slate-700"
                 >
                   <MessageCircle size={20} />
+                  {unread > 0 && (
+                    <span className="pointer-events-none absolute -right-1 -top-1 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                      {unread > 99 ? '99+' : unread}
+                    </span>
+                  )}
                 </button>
               )}
             </div>
@@ -362,18 +413,23 @@ export function CallOverlay(props: {
                   onClick={() => setChatOpen((open) => !open)}
                   aria-label="Open chat"
                   title={`Chat with ${otherName}`}
-                  className={`hidden h-16 w-16 items-center justify-center rounded-full shadow-lg transition lg:flex ${
+                  className={`relative hidden h-16 w-16 items-center justify-center rounded-full shadow-lg transition lg:flex ${
                     showChat ? 'bg-cyan-500 text-slate-950 hover:bg-cyan-400' : 'bg-slate-700/70 text-white hover:bg-slate-600'
                   }`}
                 >
                   <MessageCircle size={26} />
+                  {unread > 0 && (
+                    <span className="pointer-events-none absolute -right-1 -top-1 flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-bold text-white shadow">
+                      {unread > 99 ? '99+' : unread}
+                    </span>
+                  )}
                 </button>
               )}
               <button
                 onClick={() => setMinimized(true)}
                 aria-label="Minimize call"
                 title="Minimize"
-                className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-700/70 text-white shadow-lg transition hover:bg-slate-600"
+                className="hidden h-16 w-16 items-center justify-center rounded-full bg-slate-700/70 text-white shadow-lg transition hover:bg-slate-600 lg:flex"
               >
                 <Minimize2 size={26} />
               </button>
