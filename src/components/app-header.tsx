@@ -3,6 +3,7 @@
 import { ChevronLeft, Home, Radar, Radio, Users, Settings, Zap, Gift, Crown, UserRound, ShieldCheck } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { useI18n } from '@/lib/i18n/provider'
 
 // Icons are resolved INSIDE this client component by name. Passing actual
 // icon components as props breaks whenever a SERVER component renders this
@@ -32,13 +33,14 @@ export function AppHeader({
   back?: string
 }) {
   const router = useRouter()
+  const { t } = useI18n()
   const Icon = ICONS[icon] ?? Radio
   return (
     <header className="app-chrome sticky top-0 z-30 border-b">
       <div className="mx-auto flex max-w-3xl items-center gap-1 px-3 py-2">
         <button
           onClick={() => router.push(back)}
-          aria-label="Back"
+          aria-label={t('appHeader.back')}
           className="flex h-8 w-8 flex-none items-center justify-center rounded-full text-slate-300 transition hover:bg-slate-800 hover:text-white"
         >
           <ChevronLeft size={20} />

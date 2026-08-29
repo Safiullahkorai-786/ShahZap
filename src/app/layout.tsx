@@ -4,6 +4,7 @@ import { PwaRegister } from "@/components/PwaRegister";
 import { PresenceHeartbeat } from "@/components/presence-heartbeat";
 import { GlobalNotificationListener } from "@/components/global-notification-listener";
 import { BottomNav } from "@/components/bottom-nav";
+import { ClientProviders } from "@/lib/i18n/provider";
 
 export const viewport: Viewport = {
   themeColor: "#06b6d4",
@@ -35,11 +36,13 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           }}
         />
         <div className="w-full min-h-dvh bg-slate-950">
-          <PwaRegister />
-          <PresenceHeartbeat />
-          <GlobalNotificationListener />
-          {children}
-          <BottomNav />
+          <ClientProviders>
+            <PwaRegister />
+            <PresenceHeartbeat />
+            <GlobalNotificationListener />
+            {children}
+            <BottomNav />
+          </ClientProviders>
         </div>
       </body>
     </html>

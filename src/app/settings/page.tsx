@@ -4,10 +4,11 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { friendlyError } from '@/lib/errors'
-import { ACCENTS, getSelection, applySelection, type Selection } from '@/lib/theme'
-import { getSoundPrefs, setSoundBundle, setSoundMode, notify, type SoundPrefs } from '@/lib/notification-sound'
+import { ACCENTS, getSelection, applySelection, type Selection, type Base } from '@/lib/theme'
+import { getSoundPrefs, setSoundBundle, setSoundMode, notify, type SoundPrefs, type SoundMode, type SoundBundle } from '@/lib/notification-sound'
 import { AppHeader } from '@/components/app-header'
 import { Shimmer } from '@/components/shimmer'
+import { useI18n } from '@/lib/i18n/provider'
 
 const LANGUAGES = [
   ['sq', 'Albanian (Shqip)'], ['ar', 'Arabic (العربية)'], ['bn', 'Bengali (বাংলা)'], ['bg', 'Bulgarian (Български)'],
@@ -26,15 +27,13 @@ const LANGUAGES = [
   ['th', 'Thai (ไทย)'], ['tr', 'Turkish (Türkçe)'], ['uk', 'Ukrainian (Українська)'], ['ur', 'Urdu (اردو)'],
   ['uz', 'Uzbek (O‘zbek)'], ['vi', 'Vietnamese (Tiếng Việt)'], ['yo', 'Yoruba (Yorùbá)'],
 ] as const
-const GENDER_OPTIONS = [['woman', 'Women'], ['man', 'Men'], ['non_binary', 'Non-binary'], ['prefer_not_to_say', 'Prefer not to say']] as const
-const GENERATION_OPTIONS = [['gen_alpha', 'Gen Alpha'], ['gen_z', 'Gen Z'], ['millennial', 'Millennial'], ['gen_x', 'Gen X'], ['boomer', 'Boomer']] as const
+const GENDER_CODES = ['woman', 'man', 'non_binary', 'prefer_not_to_say'] as const
+const GENERATION_CODES = ['gen_alpha', 'gen_z', 'millennial', 'gen_x', 'boomer'] as const
 const AGE_BAND_OPTIONS = [['18_20', '18–20'], ['21_29', '21–29'], ['30_44', '30–44'], ['45_59', '45–59'], ['60_plus', '60+']] as const
-const CONTINENTS = [['africa', 'Africa'], ['asia', 'Asia'], ['europe', 'Europe'], ['north_america', 'N. America'], ['south_america', 'S. America'], ['oceania', 'Oceania']] as const
-const INTEREST_OPTIONS = [
-  ['music', 'Music'], ['movies', 'Movies'], ['gaming', 'Gaming'], ['anime', 'Anime'],
-  ['sports', 'Sports'], ['technology', 'Technology'], ['books', 'Books'], ['travel', 'Travel'],
-  ['food', 'Food'], ['art', 'Art'], ['fitness', 'Fitness'], ['memes', 'Memes'],
-  ['photography', 'Photography'], ['science', 'Science'], ['nature', 'Nature'], ['coding', 'Coding'],
+const CONTINENT_CODES = ['africa', 'asia', 'europe', 'north_america', 'south_america', 'oceania'] as const
+const INTEREST_CODES = [
+  'music', 'movies', 'gaming', 'anime', 'sports', 'technology', 'books', 'travel',
+  'food', 'art', 'fitness', 'memes', 'photography', 'science', 'nature', 'coding',
 ] as const
 const WAIT_TIMES = [[5, '5 seconds'], [10, '10 seconds'], [15, '15 seconds'], [30, '30 seconds'], [45, '45 seconds'], [60, '60 seconds']] as const
 
@@ -159,6 +158,7 @@ function SettingsSkeleton() {
 export default function SettingsPage() {
   const router = useRouter()
   const supabase = createClient()
+  const { t, setLang } = useI18n()
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -179,6 +179,44 @@ export default function SettingsPage() {
   const [sound, setSound] = useState<SoundPrefs>({ mode: 'sound', bundle: 'classic' })
   const [interfaceLanguage, setInterfaceLanguage] = useState('en')
   const [chatLanguage, setChatLanguage] = useState('en')
+
+  const genderOptions: [string, string][] = [
+    ['woman', t('settings.options.woman')],
+    ['man', t('settings.options.man')],
+    ['non_binary', t('settings.options.nonBinary')],
+    ['prefer_not_to_say', t('settings.options.preferNotToSay')],
+  ]
+  const generationOptions: [string, string][] = [
+    ['gen_alpha', t('settings.options.genAlpha')],
+    ['gen_z', t('settings.options.genZ')],
+    ['millennial', t('settings.options.millennial')],
+    ['gen_x', t('settings.options.genX')],
+    ['boomer', t('settings.options.boomer')],
+  ]
+  const continentOptions: [string, string][] = [
+    ['africa', t('settings.options.africa')],
+    ['asia', t('settings.options.asia')],
+    ['europe', t('settings.options.europe')],
+    ['north_america', t('settings.options.northAmerica')],
+    ['south_america', t('settings.options.southAmerica')],
+    ['oceania', t('settings.options.oceania')],
+  ]
+  const interestOptions: [string, string][] = INTEREST_CODES.map((c) => [c, t(`settings.options.${c}`)])
+
+  const modeOptions: [Base, string][] = [
+    ['dark', t('settings.appearance.dark')],
+    ['white', t('settings.appearance.light')],
+  ]
+  const alertOptions: [SoundMode, string][] = [
+    ['sound', t('settings.sounds.sound')],
+    ['buzz', t('settings.sounds.buzz')],
+    ['mute', t('settings.sounds.mute')],
+  ]
+  const packOptions: { id: SoundBundle; label: string; hint: string }[] = [
+    { id: 'classic', label: t('settings.sounds.pack.classic'), hint: t('settings.sounds.pack.classicHint') },
+    { id: 'pop', label: t('settings.sounds.pack.pop'), hint: t('settings.sounds.pack.popHint') },
+    { id: 'zen', label: t('settings.sounds.pack.zen'), hint: t('settings.sounds.pack.zenHint') },
+  ]
 
   useEffect(() => {
     let active = true
@@ -208,7 +246,7 @@ export default function SettingsPage() {
   async function save() {
     setBusy(true); setError(''); setSaved(false)
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setError('Your session expired. Please sign in again.'); setBusy(false); return }
+    if (!user) { setError(t('settings.sessionExpired')); setBusy(false); return }
     const { error: e1 } = await supabase.from('match_preferences').upsert({
       profile_id: user.id,
       preferred_age_bands: prefs.preferred_age_bands,
@@ -220,41 +258,39 @@ export default function SettingsPage() {
       interest_wait_seconds: prefs.interest_wait_seconds,
       country_targeting_enabled: prefs.country_targeting_enabled,
     })
-    if (e1) { setError(friendlyError(e1, 'Could not save your matching preferences.')); setBusy(false); return }
+    if (e1) { setError(friendlyError(e1, t('settings.saveMatchingFailed'))); setBusy(false); return }
     const { error: e2 } = await supabase.from('profiles').update({
       interface_language: interfaceLanguage,
       chat_language: chatLanguage,
     }).eq('id', user.id)
-    if (e2) { setError(friendlyError(e2, 'Could not save your languages.')); setBusy(false); return }
+    if (e2) { setError(friendlyError(e2, t('settings.saveLanguagesFailed'))); setBusy(false); return }
     setSaved(true); setBusy(false)
   }
 
   if (loading) {
     return (
       <main className="min-h-screen bg-slate-950 text-white">
-        <AppHeader title="Settings" icon="settings" />
-        <div className="w-full px-4 pt-6"><p className="text-sm text-slate-500">Loading your settings…</p></div>
+        <AppHeader title={t('settings.title')} icon="settings" />
+        <div className="w-full px-4 pt-6"><p className="text-sm text-slate-500">{t('settings.loading')}</p></div>
       </main>
     )
   }
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
-      <AppHeader title="Settings" icon="settings" />
+      <AppHeader title={t('settings.title')} icon="settings" />
       <div className="mx-auto max-w-2xl w-full px-4 pb-24 pt-4 md:pb-10 lg:max-w-4xl">
-        <p className="text-xs leading-relaxed text-slate-500">
-          Matching preferences, appearance, languages and alerts. Your name, privacy and interests are edited under <b>Profile</b>.
-        </p>
+        <p className="text-xs leading-relaxed text-slate-500">{t('settings.intro')}</p>
 
         {error && <p className="mt-4 rounded-xl bg-red-950/40 p-3 text-sm text-red-200">{error}</p>}
-        {saved && <p className="mt-4 rounded-xl bg-emerald-950/40 p-3 text-sm text-emerald-200">Settings saved.</p>}
+        {saved && <p className="mt-4 rounded-xl bg-emerald-950/40 p-3 text-sm text-emerald-200">{t('settings.saved')}</p>}
 
         <div className="mt-4 space-y-4">
-          <Section title="Appearance" description="Choose a base mode, then an accent — applies across the whole app instantly.">
+          <Section title={t('settings.appearance.title')} description={t('settings.appearance.desc')}>
             <div>
-              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Mode</p>
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">{t('settings.appearance.mode')}</p>
               <div className="grid grid-cols-2 gap-3">
-                {([['dark','🌙 Dark night'],['white','☀️ Bright white']] as const).map(([b,label]) => (
+                {modeOptions.map(([b, label]) => (
                   <button key={b} onClick={() => { const n = { ...sel, base: b }; setSel(n); applySelection(n) }}
                     className={`rounded-2xl border p-4 text-sm font-bold transition ${sel.base === b ? 'border-cyan-400 bg-cyan-400/10 text-cyan-200 ring-1 ring-cyan-400/40' : 'border-slate-800 bg-slate-950 hover:border-slate-600'}`}>
                     {label}
@@ -263,7 +299,7 @@ export default function SettingsPage() {
               </div>
             </div>
             <div>
-              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Accent</p>
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">{t('settings.appearance.accent')}</p>
               <div className="grid grid-cols-4 gap-3">
                 {ACCENTS.map((a) => (
                   <button key={a.id} onClick={() => { const n = { ...sel, accent: a.id }; setSel(n); applySelection(n) }}
@@ -276,65 +312,65 @@ export default function SettingsPage() {
             </div>
           </Section>
 
-          <Section title="Sounds & vibration" description="Pick how ShahZap gets your attention — a sound, a buzz, or nothing. The pack changes every alert in the app.">
+          <Section title={t('settings.sounds.title')} description={t('settings.sounds.desc')}>
             <div>
-              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Alert mode</p>
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">{t('settings.sounds.alertMode')}</p>
               <div className="grid grid-cols-3 gap-2">
-                {([['sound','🔔 Sound'],['buzz','📳 Buzz'],['mute','🔕 Mute']] as const).map(([m,label]) => (
+                {alertOptions.map(([m, label]) => (
                   <button key={m} onClick={() => setSound(setSoundMode(m))}
                     className={`rounded-xl border px-3 py-2.5 text-sm font-semibold transition ${sound.mode === m ? 'border-cyan-400 bg-cyan-400/10 text-cyan-200 ring-1 ring-cyan-400/50' : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-500'}`}>
                     {label}
                   </button>
                 ))}
               </div>
-              {sound.mode === 'buzz' && <p className="mt-2 text-xs text-slate-500">Vibrates where your device supports it; elsewhere you get a soft low buzz tone instead.</p>}
-              {sound.mode === 'mute' && <p className="mt-2 text-xs text-slate-500">Everything is silent — messages still arrive normally.</p>}
+              {sound.mode === 'buzz' && <p className="mt-2 text-xs text-slate-500">{t('settings.sounds.buzzHint')}</p>}
+              {sound.mode === 'mute' && <p className="mt-2 text-xs text-slate-500">{t('settings.sounds.muteHint')}</p>}
             </div>
             <div>
-              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Sound packs</p>
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">{t('settings.sounds.soundPacks')}</p>
               <div className="grid gap-2 sm:grid-cols-3">
-                {([['classic','✨ Classic','Bright pings and warm chimes — the original ShahZap set.'],['pop','🎈 Pop','Playful arcade blips with bouncy little boings.'],['zen','🍃 Zen','Soft bells and calm tones for quiet chatting.']] as const).map(([b,label,hint]) => (
-                  <button key={b} onClick={() => { const n = setSoundBundle(b); setSound(n); if (n.mode === 'sound') notify('message') }}
-                    className={`rounded-2xl border p-4 text-left transition ${sound.bundle === b ? 'border-cyan-400 bg-cyan-400/10 ring-1 ring-cyan-400/40' : 'border-slate-800 bg-slate-950 hover:border-slate-600'}`}>
+                {packOptions.map(({ id, label, hint }) => (
+                  <button key={id} onClick={() => { const n = setSoundBundle(id); setSound(n); if (n.mode === 'sound') notify('message') }}
+                    className={`rounded-2xl border p-4 text-left transition ${sound.bundle === id ? 'border-cyan-400 bg-cyan-400/10 ring-1 ring-cyan-400/40' : 'border-slate-800 bg-slate-950 hover:border-slate-600'}`}>
                     <span className="block text-sm font-bold">{label}</span>
                     <span className="mt-1 block text-xs leading-relaxed text-slate-400">{hint}</span>
-                    <span className="mt-2 block text-[10px] font-semibold uppercase tracking-wide text-cyan-300/80">{sound.bundle === b ? 'Selected · tap to preview' : 'Tap to preview'}</span>
+                    <span className="mt-2 block text-[10px] font-semibold uppercase tracking-wide text-cyan-300/80">{sound.bundle === id ? t('settings.sounds.pack.selected') : t('settings.sounds.pack.tapPreview')}</span>
                   </button>
                 ))}
               </div>
             </div>
             <div className="space-y-4">
-              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Languages</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{t('settings.sounds.languages')}</p>
               <div className="grid gap-4 sm:grid-cols-2">
-                <SelectStr label="Interface language" hint="The language the app is shown in." value={interfaceLanguage} onChange={setInterfaceLanguage} options={LANGUAGES} />
-                <SelectStr label="Chat language" hint="The language you chat and receive translations in." value={chatLanguage} onChange={setChatLanguage} options={LANGUAGES} />
+                <SelectStr label={t('settings.sounds.interfaceLang')} hint={t('settings.sounds.interfaceLangHint')} value={interfaceLanguage} onChange={(v) => { setLang(v); setInterfaceLanguage(v) }} options={LANGUAGES} />
+                <SelectStr label={t('settings.sounds.chatLang')} hint={t('settings.sounds.chatLangHint')} value={chatLanguage} onChange={setChatLanguage} options={LANGUAGES} />
               </div>
             </div>
           </Section>
 
-          <Section title="Who I want to meet" description="Leave any group empty to stay open to everyone in it.">
-            <MultiSelect label="Genders" options={GENDER_OPTIONS} values={prefs.preferred_genders}
+          <Section title={t('settings.meet.title')} description={t('settings.meet.desc')}>
+            <MultiSelect label={t('settings.meet.genders')} options={genderOptions} values={prefs.preferred_genders}
               onToggle={(v) => setPrefs((c) => ({ ...c, preferred_genders: toggleIn(c.preferred_genders, v) }))} />
-            <MultiSelect label="Generations" options={GENERATION_OPTIONS} values={prefs.preferred_generations}
+            <MultiSelect label={t('settings.meet.generations')} options={generationOptions} values={prefs.preferred_generations}
               onToggle={(v) => setPrefs((c) => ({ ...c, preferred_generations: toggleIn(c.preferred_generations, v) }))} />
-            <MultiSelect label="Age bands" options={AGE_BAND_OPTIONS} values={prefs.preferred_age_bands}
+            <MultiSelect label={t('settings.meet.ageBands')} options={AGE_BAND_OPTIONS} values={prefs.preferred_age_bands}
               onToggle={(v) => setPrefs((c) => ({ ...c, preferred_age_bands: toggleIn(c.preferred_age_bands, v) }))} />
-            <MultiSelect label="Continents" hint="Only match people from these regions." options={CONTINENTS} values={prefs.preferred_continents}
+            <MultiSelect label={t('settings.meet.continents')} hint={t('settings.meet.continentsHint')} options={continentOptions} values={prefs.preferred_continents}
               onToggle={(v) => setPrefs((c) => ({ ...c, preferred_continents: toggleIn(c.preferred_continents, v) }))} />
-            <MultiSelect label="Interests" hint="Prioritize people who share these interests." options={INTEREST_OPTIONS} values={prefs.preferred_interests}
+            <MultiSelect label={t('settings.meet.interests')} hint={t('settings.meet.interestsHint')} options={interestOptions} values={prefs.preferred_interests}
               onToggle={(v) => setPrefs((c) => ({ ...c, preferred_interests: toggleIn(c.preferred_interests, v) }))} />
           </Section>
 
-          <Section title="Matching timing & region" description="Fine-tune how the queue pairs you.">
-            <Select label="Interest priority window" value={prefs.interest_wait_seconds} onChange={(v) => setPrefs((c) => ({ ...c, interest_wait_seconds: Number(v) }))} options={WAIT_TIMES} />
+          <Section title={t('settings.timing.title')} description={t('settings.timing.desc')}>
+            <Select label={t('settings.timing.interestWindow')} value={prefs.interest_wait_seconds} onChange={(v) => setPrefs((c) => ({ ...c, interest_wait_seconds: Number(v) }))} options={WAIT_TIMES} />
             <Toggle checked={prefs.country_targeting_enabled} onChange={(v2) => setPrefs((c) => ({ ...c, country_targeting_enabled: v2 }))}
-              label="Country targeting" hint="Prefer matches from your chosen regions when available." />
+              label={t('settings.timing.countryTargeting')} hint={t('settings.timing.countryTargetingHint')} />
           </Section>
 
           <div className="sticky bottom-24 md:bottom-4">
             <button type="button" onClick={() => void save()} disabled={busy}
               className="w-full rounded-xl bg-gradient-to-r from-cyan-400 to-cyan-300 px-6 py-4 text-sm font-bold text-slate-950 shadow-xl shadow-cyan-950/50 transition hover:brightness-110 disabled:opacity-50">
-              {busy ? 'Saving…' : 'Save settings'}
+              {busy ? t('settings.saving') : t('settings.save')}
             </button>
           </div>
         </div>

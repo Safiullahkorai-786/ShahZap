@@ -5,20 +5,22 @@ import { usePathname } from 'next/navigation'
 import { Home, Radar, Radio, Users, Settings, UserRound } from 'lucide-react'
 import { useUnreadConversations } from '@/hooks/use-unread-conversations'
 import { useMatchQueueCount } from '@/hooks/use-match-queue-count'
+import { useI18n } from '@/lib/i18n/provider'
 
 const TABS = [
-  { href: '/app', label: 'Home', icon: Home },
-  { href: '/match', label: 'Match', icon: Radar },
-  { href: '/online', label: 'Online', icon: Radio },
-  { href: '/friends', label: 'Friends', icon: Users, badge: true },
-  { href: '/profile', label: 'Profile', icon: UserRound },
-  { href: '/settings', label: 'Settings', icon: Settings },
+  { href: '/app', tk: 'home', icon: Home },
+  { href: '/match', tk: 'match', icon: Radar },
+  { href: '/online', tk: 'online', icon: Radio },
+  { href: '/friends', tk: 'friends', icon: Users, badge: true },
+  { href: '/profile', tk: 'profile', icon: UserRound },
+  { href: '/settings', tk: 'settings', icon: Settings },
 ]
 
 export function BottomNav() {
   const pathname = usePathname()
   const unreadConversations = useUnreadConversations()
   const matchQueueCount = useMatchQueueCount()
+  const { t } = useI18n()
 
   // The bar belongs to the logged-in app experience only. Public marketing
   // pages, the start wizard, onboarding, and immersive chats go without it.
@@ -40,11 +42,12 @@ export function BottomNav() {
       {/* Reserve space so normal scrolling pages never hide content behind the bar */}
       <div aria-hidden className="h-24" />
       <nav
-        aria-label="Primary"
+        aria-label={t('nav.primary')}
         className="app-chrome app-dock fixed bottom-[calc(env(safe-area-inset-bottom)+14px)] left-1/2 z-40 -translate-x-1/2"
       >
         <div className="flex items-center gap-0.5 px-2 py-1.5">
-          {TABS.map(({ href, label, icon: Icon, badge }) => {
+          {TABS.map(({ href, tk, icon: Icon, badge }) => {
+            const label = t(`nav.${tk}`)
             const active = isActive(href)
             const showFriendsBadge = badge && unreadConversations > 0
             const showMatchCount = href === '/match' && matchQueueCount !== null && matchQueueCount > 0
