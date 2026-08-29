@@ -88,6 +88,17 @@ export function CallOverlay(props: {
     router.push(`/chat/${conversationId}`)
   }
 
+  // Chat button in the controls bar: on mobile it opens the full DM page; on
+  // desktop (widescreen) it toggles the side chat panel beside the call.
+  function onChatClick() {
+    if (!conversationId) return
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      goToDm()
+    } else {
+      setChatOpen((open) => !open)
+    }
+  }
+
   // Live unread-message badge for the chat button, so you can see when the
   // person on the call is texting you. Count = inbound messages without read_at.
   const uidRef = useRef<string | null>(null)
@@ -132,6 +143,14 @@ export function CallOverlay(props: {
       .subscribe()
     return () => { alive = false; channel?.unsubscribe() }
   }, [conversationId])
+
+  // A new message has arrived from the person we're on a call with (unread went
+  // up) — fade the call controls back in so the user notices the chat is there.
+  const prevUnreadRef = useRef(0)
+  useEffect(() => {
+    if (unread > prevUnreadRef.current) showControls()
+    prevUnreadRef.current = unread
+  }, [unread])
 
   function onPipPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
     const left = pipPos ? pipPos.x : e.currentTarget.getBoundingClientRect().left
@@ -363,33 +382,6 @@ export function CallOverlay(props: {
               <p className="absolute inset-x-0 top-20 z-10 mx-4 rounded-xl bg-red-950/70 px-4 py-2 text-center text-sm text-red-200">{error}</p>
             )}
 
-            {/* Corner shortcuts — mobile: minimize + open DM, always visible */}
-            <div className="absolute left-3 top-3 z-20 flex items-center gap-2 lg:hidden">
-              <button
-                onClick={() => setMinimized(true)}
-                aria-label="Minimize call"
-                title="Minimize"
-                className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-800/80 text-white shadow-lg backdrop-blur transition hover:bg-slate-700"
-              >
-                <Minimize2 size={20} />
-              </button>
-              {conversationId && (
-                <button
-                  onClick={goToDm}
-                  aria-label="Open chat"
-                  title={`Chat with ${otherName}`}
-                  className="relative flex h-11 w-11 items-center justify-center rounded-full bg-slate-800/80 text-white shadow-lg backdrop-blur transition hover:bg-slate-700"
-                >
-                  <MessageCircle size={20} />
-                  {unread > 0 && (
-                    <span className="pointer-events-none absolute -right-1 -top-1 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                      {unread > 99 ? '99+' : unread}
-                    </span>
-                  )}
-                </button>
-              )}
-            </div>
-
             {/* Controls overlay — fades out after inactivity, like WhatsApp */}
             <div
               onClick={(e) => e.stopPropagation()}
@@ -410,16 +402,16 @@ export function CallOverlay(props: {
               </ControlButton>
               {conversationId && (
                 <button
-                  onClick={() => setChatOpen((open) => !open)}
+                  onClick={onChatClick}
                   aria-label="Open chat"
                   title={`Chat with ${otherName}`}
-                  className={`relative hidden h-16 w-16 items-center justify-center rounded-full shadow-lg transition lg:flex ${
-                    showChat ? 'bg-cyan-500 text-slate-950 hover:bg-cyan-400' : 'bg-slate-700/70 text-white hover:bg-slate-600'
+                  className={`relative flex h-16 w-16 items-center justify-center rounded-full shadow-lg transition ${
+                    chatOpen ? 'bg-cyan-500 text-slate-950 hover:bg-cyan-400' : 'bg-slate-700/70 text-white hover:bg-slate-600'
                   }`}
                 >
                   <MessageCircle size={26} />
                   {unread > 0 && (
-                    <span className="pointer-events-none absolute -right-1 -top-1 flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-bold text-white shadow">
+                    <span className="pointer-events-none absolute -right-1 -top-1 flex h-6 min-w-[1.5rem] items-center justify-center rounded-full px-1.5 text-xs font-bold text-slate-950 shadow" style={{ background: 'var(--a1, #e5e7eb)' }}>
                       {unread > 99 ? '99+' : unread}
                     </span>
                   )}
@@ -429,7 +421,7 @@ export function CallOverlay(props: {
                 onClick={() => setMinimized(true)}
                 aria-label="Minimize call"
                 title="Minimize"
-                className="hidden h-16 w-16 items-center justify-center rounded-full bg-slate-700/70 text-white shadow-lg transition hover:bg-slate-600 lg:flex"
+                className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-700/70 text-white shadow-lg transition hover:bg-slate-600"
               >
                 <Minimize2 size={26} />
               </button>
