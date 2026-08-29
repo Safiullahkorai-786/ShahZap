@@ -251,41 +251,55 @@ export function useCallEngine(opts: {
       }
     }
     pc.ontrack = (ev) => {
-      const incoming = ev.streams[0]
-        ? (ev.streams[0].getTracks() ?? [])
-        : ev.track ? [ev.track] : []
-      if (!incoming.length) return
-      // If the peer removes a media track mid-call (e.g. turns video off),
+      // Use the exact track for this event, NOT ev.streams[0].getTracks():
+      // audio and video share one msid stream here, so the stream's getTracks
+      // would return BOTH on a renegotiation and re-add (duplicate) existing
+      // tracks. We must add/update only the specific track that arrived.
+      const tk = ev.track
+      if (!tk) return
+      // The peer removed (stopped) a track mid-call (e.g. turned video off);
       // drop it from the remote stream so the UI switches back to audio.
-      const first = incoming[0]
-      if (first.readyState === 'ended') {
+      if (tk.readyState === 'ended') {
         setRemoteStream((prev) => {
           if (!prev) return prev
-          const has = prev.getTracks().some((tk) => tk.id === first.id)
+          const has = prev.getTracks().some((t) => t.id === tk.id)
           if (!has) return prev
-          return new MediaStream(prev.getTracks().filter((tk) => tk.id !== first.id))
+          return new MediaStream(prev.getTracks().filter((t) => t.id !== tk.id))
         })
         return
       }
       setRemoteStream((prev) => {
         const next = new MediaStream()
-        if (prev) prev.getTracks().forEach((tk) => next.addTrack(tk))
-        incoming.forEach((tk) => next.addTrack(tk))
+        if (prev) prev.getTracks().forEach((t) => next.addTrack(t))
+        const has = next.getTracks().some((t) => t.id === tk.id)
+        if (!has) next.addTrack(tk)
         return next
       })
-      // If any remote track is removed later (e.g. the peer turns video off),
+      // If this remote track is later removed (e.g. the peer turns video off),
       // drop it from the remote stream so the UI switches back to audio.
-      if (ev.track) {
-        ev.track.onended = () => {
-          setRemoteStream((prev) => {
-            if (!prev) return prev
-            const has = prev.getTracks().some((tk) => tk.id === ev.track.id)
-            if (!has) return prev
-            return new MediaStream(prev.getTracks().filter((tk) => tk.id !== ev.track.id))
-          })
-        }
+      tk.onended = () => {
+        setRemoteStream((prev) => {
+          if (!prev) return prev
+          const has = prev.getTracks().some((t) => t.id === tk.id)
+          if (!has) return prev
+          return new MediaStream(prev.getTracks().filter((t) => t.id !== tk.id))
+        })
       }
       updateStatus('active')
+    }
+    // When the peer removes a track (e.g. `pc.removeTrack` + renegotiate to
+    // turn their camera off), ontrack does NOT fire and the receiving track's
+    // readyState stays "live" but frozen. Handle this event explicitly so the
+    // UI actually falls back to the avatar instead of showing a frozen frame.
+    ;(pc as unknown as { onremovetrack: (ev: MediaStreamTrackEvent) => void }).onremovetrack = (ev) => {
+      const tk = ev.track
+      if (!tk) return
+      setRemoteStream((prev) => {
+        if (!prev) return prev
+        const has = prev.getTracks().some((t) => t.id === tk.id)
+        if (!has) return prev
+        return new MediaStream(prev.getTracks().filter((t) => t.id !== tk.id))
+      })
     }
     pcRef.current = pc
     return pc
