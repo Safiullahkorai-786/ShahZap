@@ -7,6 +7,7 @@ import { friendlyError } from '@/lib/errors'
 import { ACCENTS, getSelection, applySelection, type Selection, type Base } from '@/lib/theme'
 import { getSoundPrefs, setSoundBundle, setSoundMode, notify, type SoundPrefs, type SoundMode, type SoundBundle } from '@/lib/notification-sound'
 import { getNotifPrefs, setNotifPrefs, type NotifPrefs, type NotifCategory } from '@/lib/notification-prefs'
+import { getNotifDisplayPrefs, setNotifDisplayPrefs, BANNER_DURATIONS, type NotifDisplayPrefs, type BannerDuration, type BannerStackMode } from '@/lib/notification-display'
 import { AppHeader } from '@/components/app-header'
 import { Shimmer } from '@/components/shimmer'
 import { useI18n } from '@/lib/i18n/provider'
@@ -179,6 +180,7 @@ export default function SettingsPage() {
   const [sel, setSel] = useState<Selection>({ base: 'dark', accent: 'none' })
   const [sound, setSound] = useState<SoundPrefs>({ mode: 'sound', bundle: 'classic' })
   const [notifPrefs, setNotifPrefsState] = useState<NotifPrefs>(getNotifPrefs())
+  const [notifDisplay, setNotifDisplay] = useState<NotifDisplayPrefs>(getNotifDisplayPrefs())
   const [interfaceLanguage, setInterfaceLanguage] = useState('en')
   const [chatLanguage, setChatLanguage] = useState('en')
 
@@ -226,6 +228,17 @@ export default function SettingsPage() {
     { id: 'block', label: t('settings.notifications.block'), hint: t('settings.notifications.blockHint') },
     { id: 'unfriend', label: t('settings.notifications.unfriend'), hint: t('settings.notifications.unfriendHint') },
     { id: 'delete_chat', label: t('settings.notifications.deleteChat'), hint: t('settings.notifications.deleteChatHint') },
+  ]
+
+  const durationOptions: { id: BannerDuration; label: string }[] = BANNER_DURATIONS.map((d) => ({
+    id: d,
+    label: d === 'never' ? t('settings.notifications.never') : `${d}s`,
+  }))
+
+  const stackOptions: { id: BannerStackMode; label: string; hint: string }[] = [
+    { id: 'single', label: t('settings.notifications.stackSingle'), hint: t('settings.notifications.stackSingleHint') },
+    { id: 'stack-new-top', label: t('settings.notifications.stackNewTop'), hint: t('settings.notifications.stackNewTopHint') },
+    { id: 'stack-new-bottom', label: t('settings.notifications.stackNewBottom'), hint: t('settings.notifications.stackNewBottomHint') },
   ]
 
   useEffect(() => {
@@ -367,6 +380,33 @@ export default function SettingsPage() {
                   return next
                 })} />
             ))}
+
+            <div>
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">{t('settings.notifications.duration')}</p>
+              <p className="mb-2 text-xs leading-relaxed text-slate-400">{t('settings.notifications.durationHint')}</p>
+              <div className="grid grid-cols-6 gap-2">
+                {durationOptions.map(({ id, label }) => (
+                  <button key={String(id)} onClick={() => setNotifDisplay(setNotifDisplayPrefs({ ...notifDisplay, duration: id }))}
+                    className={`rounded-xl border px-2 py-2.5 text-xs font-semibold transition ${notifDisplay.duration === id ? 'border-cyan-400 bg-cyan-400/10 text-cyan-200 ring-1 ring-cyan-400/50' : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-500'}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">{t('settings.notifications.arrangement')}</p>
+              <p className="mb-2 text-xs leading-relaxed text-slate-400">{t('settings.notifications.arrangementHint')}</p>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {stackOptions.map(({ id, label, hint }) => (
+                  <button key={id} onClick={() => setNotifDisplay(setNotifDisplayPrefs({ ...notifDisplay, stack: id }))}
+                    className={`rounded-2xl border p-4 text-left transition ${notifDisplay.stack === id ? 'border-cyan-400 bg-cyan-400/10 ring-1 ring-cyan-400/40' : 'border-slate-800 bg-slate-950 hover:border-slate-600'}`}>
+                    <span className="block text-sm font-semibold">{label}</span>
+                    <span className="mt-1 block text-xs leading-relaxed text-slate-400">{hint}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           </Section>
 
           <Section title={t('settings.meet.title')} description={t('settings.meet.desc')}>

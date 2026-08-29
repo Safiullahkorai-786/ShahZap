@@ -8,9 +8,13 @@ import { resolveIdentity, type Identity } from '@/lib/identity'
 import { isBotProfile } from '@/lib/bot'
 import { getNotifPrefs, type NotifCategory } from '@/lib/notification-prefs'
 import { notify } from '@/lib/notification-sound'
+import { getNotifDisplayPrefs, durationToMs, type BannerStackMode } from '@/lib/notification-display'
 
-const AUTO_DISMISS_MS = 6000
 const SWIPE_THRESHOLD = 70
+const LEAVE_MS = 240
+// When stacking, cap how many banners are on screen at once so a long
+// session never lets them cover the whole page; the rest stay queued.
+const MAX_VISIBLE_STACK = 6
 
 type BannerItem = {
   id: string
@@ -84,97 +88,35 @@ function Icon({ icon }: { icon: BannerItem['icon'] }) {
   }
 }
 
-export function NotificationBanner() {
-  const router = useRouter()
-  const [queue, setQueue] = useState<BannerItem[]>([])
+type CardProps = {
+  item: BannerItem
+  autoHideMs: number | null
+  acting: boolean
+  onOpen: (item: BannerItem) => void
+  onAct: (item: BannerItem, status: 'accepted' | 'declined') => void
+  onDismiss: (id: string) => void
+  compact?: boolean
+}
+
+// A single banner card — manages its own slide, swipe-to-dismiss and
+// auto-hide timer so multiple cards can live in a stacked column.
+function BannerCard({ item, autoHideMs, acting, onOpen, onAct, onDismiss, compact }: CardProps) {
   const [leaving, setLeaving] = useState(false)
   const [dragX, setDragX] = useState(0)
-  const [actingOn, setActingOn] = useState<string | null>(null)
-  const timerRef = useRef<number | null>(null)
-  const userIdRef = useRef<string | null>(null)
-  const current = queue[0] ?? null
-
-  const removeCurrent = useCallback((animate = true) => {
-    if (!current) return
-    if (!animate) {
-      setLeaving(false)
-      setDragX(0)
-      setQueue((q) => q.slice(1))
-      return
-    }
-    setLeaving(true)
-    window.setTimeout(() => {
-      setLeaving(false)
-      setDragX(0)
-      setQueue((q) => q.slice(1))
-    }, 240)
-  }, [current])
-
-  // Auto-dismiss the active banner after a few seconds.
-  useEffect(() => {
-    if (!current) return
-    timerRef.current = window.setTimeout(() => removeCurrent(true), AUTO_DISMISS_MS)
-    return () => { if (timerRef.current) window.clearTimeout(timerRef.current) }
-  }, [current, removeCurrent])
-
-  // Cancel any pending auto-dismiss timer on unmount.
-  useEffect(() => {
-    return () => { if (timerRef.current) window.clearTimeout(timerRef.current) }
-  }, [])
-
-  function handleOpen() {
-    if (!current) return
-    const href = current.href
-    removeCurrent(false)
-    if (current.kind === 'message') {
-      router.push(href)
-      return
-    }
-    if (FRIEND_LIFECYCLE.has(current.kind)) {
-      window.dispatchEvent(new CustomEvent('shahzap:open-tab', { detail: 'pending' }))
-      router.push('/friends?tab=pending')
-      return
-    }
-    router.push('/friends')
-  }
-
-  // Accept or reject an incoming friend request directly from the banner.
-  async function actOnFriendRequest(status: 'accepted' | 'declined') {
-    if (!current || current.kind !== 'friend_request') return
-    const me = userIdRef.current
-    const senderId = current.fromUserId
-    if (!me || !senderId) return
-    setActingOn(current.id)
-    const supabase = createClient()
-    const { data: req, error: findErr } = await supabase
-      .from('friend_requests')
-      .select('id')
-      .eq('sender_id', senderId)
-      .eq('receiver_id', me)
-      .eq('status', 'pending')
-      .maybeSingle()
-    if (findErr || !req) {
-      setActingOn(null)
-      removeCurrent(true)
-      return
-    }
-    const { error: updErr } = await supabase.from('friend_requests').update({ status }).eq('id', req.id)
-    setActingOn(null)
-    if (updErr) return
-    notify('request')
-    removeCurrent(false)
-    if (status === 'accepted') {
-      // Jump straight into the chat with the new friend.
-      const { data: convId } = await supabase.rpc('start_direct_chat', { p_other_profile_id: senderId })
-      if (convId) {
-        window.dispatchEvent(new CustomEvent('shahzap:opened-chat', { detail: `/chat/${convId}` }))
-        router.push(`/chat/${convId}`)
-      }
-    }
-  }
-
-  // Pointer handlers for horizontal swipe-to-dismiss
   const dragState = useRef<{ startX: number; startY: number; dx: number; on: boolean }>({ startX: 0, startY: 0, dx: 0, on: false })
+
+  const leave = useCallback(() => {
+    setLeaving(true)
+    window.setTimeout(() => onDismiss(item.id), LEAVE_MS)
+  }, [item.id, onDismiss])
+
+  // Auto-hide timer (none when the user chose "never disappear").
+  useEffect(() => {
+    if (autoHideMs == null) return
+    const t = window.setTimeout(() => leave(), autoHideMs)
+    return () => window.clearTimeout(t)
+  }, [autoHideMs, leave])
+
   function onPointerDown(e: React.PointerEvent) {
     dragState.current = { startX: e.clientX, startY: e.clientY, dx: 0, on: true }
   }
@@ -193,7 +135,7 @@ export function NotificationBanner() {
     if (!d.on) return
     d.on = false
     if (Math.abs(d.dx) > SWIPE_THRESHOLD) {
-      removeCurrent(true)
+      leave()
     } else {
       setDragX(0)
     }
@@ -203,6 +145,146 @@ export function NotificationBanner() {
     dragState.current.on = false
     dragState.current.dx = 0
     setDragX(0)
+  }
+
+  const showActions = item.kind === 'friend_request'
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={item.headline}
+      onClick={() => onOpen(item)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(item) } }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+      style={{ transform: `translateX(${dragX}px)`, touchAction: 'pan-y' }}
+      className={`pointer-events-auto relative w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-slate-900/70 text-left shadow-lg shadow-black/40 backdrop-blur-xl ${leaving ? 'banner-out' : 'banner-in'} ${dragX !== 0 ? 'cursor-grabbing' : ''}`}
+    >
+      <div className={`flex items-center gap-3 pr-10 ${compact ? 'p-3' : 'p-3.5'}`}>
+        <span className="flex h-9 w-9 flex-none items-center justify-center rounded-full border border-white/10 bg-white/5">
+          <Icon icon={item.icon} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className={`block truncate font-semibold text-white ${compact ? 'text-xs' : 'text-sm'}`}>{item.headline}</span>
+          <span className={`block truncate text-xs ${compact ? 'mt-0.5' : ''}`}>
+            <span className={item.identity.colorClass}>{item.identity.label}</span>
+            {item.sub ? <span className="text-slate-400"> {item.sub}</span> : null}
+          </span>
+        </span>
+      </div>
+
+      {showActions ? (
+        <div className="flex gap-2 px-3 pb-3"
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerMove={(e) => e.stopPropagation()}
+          onPointerUp={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            disabled={acting}
+            onClick={(e) => { e.stopPropagation(); onAct(item, 'accepted') }}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-cyan-400 px-3 py-2 text-xs font-bold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-50"
+          >
+            <Check size={14} />
+            {acting ? 'Accepting…' : 'Accept'}
+          </button>
+          <button
+            type="button"
+            disabled={acting}
+            onClick={(e) => { e.stopPropagation(); onAct(item, 'declined') }}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-white/10 disabled:opacity-50"
+          >
+            <X size={14} />
+            Decline
+          </button>
+        </div>
+      ) : null}
+
+      <span
+        role="button"
+        aria-label="Dismiss"
+        onPointerDown={(e) => { e.stopPropagation() }}
+        onClick={(e) => { e.stopPropagation(); leave() }}
+        className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full text-slate-400 transition hover:bg-white/10 hover:text-white"
+      >
+        <X size={15} />
+      </span>
+    </div>
+  )
+}
+
+export function NotificationBanner() {
+  const router = useRouter()
+  const [queue, setQueue] = useState<BannerItem[]>([])
+  const [prefs, setPrefs] = useState<BannerStackMode | null>(null)
+  const [actingOn, setActingOn] = useState<string | null>(null)
+  const userIdRef = useRef<string | null>(null)
+
+  // Reflect display-preference changes (Settings) live.
+  useEffect(() => {
+    function sync() {
+      const p = getNotifDisplayPrefs()
+      setPrefs(p.stack)
+    }
+    sync()
+    window.addEventListener('shahzap:notif-display-change', sync)
+    return () => window.removeEventListener('shahzap:notif-display-change', sync)
+  }, [])
+
+  const removeItem = useCallback((id: string) => {
+    setQueue((q) => q.filter((x) => x.id !== id))
+  }, [])
+
+  function handleOpen(item: BannerItem) {
+    removeItem(item.id)
+    if (item.kind === 'message') {
+      router.push(item.href)
+      return
+    }
+    if (FRIEND_LIFECYCLE.has(item.kind)) {
+      window.dispatchEvent(new CustomEvent('shahzap:open-tab', { detail: 'pending' }))
+      router.push('/friends?tab=pending')
+      return
+    }
+    router.push('/friends')
+  }
+
+  // Accept or reject an incoming friend request directly from the banner.
+  async function actOnFriendRequest(item: BannerItem, status: 'accepted' | 'declined') {
+    if (item.kind !== 'friend_request') return
+    const me = userIdRef.current
+    const senderId = item.fromUserId
+    if (!me || !senderId) return
+    setActingOn(item.id)
+    const supabase = createClient()
+    const { data: req, error: findErr } = await supabase
+      .from('friend_requests')
+      .select('id')
+      .eq('sender_id', senderId)
+      .eq('receiver_id', me)
+      .eq('status', 'pending')
+      .maybeSingle()
+    if (findErr || !req) {
+      setActingOn(null)
+      removeItem(item.id)
+      return
+    }
+    const { error: updErr } = await supabase.from('friend_requests').update({ status }).eq('id', req.id)
+    setActingOn(null)
+    if (updErr) return
+    notify('request')
+    removeItem(item.id)
+    if (status === 'accepted') {
+      // Jump straight into the chat with the new friend.
+      const { data: convId } = await supabase.rpc('start_direct_chat', { p_other_profile_id: senderId })
+      if (convId) {
+        window.dispatchEvent(new CustomEvent('shahzap:opened-chat', { detail: `/chat/${convId}` }))
+        router.push(`/chat/${convId}`)
+      }
+    }
   }
 
   // Realtime listener: enqueue incoming notification banners.
@@ -260,79 +342,45 @@ export function NotificationBanner() {
 
     return () => {
       if (channel) void supabase.removeChannel(channel)
-      if (timerRef.current) window.clearTimeout(timerRef.current)
     }
   }, [])
 
-  if (!current) return null
+  if (queue.length === 0) return null
 
-  const identityLabel = current.identity.label
-  const showActions = current.kind === 'friend_request'
-  const acting = actingOn === current.id
+  const display = getNotifDisplayPrefs()
+  const autoHideMs = durationToMs(display.duration)
+  const stack = prefs ?? display.stack
+
+  // Which banners are visible and their vertical order.
+  let visible: BannerItem[] = []
+  if (stack === 'single') {
+    visible = [queue[0]]
+  } else if (stack === 'stack-new-top') {
+    // Newest on top; cap how many pile up.
+    visible = queue.slice(-MAX_VISIBLE_STACK).reverse()
+  } else {
+    // stack-new-bottom: newest at the bottom, older ones stay on top.
+    visible = queue.slice(-MAX_VISIBLE_STACK)
+  }
+
+  // Compact look when more than one card is showing at once.
+  const stacked = visible.length > 1
 
   return (
     <div className="pointer-events-none fixed inset-x-0 top-3 z-[60] flex justify-center px-3">
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={handleOpen}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleOpen() } }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerCancel}
-        style={{ transform: `translateX(${dragX}px)`, touchAction: 'pan-y' }}
-        className={`pointer-events-auto relative w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-slate-900/70 text-left shadow-2xl shadow-black/50 backdrop-blur-xl ${leaving ? 'banner-out' : 'banner-in'} ${dragX !== 0 ? 'cursor-grabbing' : ''}`}
-      >
-        <div className="flex items-center gap-3 p-3.5 pr-10">
-          <span className="flex h-10 w-10 flex-none items-center justify-center rounded-full border border-white/10 bg-white/5">
-            <Icon icon={current.icon} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-semibold text-white">{current.headline}</span>
-            <span className="block truncate text-xs">
-              <span className={current.identity.colorClass}>{identityLabel}</span>
-              {current.sub ? <span className="text-slate-400"> {current.sub}</span> : null}
-            </span>
-          </span>
-        </div>
-
-        {showActions ? (
-          <div className="flex gap-2 px-3.5 pb-3.5"
-            onPointerDown={(e) => e.stopPropagation()}
-            onPointerMove={(e) => e.stopPropagation()}
-            onPointerUp={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              disabled={!!acting}
-              onClick={(e) => { e.stopPropagation(); actOnFriendRequest('accepted') }}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-cyan-400 px-3 py-2 text-xs font-bold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-50"
-            >
-              <Check size={14} />
-              {acting ? 'Accepting…' : 'Accept'}
-            </button>
-            <button
-              type="button"
-              disabled={!!acting}
-              onClick={(e) => { e.stopPropagation(); actOnFriendRequest('declined') }}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-white/10 disabled:opacity-50"
-            >
-              <X size={14} />
-              Decline
-            </button>
-          </div>
-        ) : null}
-
-        <span
-          role="button"
-          aria-label="Dismiss"
-          onPointerDown={(e) => { e.stopPropagation() }}
-          onClick={(e) => { e.stopPropagation(); removeCurrent(true) }}
-          className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full text-slate-400 transition hover:bg-white/10 hover:text-white"
-        >
-          <X size={15} />
-        </span>
+      <div className={`flex w-full max-w-md flex-col ${stacked ? 'gap-2' : ''}`}>
+        {visible.map((item) => (
+          <BannerCard
+            key={item.id}
+            item={item}
+            autoHideMs={autoHideMs}
+            acting={actingOn === item.id}
+            onOpen={handleOpen}
+            onAct={actOnFriendRequest}
+            onDismiss={removeItem}
+            compact={stacked}
+          />
+        ))}
       </div>
     </div>
   )
