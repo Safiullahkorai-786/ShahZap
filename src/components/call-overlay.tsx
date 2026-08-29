@@ -22,6 +22,7 @@ export function CallOverlay(props: {
   videoEnabled: boolean
   error: string
   otherName: string
+  selfName: string
   conversationId?: string
   localStream: MediaStream | null
   remoteStream: MediaStream | null
@@ -33,7 +34,7 @@ export function CallOverlay(props: {
   onMinimizedChange: (minimized: boolean) => void
 }) {
   const {
-    open, status, mode, muted, remoteMuted, remoteVideoOn, videoEnabled, error, otherName,
+    open, status, mode, muted, remoteMuted, remoteVideoOn, videoEnabled, error, otherName, selfName,
     localStream, remoteStream, onAccept, onReject, onEnd, onToggleMute, onToggleVideo,
     conversationId, onMinimizedChange,
   } = props
@@ -42,9 +43,35 @@ export function CallOverlay(props: {
   const [controlsVisible, setControlsVisible] = useState(true)
   const [minimized, setMinimized] = useState(false)
   const [unread, setUnread] = useState(0)
+  const [callSeconds, setCallSeconds] = useState(0)
   const hideTimer = useRef<number | undefined>(undefined)
   const pathname = usePathname()
   const router = useRouter()
+
+  // Call timer: count up while the call is active, reset when it ends. Use a
+  // start timestamp so the displayed duration stays accurate across re-renders.
+  const callStartedAt = useRef<number | null>(null)
+  useEffect(() => {
+    if (status === 'active') {
+      if (callStartedAt.current === null) callStartedAt.current = Date.now()
+      const id = window.setInterval(() => {
+        const base = callStartedAt.current ?? Date.now()
+        setCallSeconds(Math.floor((Date.now() - base) / 1000))
+      }, 1000)
+      return () => window.clearInterval(id)
+    }
+    callStartedAt.current = null
+    setCallSeconds(0)
+  }, [status])
+
+  function formatCallTime(total: number) {
+    const h = Math.floor(total / 3600)
+    const m = Math.floor((total % 3600) / 60)
+    const s = total % 60
+    const mm = String(m).padStart(2, '0')
+    const ss = String(s).padStart(2, '0')
+    return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
+  }
 
   // Auto-hide controls after ~8s of inactivity, like WhatsApp. Reset when a
   // new call becomes active so the controls always start visible.
@@ -386,7 +413,8 @@ export function CallOverlay(props: {
                 <span className="text-4xl font-bold text-slate-200">{otherName?.[0]?.toUpperCase() ?? '?'}</span>
               </div>
             )}
-            <span className="pointer-events-none absolute bottom-1 left-1 flex items-center rounded bg-black/60 px-1.5 py-0.5 text-white">
+            <span className="pointer-events-none absolute bottom-1 left-1 flex items-center gap-1.5 rounded bg-black/60 px-1.5 py-0.5 text-white">
+              <span className="text-[11px] font-semibold tabular-nums">{formatCallTime(callSeconds)}</span>
               {muted ? <MicOff size={11} /> : <Mic size={11} />}
             </span>
           </div>
@@ -466,6 +494,13 @@ export function CallOverlay(props: {
               </div>
             )}
 
+            {/* Call duration — top center, always visible during an active call */}
+            <div className="pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2">
+              <span className="rounded-full bg-black/55 px-3 py-1 text-sm font-semibold tabular-nums text-white backdrop-blur">
+                {formatCallTime(callSeconds)}
+              </span>
+            </div>
+
             {/* Small preview card — draggable; shows the other person after a
                 swap. Tap it to swap who is shown big vs. small. */}
             <div
@@ -486,8 +521,26 @@ export function CallOverlay(props: {
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <div className="flex h-full w-full items-center justify-center bg-slate-800">
-                  <span className="text-4xl font-bold text-slate-200">{mainIsSelf ? (otherName?.[0]?.toUpperCase() ?? '?') : <User size={28} />}</span>
+                <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-slate-800 px-1.5 py-2">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-violet-500 text-lg font-bold text-white">
+                    {mainIsSelf ? (otherName?.[0]?.toUpperCase() ?? '?') : (selfName?.[0]?.toUpperCase() ?? 'Y')}
+                  </div>
+                  <span className="max-w-full truncate text-[11px] font-semibold leading-tight text-slate-200">
+                    {mainIsSelf ? (otherName || '…') : (selfName || 'You')}
+                  </span>
+                  {mainIsSelf ? (
+                    remoteMuted && (
+                      <span className="flex items-center gap-0.5 text-[10px] text-red-400">
+                        <MicOff size={9} /> Mic off
+                      </span>
+                    )
+                  ) : muted ? (
+                    <span className="flex items-center gap-0.5 text-[10px] text-red-400">
+                      <MicOff size={9} /> Mic off
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-slate-400">On a call</span>
+                  )}
                 </div>
               )}
             </div>
