@@ -508,6 +508,25 @@ export default function FriendsPage() {
     }
   }, [friends.length, userId])
 
+  // ---- Open the Pending tab from a notification banner tap ----
+  useEffect(() => {
+    function onOpenTab(ev: Event) {
+      const tab = (ev as CustomEvent<string>).detail
+      if (tab === 'pending') setActiveTab('pending')
+      else if (tab === 'friends') setActiveTab('friends')
+    }
+    window.addEventListener('shahzap:open-tab', onOpenTab)
+    // Also honour ?tab=pending on initial mount (e.g. deep link).
+    try {
+      const t = new URLSearchParams(window.location.search).get('tab')
+      if (t === 'pending' || t === 'friends') {
+        const target = t
+        window.setTimeout(() => setActiveTab(target), 0)
+      }
+    } catch {}
+    return () => window.removeEventListener('shahzap:open-tab', onOpenTab)
+  }, [])
+
   // ---- Realtime: friend_requests (instant pending tab updates) ----
   useEffect(() => {
     if (!userId) return

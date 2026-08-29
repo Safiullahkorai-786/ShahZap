@@ -229,3 +229,21 @@ html[data-base='white'] .shimmer::after {
   100% { background-color: transparent; }
 }
 @media (prefers-reduced-motion: reduce) { .highlight-msg { animation: none; background-color: rgba(34, 211, 238, 0.15); } }
+
+.banner-in {
+  animation: banner-in 0.3s ease-out both;
+}
+.banner-out {
+  animation: banner-out 0.24s ease-in both;
+}
+@keyframes banner-in {
+  from { transform: translateY(-24px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes banner-out {
+  from { transform: translateY(0); opacity: 1; }
+  to { transform: translateY(-24px); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .banner-in, .banner-out { animation: none; opacity: 1; }
+}
