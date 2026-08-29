@@ -19,6 +19,7 @@ export type SignalMessage =
   | { type: 'answer'; sdp: RTCSessionDescriptionInit; token: string }
   | { type: 'ice'; candidate: RTCIceCandidateInit; token: string }
   | { type: 'mute'; muted: boolean; token: string }
+  | { type: 'video'; on: boolean; token: string }
 
 // Free public STUN servers for NAT discovery. Server overhead stays ~zero
 // because all media flows P2P and STUN is a lightweight, stateless lookup.

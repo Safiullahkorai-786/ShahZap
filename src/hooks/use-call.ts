@@ -44,6 +44,7 @@ export function useCallEngine(opts: {
   const [mode, setMode] = useState<CallMode>('audio')
   const [muted, setMuted] = useState(false)
   const [remoteMuted, setRemoteMuted] = useState(false)
+  const [remoteVideoOn, setRemoteVideoOn] = useState(false)
   const [videoEnabled, setVideoEnabled] = useState(true)
   const [error, setError] = useState('')
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
@@ -167,6 +168,11 @@ export function useCallEngine(opts: {
         setRemoteMuted(sig.muted)
         break
       }
+      case 'video': {
+        if (sig.token !== tokenRef.current) return
+        setRemoteVideoOn(sig.on)
+        break
+      }
       default:
         break
     }
@@ -233,6 +239,7 @@ export function useCallEngine(opts: {
     setVideoEnabled(true)
     setMuted(false)
     setRemoteMuted(false)
+    setRemoteVideoOn(false)
   }
 
   function createPeer(): RTCPeerConnection {
@@ -275,6 +282,7 @@ export function useCallEngine(opts: {
         if (!has) next.addTrack(tk)
         return next
       })
+      if (tk.kind === 'video') setRemoteVideoOn(true)
       // If this remote track is later removed (e.g. the peer turns video off),
       // drop it from the remote stream so the UI switches back to audio.
       tk.onended = () => {
@@ -284,6 +292,7 @@ export function useCallEngine(opts: {
           if (!has) return prev
           return new MediaStream(prev.getTracks().filter((t) => t.id !== tk.id))
         })
+        if (tk.kind === 'video') setRemoteVideoOn(false)
       }
       updateStatus('active')
     }
@@ -300,6 +309,7 @@ export function useCallEngine(opts: {
         if (!has) return prev
         return new MediaStream(prev.getTracks().filter((t) => t.id !== tk.id))
       })
+      if (tk.kind === 'video') setRemoteVideoOn(false)
     }
     pcRef.current = pc
     return pc
@@ -457,6 +467,7 @@ export function useCallEngine(opts: {
         setVideoEnabled(true)
         setLocalStream(new MediaStream(stream.getTracks()))
         if (pc) { pc.addTrack(vt, stream); await renegotiate() }
+        send({ type: 'video', on: true, token: tokenRef.current ?? '' })
       } catch {
         setError('Could not access the camera. Please allow access in site settings.')
       }
@@ -475,6 +486,7 @@ export function useCallEngine(opts: {
         pc.getSenders().forEach((s) => { if (s.track && vids.includes(s.track)) pc.removeTrack(s) })
         await renegotiate()
       }
+      send({ type: 'video', on: false, token: tokenRef.current ?? '' })
     } else {
       // Camera was off but the track was retained — acquire a fresh one and
       // re-attach it.
@@ -486,6 +498,7 @@ export function useCallEngine(opts: {
         setVideoEnabled(true)
         setLocalStream(new MediaStream(stream.getTracks()))
         if (pc) { pc.addTrack(vt, stream); await renegotiate() }
+        send({ type: 'video', on: true, token: tokenRef.current ?? '' })
       } catch {
         setError('Could not access the camera. Please allow access in site settings.')
       }
@@ -524,6 +537,7 @@ export function useCallEngine(opts: {
     mode,
     muted,
     remoteMuted,
+    remoteVideoOn,
     videoEnabled,
     error,
     localStream,

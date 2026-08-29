@@ -21,6 +21,7 @@ type CallApi = {
   mode: CallMode
   muted: boolean
   remoteMuted: boolean
+  remoteVideoOn: boolean
   videoEnabled: boolean
   error: string
   otherName: string
@@ -111,6 +112,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     mode: engine.mode,
     muted: engine.muted,
     remoteMuted: engine.remoteMuted,
+    remoteVideoOn: engine.remoteVideoOn,
     videoEnabled: engine.videoEnabled,
     error: engine.error,
     otherName,
@@ -133,6 +135,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         mode={engine.mode}
         muted={engine.muted}
         remoteMuted={engine.remoteMuted}
+        remoteVideoOn={engine.remoteVideoOn}
         videoEnabled={engine.videoEnabled}
         error={engine.error}
         otherName={otherName}

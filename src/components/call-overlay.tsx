@@ -18,6 +18,7 @@ export function CallOverlay(props: {
   mode: 'audio' | 'video'
   muted: boolean
   remoteMuted: boolean
+  remoteVideoOn: boolean
   videoEnabled: boolean
   error: string
   otherName: string
@@ -32,7 +33,7 @@ export function CallOverlay(props: {
   onMinimizedChange: (minimized: boolean) => void
 }) {
   const {
-    open, status, mode, muted, remoteMuted, videoEnabled, error, otherName,
+    open, status, mode, muted, remoteMuted, remoteVideoOn, videoEnabled, error, otherName,
     localStream, remoteStream, onAccept, onReject, onEnd, onToggleMute, onToggleVideo,
     conversationId, onMinimizedChange,
   } = props
@@ -345,10 +346,12 @@ export function CallOverlay(props: {
   // ── Active call ───────────────────────────────────────────────────────
   if (status === 'active') {
     const showChat = chatOpen && !!conversationId
-    // Only treat the remote as having video if at least one live (not ended)
-    // video track is present — so when the other person turns their camera
-    // off mid-call we fall back to the avatar/profile instead of a frozen frame.
-    const remoteHasVideo = (remoteStream?.getVideoTracks().filter((t) => t.readyState !== 'ended') ?? []).length > 0
+    // Only treat the remote as having video if the peer has SIGNALLED their
+    // camera is on (remoteVideoOn) AND we actually hold a live (not ended)
+    // video track. The explicit signal is authoritative so that when the peer
+    // turns their camera off we reliably drop to the avatar even if browser
+    // track-removal events (onremovetrack/onended) are flaky.
+    const remoteHasVideo = remoteVideoOn && (remoteStream?.getVideoTracks().filter((t) => t.readyState !== 'ended').length ?? 0) > 0
     const localHasVideo = (localStream?.getVideoTracks().filter((t) => t.readyState !== 'ended') ?? []).length > 0
     const selfCamOn = videoEnabled && localHasVideo
     const videoCall = remoteHasVideo || selfCamOn
