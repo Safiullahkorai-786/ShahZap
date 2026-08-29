@@ -17,6 +17,10 @@ const LANGUAGES = [
   ['nl', 'Dutch'], ['pl', 'Polish'], ['ps', 'Pashto'], ['ms', 'Malay'], ['el', 'Greek'],
   ['sv', 'Swedish'], ['cs', 'Czech'], ['mr', 'Marathi'], ['kk', 'Kazakh'], ['gu', 'Gujarati'],
   ['he', 'Hebrew'], ['hu', 'Hungarian'], ['da', 'Danish'], ['uz', 'Uzbek'],
+  ['no', 'Norwegian'], ['fi', 'Finnish'], ['sk', 'Slovak'], ['bg', 'Bulgarian'], ['hr', 'Croatian'],
+  ['sr', 'Serbian'], ['ml', 'Malayalam'], ['kn', 'Kannada'], ['si', 'Sinhala'], ['yo', 'Yoruba'],
+  ['ig', 'Igbo'], ['ne', 'Nepali'], ['km', 'Khmer'], ['sl', 'Slovenian'], ['lt', 'Lithuanian'],
+  ['lv', 'Latvian'], ['et', 'Estonian'], ['sq', 'Albanian'], ['mk', 'Macedonian'], ['mn', 'Mongolian'],
 ] as const
 const LANG_MAP: Record<string, string> = Object.fromEntries(LANGUAGES)
 const GENERATIONS = [['gen_z', 'Gen Z'], ['millennial', 'Millennial'], ['gen_x', 'Gen X'], ['boomer', 'Boomer']] as const

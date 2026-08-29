@@ -36,6 +36,7 @@ const LANGUAGES_CORE = [
   ['en', 'English'], ['ur', 'Urdu'], ['sd', 'Sindhi'], ['hi', 'Hindi'], ['pa', 'Punjabi'],
   ['ar', 'Arabic'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German'], ['tr', 'Turkish'],
   ['fa', 'Persian'], ['ps', 'Pashto'], ['mr', 'Marathi'], ['gu', 'Gujarati'], ['kk', 'Kazakh'], ['uz', 'Uzbek'],
+  ['ml', 'Malayalam'], ['kn', 'Kannada'], ['si', 'Sinhala'], ['ne', 'Nepali'], ['km', 'Khmer'],
 ] as const
 const LANGUAGES_EXTRA = [
   ['bn', 'Bengali'], ['pt', 'Portuguese'], ['ru', 'Russian'], ['id', 'Indonesian'], ['vi', 'Vietnamese'],
@@ -43,6 +44,9 @@ const LANGUAGES_EXTRA = [
   ['it', 'Italian'], ['sw', 'Swahili'], ['uk', 'Ukrainian'], ['ro', 'Romanian'], ['nl', 'Dutch'],
   ['pl', 'Polish'], ['ms', 'Malay'], ['el', 'Greek'], ['sv', 'Swedish'], ['cs', 'Czech'],
   ['he', 'Hebrew'], ['hu', 'Hungarian'], ['da', 'Danish'],
+  ['no', 'Norwegian'], ['fi', 'Finnish'], ['sk', 'Slovak'], ['bg', 'Bulgarian'], ['hr', 'Croatian'],
+  ['sr', 'Serbian'], ['yo', 'Yoruba'], ['ig', 'Igbo'], ['sl', 'Slovenian'], ['lt', 'Lithuanian'],
+  ['lv', 'Latvian'], ['et', 'Estonian'], ['sq', 'Albanian'], ['mk', 'Macedonian'], ['mn', 'Mongolian'],
 ] as const
 
 const RELAX_ORDER: (keyof MatchFilterOverrides)[] = [

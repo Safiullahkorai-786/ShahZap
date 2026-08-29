@@ -18,6 +18,10 @@ const LANG_LABELS: Record<string, string> = {
   fa: 'Persian', it: 'Italian', sw: 'Swahili', uk: 'Ukrainian', ro: 'Romanian', nl: 'Dutch',
   pl: 'Polish', ps: 'Pashto', ms: 'Malay', el: 'Greek', sv: 'Swedish', cs: 'Czech',
   mr: 'Marathi', kk: 'Kazakh', gu: 'Gujarati', he: 'Hebrew', hu: 'Hungarian', da: 'Danish', uz: 'Uzbek',
+  no: 'Norwegian', fi: 'Finnish', sk: 'Slovak', bg: 'Bulgarian', hr: 'Croatian', sr: 'Serbian',
+  ml: 'Malayalam', kn: 'Kannada', si: 'Sinhala', yo: 'Yoruba', ig: 'Igbo', ne: 'Nepali',
+  km: 'Khmer', sl: 'Slovenian', lt: 'Lithuanian', lv: 'Latvian', et: 'Estonian', sq: 'Albanian',
+  mk: 'Macedonian', mn: 'Mongolian',
 }
 const GEN_MAP: Record<string, string> = { gen_z: 'Gen Z', millennial: 'Millennial', gen_x: 'Gen X', boomer: 'Boomer' }
 const GENDER_MAP: Record<string, string> = { woman: 'Woman', man: 'Man', non_binary: 'Non-binary', prefer_not_to_say: 'Prefer not to say' }
