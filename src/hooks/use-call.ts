@@ -53,6 +53,9 @@ export function useCallEngine(opts: {
   const localStreamRef = useRef<MediaStream | null>(null)
   const inChRef = useRef<ChannelLike | null>(null)
   const outChRef = useRef<ChannelLike | null>(null)
+  const outTopicRef = useRef<string | null>(null)
+  const outReadyRef = useRef(false)
+  const pendingOutRef = useRef<SignalMessage[]>([])
   const tokenRef = useRef<string | null>(null)
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([])
   const pendingOfferRef = useRef<RTCSessionDescriptionInit | null>(null)
@@ -66,11 +69,126 @@ export function useCallEngine(opts: {
   function playRing(kind: RingKind) { try { ringSound?.(kind) } catch {} }
   function stopRing() { try { stopRingingSound?.() } catch {} }
 
-  function send(signal: SignalMessage) {
-    const ch = outChRef.current
+  // Realtime broadcast handler, shared by our inbound channel and any outbound
+  // peer channel. Uses refs + functional setters so stale closures are safe.
+  function handler({ payload }: { payload: unknown }) {
+    const sig = payload as SignalMessage & { from?: string }
+    if (!sig.from || sig.from === myIdRef.current) return
+
+    switch (sig.type) {
+      case 'call': {
+        if (!sig.token) return
+        if (statusRef.current !== 'idle') {
+          // Busy: reject on the caller's channel so they stop ringing right away.
+          ensureOutbound({ conversationId: '', otherId: sig.from })
+          send({ type: 'reject', token: sig.token })
+          return
+        }
+        tokenRef.current = sig.token
+        setMode(sig.mode)
+        const peer: CallTarget = {
+          conversationId: sig.conversationId ?? targetRef.current?.conversationId ?? '',
+          otherId: sig.from,
+        }
+        if (!peer.conversationId) return
+        targetRef.current = peer
+        setTarget(peer)
+        ensureOutbound(peer) // so we can answer / decline / send ICE back
+        updateStatus('incoming')
+        onIncoming?.(peer, sig.mode)
+        playRing('incoming')
+        ringTimerRef.current = window.setTimeout(() => {
+          if (statusRef.current === 'incoming') rejectCall()
+        }, RING_MS)
+        break
+      }
+      case 'accept': {
+        if (sig.token !== tokenRef.current) return
+        stopRing()
+        updateStatus('active')
+        break
+      }
+      case 'reject':
+      case 'cancel': {
+        if (sig.token !== tokenRef.current) return
+        setError('The call was declined.')
+        teardownPeer()
+        updateStatus('idle')
+        break
+      }
+      case 'hangup': {
+        if (sig.token && sig.token !== tokenRef.current) return
+        teardownPeer()
+        updateStatus('idle')
+        break
+      }
+      case 'offer': {
+        if (sig.token !== tokenRef.current) return
+        pendingOfferRef.current = sig.sdp
+        break
+      }
+      case 'answer': {
+        if (sig.token !== tokenRef.current) return
+        const pc = pcRef.current
+        if (pc) {
+          void pc.setRemoteDescription(new RTCSessionDescription(sig.sdp))
+            .then(() => flushPendingIce(pc)).catch(() => {})
+        }
+        break
+      }
+      case 'ice': {
+        if (sig.token !== tokenRef.current) return
+        const pc = pcRef.current
+        if (pc && pc.remoteDescription) {
+          void pc.addIceCandidate(new RTCIceCandidate(sig.candidate)).catch(() => {})
+        } else {
+          pendingIceRef.current.push(sig.candidate)
+        }
+        break
+      }
+      default:
+        break
+    }
+  }
+
+  function flushPendingOut() {
     const me = myIdRef.current
-    if (!ch || !me) return
-    void ch.send({ type: 'broadcast', event: 'call', payload: { ...signal, from: me } })
+    const ch = outChRef.current
+    if (!ch || !outReadyRef.current || !me) return
+    const pending = pendingOutRef.current.splice(0)
+    for (const s of pending) void ch.send({ type: 'broadcast', event: 'call', payload: { ...s, from: me } })
+  }
+
+  // Send a signaling message on the peer's channel. Realtime broadcasts can only
+  // be delivered once we are SUBSCRIBED to that channel, so if it isn't ready yet
+  // the signal is buffered and flushed as soon as the channel connects. This is
+  // what makes the caller's very first 'call'/'offer' reliably reach the callee.
+  function send(signal: SignalMessage) {
+    const me = myIdRef.current
+    if (!me) return
+    if (outChRef.current && outReadyRef.current) {
+      void outChRef.current.send({ type: 'broadcast', event: 'call', payload: { ...signal, from: me } })
+    } else {
+      pendingOutRef.current.push(signal)
+    }
+  }
+
+  // Subscribe to the peer's channel so we can broadcast signaling to them.
+  // Idempotent per topic; tears down any previous outbound channel.
+  function ensureOutbound(peer: CallTarget) {
+    const supabase = createClient()
+    const topic = `call:user:${peer.otherId}`
+    if (outChRef.current && outTopicRef.current === topic) return outChRef.current
+    if (outChRef.current) void supabase.removeChannel(outChRef.current)
+    const ch = supabase.channel(topic, { config: { broadcast: { self: false } } })
+    outChRef.current = ch
+    outTopicRef.current = topic
+    outReadyRef.current = false
+    ch.on('broadcast', { event: 'call' }, handler).subscribe((status) => {
+      if (status === 'SUBSCRIBED') { outReadyRef.current = true; flushPendingOut() }
+      else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') { outReadyRef.current = false }
+    })
+    return ch
   }
 
   function teardownPeer() {
@@ -171,6 +289,8 @@ export function useCallEngine(opts: {
     targetRef.current = peer
     setTarget(peer)
     setMode(mediaMode)
+    ensureOutbound(peer) // establish the peer channel BEFORE sending so the
+    // initial 'call'/'offer' reach the callee (buffered until subscribed).
     const token = SESSION_TOKEN()
     tokenRef.current = token
     const pc = createPeer()
@@ -257,99 +377,17 @@ export function useCallEngine(opts: {
     })
   }, [])
 
-  // ── Signaling channel(s) ──────────────────────────────────────────────
-  // Always listen on our own channel for inbound calls. When a target is set
-  // we also listen on the peer's channel so a call we initiated (or accepted)
-  // can rendezvous over the peer's channel.
+  // ── Inbound signaling channel ─────────────────────────────────────────
+  // Always listen on our own channel for inbound calls. The outbound peer
+  // channel is managed on-demand by ensureOutbound() (called from startCall and
+  // the inbound 'call' handler), so the caller's first signals always reach the
+  // callee instead of being dropped while a re-subscription races.
   useEffect(() => {
     if (!myId) return
     const supabase = createClient()
-    const handler = ({ payload }: { payload: unknown }) => {
-      const sig = payload as SignalMessage & { from?: string }
-      if (!sig.from || sig.from === myIdRef.current) return
-
-      switch (sig.type) {
-        case 'call': {
-          if (!sig.token) return
-          if (statusRef.current !== 'idle') { send({ type: 'reject', token: sig.token }); return }
-          tokenRef.current = sig.token
-          setMode(sig.mode)
-          // inbound call arrives on our own channel; peer is the sender
-          const peer: CallTarget = {
-            conversationId: sig.conversationId ?? targetRef.current?.conversationId ?? '',
-            otherId: sig.from,
-          }
-          if (!peer.conversationId) return
-          targetRef.current = peer
-          setTarget(peer)
-          updateStatus('incoming')
-          onIncoming?.(peer, sig.mode)
-          playRing('incoming')
-          ringTimerRef.current = window.setTimeout(() => {
-            if (statusRef.current === 'incoming') rejectCall()
-          }, RING_MS)
-          break
-        }
-        case 'accept': {
-          if (sig.token !== tokenRef.current) return
-          stopRing()
-          updateStatus('active')
-          break
-        }
-        case 'reject':
-        case 'cancel': {
-          if (sig.token !== tokenRef.current) return
-          setError('The call was declined.')
-          teardownPeer()
-          updateStatus('idle')
-          break
-        }
-        case 'hangup': {
-          if (sig.token && sig.token !== tokenRef.current) return
-          teardownPeer()
-          updateStatus('idle')
-          break
-        }
-        case 'offer': {
-          if (sig.token !== tokenRef.current) return
-          pendingOfferRef.current = sig.sdp
-          break
-        }
-        case 'answer': {
-          if (sig.token !== tokenRef.current) return
-          const pc = pcRef.current
-          if (pc) {
-            void pc.setRemoteDescription(new RTCSessionDescription(sig.sdp))
-              .then(() => flushPendingIce(pc)).catch(() => {})
-          }
-          break
-        }
-        case 'ice': {
-          if (sig.token !== tokenRef.current) return
-          const pc = pcRef.current
-          if (pc && pc.remoteDescription) {
-            void pc.addIceCandidate(new RTCIceCandidate(sig.candidate)).catch(() => {})
-          } else {
-            pendingIceRef.current.push(sig.candidate)
-          }
-          break
-        }
-        default:
-          break
-      }
-    }
-
     const inCh = supabase.channel(`call:user:${myId}`, { config: { broadcast: { self: false } } })
     inChRef.current = inCh
     inCh.on('broadcast', { event: 'call' }, handler).subscribe()
-
-    let outCh: ChannelLike | null = null
-    const peer = targetRef.current
-    if (peer && peer.otherId !== myId) {
-      outCh = supabase.channel(`call:user:${peer.otherId}`, { config: { broadcast: { self: false } } })
-      outChRef.current = outCh
-      outCh.on('broadcast', { event: 'call' }, handler).subscribe()
-    }
 
     return () => {
       window.clearTimeout(ringTimerRef.current)
@@ -358,11 +396,13 @@ export function useCallEngine(opts: {
       updateStatus('idle')
       if (outChRef.current) void supabase.removeChannel(outChRef.current)
       outChRef.current = null
+      outTopicRef.current = null
+      outReadyRef.current = false
       if (inChRef.current) void supabase.removeChannel(inChRef.current)
       inChRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myId, target])
+  }, [myId])
 
   return {
     status,
