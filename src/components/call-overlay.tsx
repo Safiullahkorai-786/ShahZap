@@ -4,7 +4,8 @@
 // call with local preview + remote feed. All streams are attached device to
 // device via WebRTC — nothing routes through our servers.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { usePathname } from 'next/navigation'
 import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, MessageCircle, ChevronDown, Maximize2 } from 'lucide-react'
 import { CallChatPanel } from '@/components/call-chat-panel'
 
@@ -37,6 +38,7 @@ export function CallOverlay(props: {
   const [controlsVisible, setControlsVisible] = useState(true)
   const [minimized, setMinimized] = useState(false)
   const hideTimer = useRef<number | undefined>(undefined)
+  const pathname = usePathname()
 
   // Auto-hide controls after ~8s of inactivity, like WhatsApp. Reset when a
   // new call becomes active so the controls always start visible.
@@ -53,6 +55,50 @@ export function CallOverlay(props: {
   }
 
   function resetMinimized() { setMinimized(false) }
+  function minimizePip() { setMinimized(true) }
+
+  // Movable double-click-resizable floating call window.
+  const [pipPos, setPipPos] = useState<{ x: number; y: number } | null>(null)
+  const [pipSizeLevel, setPipSizeLevel] = useState(0)
+  const dragRef = useRef<{ dx: number; dy: number } | null>(null)
+  const PIP_SCALES = [1, 2, 4]
+  const PIP_BASE = { w: 160, h: 104 }
+  const pipScale = PIP_SCALES[pipSizeLevel % PIP_SCALES.length]
+  const pipW = Math.round(PIP_BASE.w * pipScale)
+  const pipH = Math.round(PIP_BASE.h * pipScale)
+
+  // Double-click cycles the size: small -> double -> double again -> back to
+  // small (loops). The scale list above makes each step a doubling.
+  function stepPipSize() { setPipSizeLevel((l) => (l + 1) % PIP_SCALES.length) }
+  function expandPip() { setMinimized(false) }
+
+  function onPipPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
+    const left = pipPos ? pipPos.x : e.currentTarget.getBoundingClientRect().left
+    const top = pipPos ? pipPos.y : e.currentTarget.getBoundingClientRect().top
+    dragRef.current = { dx: e.clientX - left, dy: e.clientY - top }
+    e.currentTarget.setPointerCapture?.(e.pointerId)
+  }
+  function onPipPointerMove(e: ReactPointerEvent<HTMLDivElement>) {
+    if (!dragRef.current) return
+    let x = e.clientX - dragRef.current.dx
+    let y = e.clientY - dragRef.current.dy
+    x = Math.max(4, Math.min(window.innerWidth - pipW - 4, x))
+    y = Math.max(4, Math.min(window.innerHeight - pipH - 4, y))
+    setPipPos({ x, y })
+  }
+  function onPipPointerUp() { dragRef.current = null }
+
+  // When the user navigates away from the call's conversation (e.g. browser
+  // back) while in a full-screen call, auto-minimize to the floating window so
+  // they can keep roaming the site with the call still running.
+  useEffect(() => {
+    if (status !== 'active') return
+    if (minimized) return
+    if (!conversationId) return
+    if (pathname && pathname.startsWith(`/chat/${conversationId}`)) return
+    const id = window.setTimeout(minimizePip, 0)
+    return () => window.clearTimeout(id)
+  }, [pathname, status, minimized, conversationId])
 
   // Moving the mouse or touching the screen reveals the controls.
   function wake() {
@@ -167,34 +213,42 @@ export function CallOverlay(props: {
     const localHasVideo = (localStream?.getVideoTracks() ?? []).length > 0
     const videoCall = remoteHasVideo || (videoEnabled && localHasVideo)
 
-    // WhatsApp-style minimized floating call window. The call keeps running
-    // (audio element stays mounted) while the user browses/does other things.
+    // WhatsApp-style minimized floating call window — movable by dragging the
+    // video, double-click to cycle size (small -> double -> double -> back to
+    // small), and a maximize button for full-screen. The call keeps running
+    // (audio element stays mounted) while the user roams the site.
     if (minimized) {
       return (
-        <div className="fixed bottom-4 right-4 z-[60] flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/95 p-2 shadow-2xl">
-          <button
-            onClick={() => setMinimized(false)}
-            aria-label="Maximize call"
-            title="Maximize"
-            className={`relative h-20 w-32 shrink-0 overflow-hidden rounded-xl ${remoteHasVideo ? '' : 'flex items-center justify-center bg-slate-800'}`}
+        <div
+          style={pipPos ? { left: pipPos.x, top: pipPos.y, width: pipW, height: pipH } : { width: pipW, height: pipH }}
+          className={`fixed z-[60] flex overflow-hidden rounded-2xl border border-white/10 bg-slate-900/95 shadow-2xl ${pipPos ? '' : 'bottom-4 right-4'}`}
+        >
+          <div
+            className="relative h-full flex-1 cursor-move touch-none"
+            onPointerDown={onPipPointerDown}
+            onPointerMove={onPipPointerMove}
+            onPointerUp={onPipPointerUp}
+            onDoubleClick={stepPipSize}
           >
             {remoteHasVideo ? (
               <video ref={remoteVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
             ) : (
-              <span className="text-2xl font-bold text-slate-200">{otherName?.[0]?.toUpperCase() ?? '?'}</span>
+              <div className="flex h-full w-full items-center justify-center bg-slate-800">
+                <span className="text-4xl font-bold text-slate-200">{otherName?.[0]?.toUpperCase() ?? '?'}</span>
+              </div>
             )}
             <span className="pointer-events-none absolute bottom-1 left-1 flex items-center rounded bg-black/60 px-1.5 py-0.5 text-white">
               {muted ? <MicOff size={11} /> : <Mic size={11} />}
             </span>
-          </button>
-          <div className="flex flex-col items-center gap-2">
-            <button onClick={() => setMinimized(false)} aria-label="Maximize" title="Maximize"
+          </div>
+          <div className="flex w-12 flex-col items-center justify-center gap-3 bg-slate-900/90 p-1.5">
+            <button onClick={expandPip} aria-label="Maximize" title="Maximize"
               className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-700 text-white transition hover:bg-slate-600">
-              <Maximize2 size={16} />
+              <Maximize2 size={15} />
             </button>
             <button onClick={onEnd} aria-label="End call" title="End call"
               className="flex h-9 w-9 items-center justify-center rounded-full bg-red-500 text-white transition hover:bg-red-400">
-              <PhoneOff size={16} />
+              <PhoneOff size={15} />
             </button>
           </div>
           <audio ref={remoteAudioRef} autoPlay playsInline hidden />
