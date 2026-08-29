@@ -391,10 +391,10 @@ export function NotificationBanner() {
               row.conversation_id === activeConversationRef.current
             ) return
 
-            // Only avoid duplicating an incoming call when the user chose the
-            // full-screen ring style. If they prefer the banner style, show the
-            // banner's Answer / Decline instead of the full-screen ring.
-            if (row.kind === 'call' && call.status !== 'idle' && getNotifDisplayPrefs().callNotify === 'overlay') return
+            // Incoming calls are surfaced by the call engine (full-screen ring
+            // or, per the user's "incoming call style" setting, a compact top
+            // banner in the call overlay) — don't duplicate them here.
+            if (row.kind === 'call' && call.status !== 'idle') return
 
             let identity: Identity = { label: 'Someone', colorClass: 'text-slate-300' }
             if (row.from_user_id) {

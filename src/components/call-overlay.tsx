@@ -346,9 +346,42 @@ export function CallOverlay(props: {
   // ── Incoming / outgoing ring screens ──────────────────────────────────
   if (status === 'incoming') {
     // When the user chose the "banner" call-notification style, the incoming
-    // ring is surfaced through the notification banner (Answer / Decline)
-    // instead of this full-screen overlay — so don't render it here.
-    if (callNotify === 'banner') return null
+    // ring is shown as a compact top banner (Answer / Decline) instead of the
+    // full-screen overlay. Driven directly by the engine's status, so it's just
+    // as reliable as the full-screen ring and doesn't depend on the DB.
+    if (callNotify === 'banner') {
+      return (
+        <div className="pointer-events-none fixed inset-x-0 top-3 z-[60] flex justify-center px-3">
+          <div className="pointer-events-auto w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900/95 p-4 shadow-2xl backdrop-blur">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-violet-500 text-lg font-bold text-white">
+                {otherName?.[0]?.toUpperCase() ?? '?'}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-bold text-white">{otherName}</p>
+                <p className="text-xs text-slate-400">{isVideo ? 'Incoming video call…' : 'Incoming audio call…'}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={onReject}
+                  aria-label="Decline call"
+                  className="flex h-11 w-11 items-center justify-center rounded-full bg-red-500 text-white transition hover:bg-red-400"
+                >
+                  <PhoneOff size={20} />
+                </button>
+                <button
+                  onClick={onAccept}
+                  aria-label="Answer call"
+                  className="flex h-11 w-11 animate-pulse items-center justify-center rounded-full bg-emerald-500 text-white transition hover:bg-emerald-400"
+                >
+                  <Phone size={20} className="-scale-x-100" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    }
     return (
       <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/90 px-6 text-center backdrop-blur">
         <div className="mb-8 flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-violet-500 text-4xl font-bold">
