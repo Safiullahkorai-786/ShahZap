@@ -284,9 +284,15 @@ export function setRingVolume(vol: number): number {
   return next
 }
 
-/** Ring tones honour the volume pref via a shared gain scale. */
+// Ringtone loudness boost above the base synth level. The synth's natural peaks
+// (≤ 0.32) read as quiet pipey tones next to a real phone ringer, so we scale
+// them up by this factor (still honouring the user's ring-volume slider). Kept
+// under 1.0 at vol=1 so the loudest tones don't clip/hard-limit.
+const RING_BOOST = 2.6
+
+/** Ring tones honour the volume pref via a shared gain scale + loudness boost. */
 function ringTone(c: AudioContext, vol: number, opts: ToneOpts & { at?: number }) {
-  const peak = (opts.peak ?? 0.16) * vol
+  const peak = Math.min(0.98, (opts.peak ?? 0.16) * vol * RING_BOOST)
   tone(c, { ...opts, peak })
 }
 
