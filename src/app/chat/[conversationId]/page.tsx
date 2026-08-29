@@ -6,6 +6,7 @@ import { MoreVertical, Send, UserPlus, ShieldAlert, Ban, Languages, UserCircle2,
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import { getSoundPrefs, setSoundBundle, setSoundMode, notify, playFriendRequestSound, playMessageSound, playSentSound, playUnfriendSound, type SoundPrefs } from '@/lib/notification-sound'
+import { useI18n } from '@/lib/i18n/provider'
 import { friendlyError } from '@/lib/errors'
 import { getBotPersona, isBotProfile } from '@/lib/bot'
 import { AdsterraBanner } from '@/components/adsterra-banner'
@@ -125,6 +126,7 @@ function Avatar({ name, online, large }: { name: string | null; online: boolean;
 export default function ChatPage() {
   const params = useParams<{ conversationId: string }>()
   const router = useRouter()
+  const { t } = useI18n()
   const conversationId = params.conversationId
 
   const [messages, setMessages] = useState<Message[]>([])
@@ -231,7 +233,7 @@ export default function ChatPage() {
   const togglingMessages = useRef(new Set<string>())
 
   const persona = getBotPersona(otherId)
-  const otherName = persona ? persona.name : other?.display_name || 'ShahZap user'
+  const otherName = persona ? persona.name : other?.display_name || t('profile.userFallback')
 
   useEffect(() => {
     const supabase = createClient()
@@ -1197,11 +1199,11 @@ export default function ChatPage() {
   }
 
   const subtitle = useMemo(() => {
-    if (persona) return partnerTyping || botTyping ? 'typing…' : persona.role
-    if (partnerTyping) return 'typing…'
+    if (persona) return partnerTyping || botTyping ? t('chat.typing') : persona.role
+    if (partnerTyping) return t('chat.typing')
     if (!other) return ''
-    return presenceLabel || 'offline'
-  }, [persona, partnerTyping, botTyping, other, presenceLabel])
+    return presenceLabel || t('chat.offline')
+  }, [persona, partnerTyping, botTyping, other, presenceLabel, t])
 
   const composerQuote = editing ?? replyTo
   const composerMode: 'edit' | 'reply' | null = editing ? 'edit' : replyTo ? 'reply' : null
@@ -1420,7 +1422,7 @@ export default function ChatPage() {
                       <select value={reason} onChange={(e) => setReason(e.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-xs">
                         {REPORT_REASONS.map((r) => <option key={r} value={r}>{r.replaceAll('_', ' ')}</option>)}
                       </select>
-                      <textarea value={details} onChange={(e) => setDetails(e.target.value)} maxLength={1000} placeholder="Optional details" className="h-16 w-full resize-none rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-xs" />
+                      <textarea value={details} onChange={(e) => setDetails(e.target.value)} maxLength={1000} placeholder={t('chat.optionalDetails')} className="h-16 w-full resize-none rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-xs" />
                       <button onClick={() => void submitReport()} className="w-full rounded-lg bg-red-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-red-400">Submit report</button>
                     </div>
                   )}
@@ -1445,7 +1447,7 @@ export default function ChatPage() {
               <Avatar name={otherName} online={otherOnline} large />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-lg font-bold">{otherName}</p>
-                <p className={`text-xs ${otherOnline ? 'text-emerald-300' : 'text-slate-500'}`}>{otherOnline ? 'Online' : presenceLabel || 'Offline'}</p>
+                <p className={`text-xs ${otherOnline ? 'text-emerald-300' : 'text-slate-500'}`}>{otherOnline ? t('chat.online') : presenceLabel || t('chat.offline')}</p>
               </div>
               <button aria-label="Close" onClick={() => setCardOpen(false)} className="flex h-8 w-8 flex-none items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-800 hover:text-white"><X size={17} /></button>
             </div>
@@ -1523,7 +1525,7 @@ export default function ChatPage() {
                 <select value={reason} onChange={(e) => setReason(e.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-xs">
                   {REPORT_REASONS.map((r) => <option key={r} value={r}>{r.replaceAll('_', ' ')}</option>)}
                 </select>
-                <textarea value={details} onChange={(e) => setDetails(e.target.value)} maxLength={1000} placeholder="Optional details" className="h-16 w-full resize-none rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-xs" />
+                <textarea value={details} onChange={(e) => setDetails(e.target.value)} maxLength={1000} placeholder={t('chat.optionalDetails')} className="h-16 w-full resize-none rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-xs" />
                 <button onClick={() => void submitReport()} className="w-full rounded-lg bg-red-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-red-400">Submit report</button>
               </div>
             )}
@@ -1798,9 +1800,9 @@ export default function ChatPage() {
                   }}
                   name="message" autoComplete="off" inputMode="text" enterKeyHint={virtualKb ? 'enter' : 'send'}
                   data-1p-ignore data-lpignore="true" data-bwignore data-form-fill-ignore
-                  placeholder={composerMode === 'edit' ? 'Edit your message…' : 'Type a message…'}
-                  className="min-w-0 flex-1 resize-none overflow-y-auto rounded-3xl border border-slate-700 bg-slate-950 px-5 py-3 text-[15px] leading-relaxed outline-none transition placeholder:text-slate-600 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" />
-                <button type="submit" aria-label={composerMode === 'edit' ? 'Save edit' : 'Send'} disabled={!text.trim()}
+                  placeholder={composerMode === 'edit' ? t('chat.editMessage') : t('chat.typeMessage')}
+                  className="min-w-0 flex-1 resize-none overflow-y-auto rounded-3xl border border-slate-700 bg-slate-950 px-5 py-3 text-[15px] leading-relaxed outline-none transition placeholder:text-slate-600 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 [scrollbar-width:none] [&::-webkit-scrollbar]:none" />
+                <button type="submit" aria-label={composerMode === 'edit' ? t('chat.saveEdit') : t('chat.send')} disabled={!text.trim()}
                   onPointerDown={(e) => e.preventDefault()}
                   className="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-cyan-400 text-slate-950 shadow-lg shadow-cyan-950/40 transition hover:brightness-110 active:scale-95 disabled:opacity-40">
                   {composerMode === 'edit' ? <Check size={19} /> : <Send size={18} />}

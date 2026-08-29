@@ -19,6 +19,17 @@ import { useRouter } from 'next/navigation'
 import { AppHeader } from '@/components/app-header'
 import { createClient } from '@/lib/supabase/client'
 import { ChevronDown, SlidersHorizontal } from 'lucide-react'
+import { useI18n } from '@/lib/i18n/provider'
+
+function fmt(tpl: string, vars: Record<string, string | number | null>): string {
+  return tpl.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? ''))
+}
+const GEN_KEY: Record<string, string> = { gen_alpha: 'genAlpha', gen_z: 'genZ', millennial: 'millennial', gen_x: 'genX', boomer: 'boomer' }
+const GENDER_KEY: Record<string, string> = { non_binary: 'nonBinary' }
+const CONTINENT_KEY: Record<string, string> = { north_america: 'northAmerica', south_america: 'southAmerica' }
+function genToKey(v: string) { return GEN_KEY[v] ?? v }
+function genderToKey(v: string) { return GENDER_KEY[v] ?? v }
+function contToKey(v: string) { return CONTINENT_KEY[v] ?? v }
 
 const GENDERS = [
   ['woman', 'Women'], ['man', 'Men'], ['non_binary', 'Non-binary'],
@@ -97,6 +108,10 @@ function filtersActiveCount(f: MatchFilterOverrides) {
 
 export default function MatchPage() {
   const router = useRouter()
+  const { t } = useI18n()
+  const genderOpts = GENDERS.map(([v]) => [v, t(`settings.options.${genderToKey(v)}`)] as const)
+  const genOpts = GENERATIONS.map(([v]) => [v, t(`settings.options.${genToKey(v)}`)] as const)
+  const contOpts = CONTINENTS.map(([v]) => [v, t(`settings.options.${contToKey(v)}`)] as const)
   const [waiting, setWaiting] = useState(false)
   const [seconds, setSeconds] = useState(0)
   const [matched, setMatched] = useState<{ conversationId: string } | null>(null)
@@ -256,7 +271,7 @@ export default function MatchPage() {
     await updateMatchPreferences(filtersRef.current)
     const result = await joinMatchQueue()
     if ('error' in result) {
-      setMessage(friendlyError(result.error, 'Unable to enter the matching queue.'))
+      setMessage(friendlyError(result.error, t('match.startFail')))
       return
     }
     setSeconds(0)
@@ -266,7 +281,7 @@ export default function MatchPage() {
 
   async function cancel() {
     const result = await leaveMatchQueue()
-    if ('error' in result) setMessage(friendlyError(result.error, 'Unable to leave the matching queue.'))
+    if ('error' in result) setMessage(friendlyError(result.error, t('match.cancelFail')))
     setWaiting(false); setRelaxing(false); setRelaxStep(0)
     relaxStepRef.current = 0
     restoreOriginalFilters()
@@ -278,32 +293,32 @@ export default function MatchPage() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
-      <AppHeader title="Match" icon="radar" />
+      <AppHeader title={t('match.title')} icon="radar" />
       <div className="mx-auto max-w-xl w-full px-4 pb-12 pt-4">
         <section className="rounded-3xl border border-slate-800 bg-slate-900 p-6 text-center">
           <p className="text-sm font-semibold text-cyan-300">⚡ ShahZap Match</p>
           {matched ? (
             <>
-              <h1 className="mt-2 text-2xl font-bold">Match found! 🎉</h1>
-              <p className="mt-3 text-slate-400">Opening your private chat…</p>
+              <h1 className="mt-2 text-2xl font-bold">{t('match.found')}</h1>
+              <p className="mt-3 text-slate-400">{t('match.opening')}</p>
               <div className="mx-auto mt-8 h-16 w-16 animate-pulse rounded-full border-4 border-cyan-400/50" />
-              <button onClick={() => router.replace(`/chat/${matched.conversationId}`)} className="mt-8 rounded-xl bg-cyan-400 px-8 py-4 font-bold text-slate-950">Enter chat now</button>
+              <button onClick={() => router.replace(`/chat/${matched.conversationId}`)} className="mt-8 rounded-xl bg-cyan-400 px-8 py-4 font-bold text-slate-950">{t('match.enterNow')}</button>
             </>
           ) : (
             <>
-              <h1 className="mt-2 text-xl font-bold">Find someone to chat with</h1>
-              <p className="mt-3 text-slate-400 text-sm">Safety and compatibility first, then preferences, interests, language and region.</p>
+              <h1 className="mt-2 text-xl font-bold">{t('match.findSomeone')}</h1>
+              <p className="mt-3 text-slate-400 text-sm">{t('match.findSub')}</p>
 
               {/* Live searchers indicator */}
               {queueCount !== null && queueCount > 0 ? (
                 <p className="mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-800/60 bg-emerald-950/40 px-4 py-1.5 text-xs font-semibold text-emerald-300">
                   <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
-                  {queueCount} {queueCount === 1 ? 'person is' : 'people are'} looking right now
+                  {queueCount} {queueCount === 1 ? t('match.personLooking') : t('match.peopleLooking')}
                 </p>
               ) : queueCount === 0 ? (
                 <p className="mt-3 inline-flex items-center gap-2 rounded-full border border-slate-700/60 bg-slate-800/40 px-4 py-1.5 text-xs font-semibold text-slate-400">
                   <span className="h-2 w-2 rounded-full bg-slate-500" />
-                  No one else is looking right now
+                  {t('match.noOneLooking')}
                 </p>
               ) : null}
 
@@ -318,28 +333,29 @@ export default function MatchPage() {
                         <div className="h-full rounded-full bg-cyan-400 transition-all duration-500"
                           style={{ width: `${Math.min((relaxStep / totalRelaxSteps) * 100, 100)}%` }} />
                       </div>
-                      <p className="mt-1.5 text-[10px] text-slate-500">Relaxing filters ({relaxStep}/{totalRelaxSteps})</p>
+                      <p className="mt-1.5 text-[10px] text-slate-500">{fmt(t('match.relaxingFilters'), { a: String(relaxStep), b: String(totalRelaxSteps) })}</p>
                     </div>
                   )}
 
-                  <p className="mt-4 font-semibold">Looking for a compatible person…</p>
+                  <p className="mt-4 font-semibold">{t('match.lookingCompat')}</p>
                   <p className="mt-1 text-sm text-slate-500">
-                    {relaxing ? `Relaxing filters — ${seconds}s` : `Waiting ${seconds}s — strict matching`}
+                    {relaxing ? fmt(t('match.statusRelax'), { s: `${seconds}s` }) : fmt(t('match.statusWait'), { s: `${seconds}s` })}
                   </p>
 
                   {/* Active filter chips during search */}
                   {activeFilters > 0 && (
                     <p className="mt-2 text-[10px] text-slate-500">
-                      {activeFilters} filter{activeFilters > 1 ? 's' : ''} active{relaxing ? ` · dropping every ${Math.max(1, Math.round(waitMode / 5))}s` : ''}
+                      {fmt(t(`match.filtersActive${activeFilters > 1 ? 'Plural' : 'One'}`), { n: String(activeFilters) })}
+                      {relaxing ? fmt(t('match.droppingEvery'), { s: String(Math.max(1, Math.round(waitMode / 5))) }) : ''}
                     </p>
                   )}
 
-                  <button onClick={cancel} className="mt-6 rounded-xl border border-slate-700 px-6 py-3 text-sm font-semibold">Cancel</button>
+                  <button onClick={cancel} className="mt-6 rounded-xl border border-slate-700 px-6 py-3 text-sm font-semibold">{t('match.cancel')}</button>
                   {seconds >= 15 && (
                     <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-950 p-5 text-left">
-                      <p className="text-sm font-semibold">{queueCount === 0 ? 'Nobody else is looking right now.' : 'Still searching for the best match…'}</p>
-                      <p className="mt-1.5 text-xs leading-relaxed text-slate-400">{queueCount === 0 ? 'Matching pairs two people who are here at the same moment — invite a friend, or try a practice chat while you wait.' : 'We pair safety-first; a wider search may need another moment.'}</p>
-                      <ZapChatButton cancelQueue label="⚡ Practice chat with ZapBot" className="mt-4 w-full" />
+                      <p className="text-sm font-semibold">{queueCount === 0 ? t('match.nobodyLooking') : t('match.stillSearching')}</p>
+                      <p className="mt-1.5 text-xs leading-relaxed text-slate-400">{queueCount === 0 ? t('match.nobodyBody') : t('match.stillBody')}</p>
+                      <ZapChatButton cancelQueue label={t('match.practiceChat')} className="mt-4 w-full" />
                     </div>
                   )}
                 </>
@@ -349,7 +365,7 @@ export default function MatchPage() {
                   <button onClick={() => setShowFilters(!showFilters)}
                     className="mt-6 inline-flex items-center gap-2 rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-300 transition hover:border-slate-500 hover:text-white">
                     <SlidersHorizontal size={16} />
-                    Filters
+                    {t('match.filters')}
                     {activeFilters > 0 && (
                       <span className="rounded-full bg-cyan-400/20 px-2 py-0.5 text-[10px] font-bold text-cyan-300">{activeFilters}</span>
                     )}
@@ -359,18 +375,18 @@ export default function MatchPage() {
                   {/* Collapsible filter panel */}
                   {showFilters && !filtersLoading && (
                     <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950 p-4 text-left space-y-4">
-                      <FilterSection label="Gender" options={GENDERS} values={filters.preferred_genders ?? []}
+                      <FilterSection label={t('match.filterGender')} options={genderOpts} values={filters.preferred_genders ?? []}
                         onToggle={(v) => setFilters((c) => ({ ...c, preferred_genders: toggleIn(c.preferred_genders ?? [], v) }))} />
-                      <FilterSection label="Generation" options={GENERATIONS} values={filters.preferred_generations ?? []}
+                      <FilterSection label={t('match.filterGeneration')} options={genOpts} values={filters.preferred_generations ?? []}
                         onToggle={(v) => setFilters((c) => ({ ...c, preferred_generations: toggleIn(c.preferred_generations ?? [], v) }))} />
-                      <FilterSection label="Age band" options={AGE_BANDS} values={filters.preferred_age_bands ?? []}
+                      <FilterSection label={t('match.filterAgeBand')} options={AGE_BANDS} values={filters.preferred_age_bands ?? []}
                         onToggle={(v) => setFilters((c) => ({ ...c, preferred_age_bands: toggleIn(c.preferred_age_bands ?? [], v) }))} />
-                      <FilterSection label="Continent" options={CONTINENTS} values={filters.preferred_continents ?? []}
+                      <FilterSection label={t('match.filterContinent')} options={contOpts} values={filters.preferred_continents ?? []}
                         onToggle={(v) => setFilters((c) => ({ ...c, preferred_continents: toggleIn(c.preferred_continents ?? [], v) }))} />
 
                       {/* Language filter with expand */}
                       <div>
-                        <span className="mb-1.5 block text-xs font-semibold text-slate-300">Language</span>
+                        <span className="mb-1.5 block text-xs font-semibold text-slate-300">{t('match.filterLanguage')}</span>
                         <div className="flex flex-wrap gap-1.5">
                           {langs.map(([v, l]) => (
                             <Pill key={v} selected={(filters.preferred_languages ?? []).includes(v)}
@@ -380,25 +396,25 @@ export default function MatchPage() {
                           ))}
                         </div>
                         <button onClick={() => setShowAllLangs(!showAllLangs)} className="mt-2 text-[10px] text-cyan-400 hover:underline">
-                          {showAllLangs ? 'Show less' : `Show all ${LANGUAGES_CORE.length + LANGUAGES_EXTRA.length} languages`}
+                          {showAllLangs ? t('match.showLess') : fmt(t('match.showAll'), { n: String(LANGUAGES_CORE.length + LANGUAGES_EXTRA.length) })}
                         </button>
                       </div>
 
                       {/* Interests filter */}
                       {interestCatalog.length > 0 && (
                         <FilterSection
-                          label="Interests"
-                          hint="Match people who share these interests — makes conversations better!"
+                          label={t('match.filterInterests')}
+                          hint={t('match.interestsHint')}
                           options={interestCatalog}
                           values={filters.preferred_interests ?? []}
                           onToggle={(v) => setFilters((c) => ({ ...c, preferred_interests: toggleIn(c.preferred_interests ?? [], v) }))} />
                       )}
 
-                      <p className="text-[10px] text-slate-500">Leave all empty = open to everyone instantly.</p>
+                      <p className="text-[10px] text-slate-500">{t('match.leaveEmpty')}</p>
 
                       {/* Wait time selector */}
                       <div>
-                        <span className="mb-1.5 block text-xs font-semibold text-slate-300">Wait before relaxing</span>
+                        <span className="mb-1.5 block text-xs font-semibold text-slate-300">{t('match.waitBefore')}</span>
                         <div className="flex flex-wrap gap-2">
                           <Pill selected={waitMode === 5} onClick={() => setWaitMode(5)}>5s</Pill>
                           <Pill selected={waitMode === 10} onClick={() => setWaitMode(10)}>10s</Pill>
@@ -408,13 +424,13 @@ export default function MatchPage() {
                           <Pill selected={waitMode === 60} onClick={() => setWaitMode(60)}>60s</Pill>
                         </div>
                         <p className="mt-1 text-[10px] text-slate-500">
-                          Strict match for {waitMode}s, then drop one filter every {Math.max(1, Math.round(waitMode / 5))}s.
+                          {fmt(t('match.waitDesc'), { s: String(waitMode), i: String(Math.max(1, Math.round(waitMode / 5))) })}
                         </p>
                       </div>
                     </div>
                   )}
 
-                  <button onClick={start} className="mt-6 rounded-xl bg-cyan-400 px-8 py-4 font-bold text-slate-950">Start matching</button>
+                  <button onClick={start} className="mt-6 rounded-xl bg-cyan-400 px-8 py-4 font-bold text-slate-950">{t('home.startMatching')}</button>
                 </>
               )}
             </>

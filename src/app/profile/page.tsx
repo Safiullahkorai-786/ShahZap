@@ -6,6 +6,18 @@ import { friendlyError } from '@/lib/errors'
 import { AppHeader } from '@/components/app-header'
 import { Shimmer } from '@/components/shimmer'
 import { CONTINENTS, getCountriesForRegion, getRegionForCountry, getCountryName, REGION_LABELS } from '@/lib/regions'
+import { useI18n } from '@/lib/i18n/provider'
+
+function fmt(tpl: string, vars: Record<string, string | number | null>): string {
+  return tpl.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? ''))
+}
+
+const GEN_KEY: Record<string, string> = { gen_alpha: 'genAlpha', gen_z: 'genZ', millennial: 'millennial', gen_x: 'genX', boomer: 'boomer' }
+const GENDER_KEY: Record<string, string> = { non_binary: 'nonBinary', prefer_not_to_say: 'preferNotToSay' }
+const CONTINENT_KEY: Record<string, string> = { north_america: 'northAmerica', south_america: 'southAmerica' }
+function genToKey(v: string) { return GEN_KEY[v] ?? v }
+function genderToKey(v: string) { return GENDER_KEY[v] ?? v }
+function contToKey(v: string) { return CONTINENT_KEY[v] ?? v }
 
 const AGE_BANDS = [['18_20', '18–20'], ['21_29', '21–29'], ['30_44', '30–44'], ['45_59', '45–59'], ['60_plus', '60+']] as const
 const LANGUAGES = [
@@ -62,6 +74,7 @@ function Toggle({ checked, onChange, label, hint }: { checked: boolean; onChange
 }
 
 export default function MyProfilePage() {
+  const { t } = useI18n()
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -141,11 +154,11 @@ export default function MyProfilePage() {
   }, [])
 
   async function save() {
-    if (!name.trim()) { setError('Display name cannot be empty.'); return }
+    if (!name.trim()) { setError(t('profile.nameEmpty')); return }
     setBusy(true); setError(''); setSaved(false)
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setError('Your session expired. Please sign in again.'); setBusy(false); return }
+    if (!user) { setError(t('settings.sessionExpired')); setBusy(false); return }
     const { error: e1 } = await supabase.from('profiles').update({
       display_name: name.trim().slice(0, 32),
       age_band: ageBand,
@@ -167,7 +180,7 @@ export default function MyProfilePage() {
       interests_visible: interestsVisible,
       interest_names: interests.map((v) => INTERESTS.find(([k]) => k === v)?.[1] ?? v),
     }).eq('id', user.id)
-    if (e1) { setError(friendlyError(e1, 'Could not save your profile.')); setBusy(false); return }
+    if (e1) { setError(friendlyError(e1, t('profile.saveFailed'))); setBusy(false); return }
 
     await supabase.from('match_preferences').upsert({
       profile_id: user.id,
@@ -180,7 +193,7 @@ export default function MyProfilePage() {
       const { data: rows } = await supabase.from('interests').select('id').in('slug', interests)
       if (rows?.length) {
         const { error: e2 } = await supabase.from('profile_interests').insert(rows.map((r) => ({ profile_id: user.id, interest_id: r.id })))
-        if (e2) { setError(friendlyError(e2, 'Could not save your interests.')); setBusy(false); return }
+        if (e2) { setError(friendlyError(e2, t('profile.saveInterestsFailed'))); setBusy(false); return }
       }
     }
     setSaved(true); setBusy(false)
@@ -190,33 +203,33 @@ export default function MyProfilePage() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
-      <AppHeader title="My Profile" icon="user" />
+      <AppHeader title={t('profile.title')} icon="user" />
       <div className="mx-auto max-w-2xl w-full px-4 pb-24 pt-4 md:pb-10 lg:max-w-4xl">
-        <p className="text-xs leading-relaxed text-slate-500">Your identity details and how others see you.</p>
+        <p className="text-xs leading-relaxed text-slate-500">{t('profile.intro')}</p>
 
         {error && <p className="mt-4 rounded-xl bg-red-950/40 p-3 text-sm text-red-200">{error}</p>}
-        {saved && <p className="mt-4 rounded-xl bg-emerald-950/40 p-3 text-sm text-emerald-200">Profile saved.</p>}
+        {saved && <p className="mt-4 rounded-xl bg-emerald-950/40 p-3 text-sm text-emerald-200">{t('profile.saved')}</p>}
 
         {!loading && (
           <div className="mt-4 space-y-4">
 
             {/* 1. Preview card */}
             <section className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5 sm:p-6">
-              <h2 className="text-[15px] font-semibold">Preview — how others see you</h2>
-              <p className="mt-1 text-xs text-slate-500">This is your public profile card. Toggle visibility in Privacy below.</p>
+              <h2 className="text-[15px] font-semibold">{t('profile.preview')}</h2>
+              <p className="mt-1 text-xs text-slate-500">{t('profile.previewHint')}</p>
               <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-950 p-5">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-cyan-300">⚡ ShahZap profile</p>
-                    <h3 className="mt-1 text-2xl font-bold">{name || 'ShahZap user'}</h3>
+                    <p className="text-xs text-cyan-300">{t('profile.shahzapProfile')}</p>
+                    <h3 className="mt-1 text-2xl font-bold">{name || t('profile.userFallback')}</h3>
                   </div>
-                  {onlineVisible && <span className="rounded-full bg-emerald-400/10 px-3 py-1 text-xs text-emerald-300">Online</span>}
+                  {onlineVisible && <span className="rounded-full bg-emerald-400/10 px-3 py-1 text-xs text-emerald-300">{t('profile.online')}</span>}
                 </div>
                 {bio.trim() && <p className="mt-3 text-sm leading-relaxed text-slate-300">{bio.trim()}</p>}
                 <div className="mt-4 grid gap-2">
-                  {ageBandVisible && ageBand && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Age band: {ageBand.replace('_', '–')}</div>}
-                  {generationVisible && generation && GEN_MAP[generation] && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Generation: {GEN_MAP[generation]}</div>}
-                  {genderVisible && gender && GENDER_MAP[gender] && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Gender: {GENDER_MAP[gender]}</div>}
+                  {ageBandVisible && ageBand && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">{fmt(t('profile.ageBandValue'), { v: ageBand.replace('_', '–') })}</div>}
+                  {generationVisible && generation && GEN_MAP[generation] && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">{fmt(t('profile.generationValue'), { v: t(`settings.options.${genToKey(generation)}`) })}</div>}
+                  {genderVisible && gender && GENDER_MAP[gender] && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">{fmt(t('profile.genderValue'), { v: t(`settings.options.${genderToKey(gender)}`) })}</div>}
                   {regionVisible && countryCode && (() => {
                     const continent = getRegionForCountry(countryCode)
                     const country = getCountryName(countryCode)
@@ -224,32 +237,32 @@ export default function MyProfilePage() {
                     const hasCountry = !!country && countryVisible
                     if (!hasRegion && !hasCountry) return null
                     const label = hasRegion && hasCountry
-                      ? `Region: ${REGION_LABELS[continent!] ?? continent} · ${country}`
+                      ? fmt(t('profile.regionCountryValue'), { r: REGION_LABELS[continent!] ?? continent, c: country })
                       : hasRegion
-                        ? `Region: ${REGION_LABELS[continent!] ?? continent}`
-                        : `Country: ${country}`
+                        ? fmt(t('profile.regionValue'), { v: REGION_LABELS[continent!] ?? continent })
+                        : fmt(t('profile.countryValue'), { v: country })
                     return (
                       <div className="rounded-xl bg-slate-900 p-2.5 text-sm">{label}</div>
                     )
                   })()}
                   {!regionVisible && countryVisible && countryCode && (
-                    <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Country: {getCountryName(countryCode) ?? countryCode}</div>
+                    <div className="rounded-xl bg-slate-900 p-2.5 text-sm">{fmt(t('profile.countryValue'), { v: getCountryName(countryCode) ?? countryCode })}</div>
                   )}
-                  {orientDisplay && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">Orientation: {orientDisplay}</div>}
+                  {orientDisplay && <div className="rounded-xl bg-slate-900 p-2.5 text-sm">{fmt(t('profile.orientationValue'), { v: orientDisplay })}</div>}
                   {languagesKnownVisible && languagesKnown.length > 0 && (
                     <div className="rounded-xl bg-slate-900 p-2.5 text-sm">
-                      <span className="font-semibold">Languages: </span>
+                      <span className="font-semibold">{t('profile.languagesField')} </span>
                       <span className="text-slate-300">{languagesKnown.map((v) => LANG_MAP[v] ?? v).join(', ')}</span>
                     </div>
                   )}
                   {interestsVisible && interests.length > 0 && (
                     <div className="rounded-xl bg-slate-900 p-2.5 text-sm">
-                      <span className="font-semibold">Interests: </span>
+                      <span className="font-semibold">{t('profile.interestsField')} </span>
                       <span className="text-slate-300">{interests.map((v) => INTERESTS.find(([k]) => k === v)?.[1] ?? v).join(', ')}</span>
                     </div>
                   )}
                   {!ageBandVisible && !generationVisible && !genderVisible && !regionVisible && !interestsVisible && !orientDisplay && !languageVisible && !languagesKnownVisible && (
-                    <p className="py-2 text-center text-sm text-slate-500">All fields hidden. Enable toggles in Privacy below to show them.</p>
+                    <p className="py-2 text-center text-sm text-slate-500">{t('profile.allHidden')}</p>
                   )}
                 </div>
               </div>
@@ -257,58 +270,58 @@ export default function MyProfilePage() {
 
             {/* 2. Identity */}
             <section className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5 sm:p-6">
-              <h2 className="text-[15px] font-semibold">Identity</h2>
+              <h2 className="text-[15px] font-semibold">{t('profile.identity')}</h2>
               <div className="mt-4 space-y-4">
                 <label className="block">
-                  <span className="mb-2 block text-sm font-semibold">Display name</span>
-                  <input value={name} maxLength={32} onChange={(e) => setName(e.target.value)} placeholder="BlueSpark"
+                  <span className="mb-2 block text-sm font-semibold">{t('profile.displayName')}</span>
+                  <input value={name} maxLength={32} onChange={(e) => setName(e.target.value)} placeholder={t('profile.displayNamePlaceholder')}
                     className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20" />
                 </label>
                 <div>
-                  <span className="mb-2 block text-sm font-semibold">Age band</span>
+                  <span className="mb-2 block text-sm font-semibold">{t('profile.ageBand')}</span>
                   <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
                     {AGE_BANDS.map(([v, l]) => <Pill key={v} selected={ageBand === v} onClick={() => setAgeBand(v)}>{l}</Pill>)}
                   </div>
                 </div>
                 <div>
-                  <span className="mb-2 block text-sm font-semibold">Gender</span>
+                  <span className="mb-2 block text-sm font-semibold">{t('profile.gender')}</span>
                   <div className="grid grid-cols-2 gap-2">
-                    {GENDERS.map(([v, l]) => <Pill key={v} selected={gender === v} onClick={() => setGender(v)}>{l}</Pill>)}
+                    {GENDERS.map(([v, l]) => <Pill key={v} selected={gender === v} onClick={() => setGender(v)}>{t(`settings.options.${genderToKey(v)}`)}</Pill>)}
                   </div>
                 </div>
                 {gender === 'non_binary' && (
                   <label className="block">
-                    <span className="mb-2 block text-sm font-semibold">Orientation <span className="font-normal text-slate-500">(optional)</span></span>
-                    <input value={orientation} maxLength={32} onChange={(e) => setOrientation(e.target.value)} placeholder="Share only if you want to"
+                    <span className="mb-2 block text-sm font-semibold">{t('profile.orientation')} <span className="font-normal text-slate-500">{t('profile.optional')}</span></span>
+                    <input value={orientation} maxLength={32} onChange={(e) => setOrientation(e.target.value)} placeholder={t('profile.orientationPlaceholder')}
                       className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none transition placeholder:text-slate-600 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20" />
                   </label>
                 )}
                 <div>
-                  <span className="mb-2 block text-sm font-semibold">Bio <span className="font-normal text-slate-500">(optional · up to 30 words)</span></span>
-                  <textarea value={bio} maxLength={150} onChange={(e) => setBio(e.target.value)} rows={3} placeholder="Tell people a little about yourself…"
+                  <span className="mb-2 block text-sm font-semibold">{t('profile.bio')} <span className="font-normal text-slate-500">{t('profile.bioOptional')}</span></span>
+                  <textarea value={bio} maxLength={150} onChange={(e) => setBio(e.target.value)} rows={3} placeholder={t('profile.bioPlaceholder')}
                     className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none transition placeholder:text-slate-600 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 resize-none" />
                   <p className="mt-1 text-right text-xs text-slate-600">{bio.length}/150</p>
                 </div>
                 <div>
-                  <span className="mb-2 block text-sm font-semibold">Generation <span className="font-normal text-slate-500">(optional)</span></span>
+                  <span className="mb-2 block text-sm font-semibold">{t('profile.generation')} <span className="font-normal text-slate-500">{t('profile.optional')}</span></span>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    <Pill selected={generation === ''} onClick={() => setGeneration('')}>Any</Pill>
-                    {GENERATIONS.map(([v, l]) => <Pill key={v} selected={generation === v} onClick={() => setGeneration(v)}>{l}</Pill>)}
+                    <Pill selected={generation === ''} onClick={() => setGeneration('')}>{t('profile.any')}</Pill>
+                    {GENERATIONS.map(([v, l]) => <Pill key={v} selected={generation === v} onClick={() => setGeneration(v)}>{t(`settings.options.${genToKey(v)}`)}</Pill>)}
                   </div>
                 </div>
                 <div>
-                  <span className="mb-2 block text-sm font-semibold">Region <span className="font-normal text-slate-500">(optional)</span></span>
-                  <p className="mb-3 text-xs text-slate-500">Your continent and country help people near you find you.</p>
+                  <span className="mb-2 block text-sm font-semibold">{t('profile.region')} <span className="font-normal text-slate-500">{t('profile.optional')}</span></span>
+                  <p className="mb-3 text-xs text-slate-500">{t('profile.regionHint')}</p>
                   <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
                     {CONTINENTS.map(([v, l]) => (
-                      <Pill key={v} selected={selectedRegion === v} onClick={() => { setSelectedRegion(v); setCountryCode('') }}>{l}</Pill>
+                      <Pill key={v} selected={selectedRegion === v} onClick={() => { setSelectedRegion(v); setCountryCode('') }}>{t(`settings.options.${contToKey(v)}`)}</Pill>
                     ))}
                   </div>
                   {selectedRegion && (
                     <div className="mt-3">
                       <select value={countryCode} onChange={(e) => setCountryCode(e.target.value)}
                         className="w-full appearance-none rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20">
-                        <option value="">Select your country…</option>
+                        <option value="">{t('profile.selectCountry')}…</option>
                         {getCountriesForRegion(selectedRegion).map(([code, cName]) => (
                           <option key={code} value={code}>{cName}</option>
                         ))}
@@ -316,7 +329,7 @@ export default function MyProfilePage() {
                     </div>
                   )}
                   {!selectedRegion && countryCode && (
-                    <p className="mt-2 text-xs text-slate-500">Current: {getCountryName(countryCode)}</p>
+                    <p className="mt-2 text-xs text-slate-500">{fmt(t('profile.currentCountry'), { v: getCountryName(countryCode) })}</p>
                   )}
                 </div>
               </div>
@@ -324,27 +337,27 @@ export default function MyProfilePage() {
 
             {/* 3. Languages & interests */}
             <section className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5 sm:p-6">
-              <h2 className="text-[15px] font-semibold">Languages & interests</h2>
+              <h2 className="text-[15px] font-semibold">{t('profile.langInterests')}</h2>
               <div className="mt-4 space-y-4">
                 <div>
-                  <span className="mb-2 block text-sm font-semibold">Languages I know</span>
-                  <p className="mb-2 text-xs text-slate-500">All the languages you speak — used for matching.</p>
+                  <span className="mb-2 block text-sm font-semibold">{t('profile.languagesIKnow')}</span>
+                  <p className="mb-2 text-xs text-slate-500">{t('profile.languagesIKnowHint')}</p>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                     {LANGUAGES_I_KNOW.map(([v, l]) => (
                       <Pill key={v} selected={languagesKnown.includes(v)} onClick={() => setLanguagesKnown((cur) => cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v])}>{l}</Pill>
                     ))}
                   </div>
-                  {languagesKnown.length === 0 && <p className="mt-2 text-xs text-slate-500">Empty = open to all languages.</p>}
+                  {languagesKnown.length === 0 && <p className="mt-2 text-xs text-slate-500">{t('profile.emptyAllLanguages')}</p>}
                 </div>
                 <Toggle checked={languageFilterEnabled} onChange={setLanguageFilterEnabled}
-                  label="Only match people I can understand" hint="When ON, you'll only be paired with people whose chat language is one of the languages above." />
+                  label={t('profile.onlyMatchUnderstand')} hint={t('profile.onlyMatchUnderstandHint')} />
                 <div>
-                  <span className="mb-2 block text-sm font-semibold">Interests <span className="font-normal text-slate-500">(optional · up to 8)</span></span>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  <span className="mb-2 block text-sm font-semibold">{t('profile.interests')} <span className="font-normal text-slate-500">{t('profile.interestsHasOptional')}</span></span>
+                  <div className="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-3">
                     {INTERESTS.map(([v, l]) => (
                       <button key={v} type="button" onClick={() => toggleInterest(v)}
                         className={`flex items-center justify-between rounded-xl border px-3 py-2.5 text-sm font-medium transition ${interests.includes(v) ? 'border-cyan-400 bg-cyan-400/10 text-cyan-100 ring-1 ring-cyan-400/50' : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-500'}`}>
-                        {l}
+                        {t(`settings.options.${v}`)}
                         <span className={`ml-2 flex h-5 w-5 flex-none items-center justify-center rounded-full border text-[11px] font-bold ${interests.includes(v) ? 'border-cyan-400 bg-cyan-400 text-slate-950' : 'border-slate-600 text-transparent'}`}>✓</span>
                       </button>
                     ))}
@@ -355,26 +368,26 @@ export default function MyProfilePage() {
 
             {/* 4. Privacy & visibility — bottom */}
             <section className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5 sm:p-6">
-              <h2 className="text-[15px] font-semibold">Privacy & visibility</h2>
-              <p className="mt-1 text-xs text-slate-500">Control what others see on your profile card above.</p>
+              <h2 className="text-[15px] font-semibold">{t('profile.privacy')}</h2>
+              <p className="mt-1 text-xs text-slate-500">{t('profile.privacyHint')}</p>
               <div className="mt-4 space-y-2.5">
-                <Toggle checked={onlineVisible} onChange={setOnlineVisible} label="Show me online" hint="Appear in the online directory." />
-                <Toggle checked={profileVisible} onChange={setProfileVisible} label="Profile discoverable" hint="Let compatible users see your profile." />
-                <Toggle checked={genderVisible} onChange={setGenderVisible} label="Show gender" hint="Display your gender on your profile." />
-                <Toggle checked={ageBandVisible} onChange={setAgeBandVisible} label="Show age band" hint="Display your age band on your profile." />
-                <Toggle checked={generationVisible} onChange={setGenerationVisible} label="Show generation" hint="Display your generation on your profile." />
-                <Toggle checked={countryVisible} onChange={setCountryVisible} label="Show country" hint="Display your country on your profile." />
-                <Toggle checked={regionVisible} onChange={setRegionVisible} label="Show region" hint="Display your continent and country on your profile." />
-                <Toggle checked={languageVisible} onChange={setLanguageVisible} label="Show chat language" hint="Display your chat language on your profile." />
-                <Toggle checked={languagesKnownVisible} onChange={setLanguagesKnownVisible} label="Show languages I know" hint="Display all languages you speak on your profile." />
-                <Toggle checked={interestsVisible} onChange={setInterestsVisible} label="Show interests" hint="Display your interests on your profile." />
+                <Toggle checked={onlineVisible} onChange={setOnlineVisible} label={t('profile.showOnline')} hint={t('profile.showOnlineHint')} />
+                <Toggle checked={profileVisible} onChange={setProfileVisible} label={t('profile.profileDiscoverable')} hint={t('profile.profileDiscoverableHint')} />
+                <Toggle checked={genderVisible} onChange={setGenderVisible} label={t('profile.showGender')} hint={t('profile.showGenderHint')} />
+                <Toggle checked={ageBandVisible} onChange={setAgeBandVisible} label={t('profile.showAgeBand')} hint={t('profile.showAgeBandHint')} />
+                <Toggle checked={generationVisible} onChange={setGenerationVisible} label={t('profile.showGeneration')} hint={t('profile.showGenerationHint')} />
+                <Toggle checked={countryVisible} onChange={setCountryVisible} label={t('profile.showCountry')} hint={t('profile.showCountryHint')} />
+                <Toggle checked={regionVisible} onChange={setRegionVisible} label={t('profile.showRegion')} hint={t('profile.showRegionHint')} />
+                <Toggle checked={languageVisible} onChange={setLanguageVisible} label={t('profile.showChatLanguage')} hint={t('profile.showChatLanguageHint')} />
+                <Toggle checked={languagesKnownVisible} onChange={setLanguagesKnownVisible} label={t('profile.showLanguagesKnown')} hint={t('profile.showLanguagesKnownHint')} />
+                <Toggle checked={interestsVisible} onChange={setInterestsVisible} label={t('profile.showInterests')} hint={t('profile.showInterestsHint')} />
               </div>
             </section>
 
             <div className="sticky bottom-24 md:bottom-4">
               <button type="button" onClick={() => void save()} disabled={busy}
                 className="w-full rounded-xl bg-gradient-to-r from-cyan-400 to-cyan-300 px-6 py-4 text-sm font-bold text-slate-950 shadow-xl shadow-cyan-950/50 transition hover:brightness-110 disabled:opacity-50">
-                {busy ? 'Saving…' : 'Save profile'}
+                {busy ? t('profile.saving') : t('profile.save')}
               </button>
             </div>
           </div>
