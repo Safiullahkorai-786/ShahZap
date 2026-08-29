@@ -729,7 +729,20 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
         .select(MESSAGE_COLUMNS)
         .eq('conversation_id', conversationId)
         .order('created_at', { ascending: true })
-      if (data) setMessages(data as Message[])
+      if (data) {
+        // Idempotent: only touch state when the fetched rows actually differ
+        // from what we already have, so the periodic re-stamp doesn't rebuild
+        // the message list (and jank scrolling in the call side panel) every
+        // few seconds when nothing changed.
+        setMessages((prev) => {
+          const fresh = data as Message[]
+          const changed = prev.length !== fresh.length || prev.some((m, i) => {
+            const f = fresh[i]
+            return !f || f.id !== m.id || f.read_at !== m.read_at || f.delivered_at !== m.delivered_at
+          })
+          return changed ? fresh : prev
+        })
+      }
     }
 
     let markTimer: number | undefined = undefined
@@ -748,7 +761,20 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
     mark()
     document.addEventListener('visibilitychange', safeMark)
     window.addEventListener('focus', safeMark)
+
+    // Belt-and-suspenders continuous re-stamp. The embedded call side-panel is
+    // always visible beside the call (markReadInCall), so re-running mark()
+    // every few seconds guarantees every message you read is stamped read —
+    // even if a realtime event or the 5s poll was missed. For the standalone
+    // page this only fires when the tab is visible and not covered by a call,
+    // which the guard inside mark() already enforces.
+    const restamp = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return
+      void mark()
+    }, 2000)
+
     return () => {
+      window.clearInterval(restamp)
       if (markTimer) window.clearTimeout(markTimer)
       markRef.current = () => {}
       document.removeEventListener('visibilitychange', safeMark)
