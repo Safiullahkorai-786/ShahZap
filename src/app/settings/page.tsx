@@ -10,21 +10,21 @@ import { AppHeader } from '@/components/app-header'
 import { Shimmer } from '@/components/shimmer'
 
 const LANGUAGES = [
-  ['sq', 'Albanian'], ['ar', 'Arabic'], ['bn', 'Bengali'], ['bg', 'Bulgarian'],
-  ['zh_cn', 'Chinese (Simplified)'], ['hr', 'Croatian'], ['cs', 'Czech'], ['da', 'Danish'],
-  ['nl', 'Dutch'], ['en', 'English'], ['et', 'Estonian'], ['fi', 'Finnish'],
-  ['fr', 'French'], ['de', 'German'], ['el', 'Greek'], ['gu', 'Gujarati'],
-  ['he', 'Hebrew'], ['hi', 'Hindi'], ['hu', 'Hungarian'], ['ig', 'Igbo'],
-  ['id', 'Indonesian'], ['it', 'Italian'], ['ja', 'Japanese'], ['kn', 'Kannada'],
-  ['kk', 'Kazakh'], ['km', 'Khmer'], ['ko', 'Korean'], ['lv', 'Latvian'],
-  ['lt', 'Lithuanian'], ['mk', 'Macedonian'], ['ms', 'Malay'], ['ml', 'Malayalam'],
-  ['mr', 'Marathi'], ['mn', 'Mongolian'], ['ne', 'Nepali'], ['no', 'Norwegian'],
-  ['ps', 'Pashto'], ['fa', 'Persian'], ['pl', 'Polish'], ['pt', 'Portuguese'],
-  ['pa', 'Punjabi'], ['ro', 'Romanian'], ['ru', 'Russian'], ['sr', 'Serbian'],
-  ['sd', 'Sindhi'], ['si', 'Sinhala'], ['sk', 'Slovak'], ['sl', 'Slovenian'],
-  ['es', 'Spanish'], ['sw', 'Swahili'], ['sv', 'Swedish'], ['tl', 'Tagalog'],
-  ['th', 'Thai'], ['tr', 'Turkish'], ['uk', 'Ukrainian'], ['ur', 'Urdu'],
-  ['uz', 'Uzbek'], ['vi', 'Vietnamese'], ['yo', 'Yoruba'],
+  ['sq', 'Albanian (Shqip)'], ['ar', 'Arabic (العربية)'], ['bn', 'Bengali (বাংলা)'], ['bg', 'Bulgarian (Български)'],
+  ['zh_cn', 'Chinese (Simplified) (中文)'], ['hr', 'Croatian (Hrvatski)'], ['cs', 'Czech (Čeština)'], ['da', 'Danish (Dansk)'],
+  ['nl', 'Dutch (Nederlands)'], ['en', 'English'], ['et', 'Estonian (Eesti)'], ['fi', 'Finnish (Suomi)'],
+  ['fr', 'French (Français)'], ['de', 'German (Deutsch)'], ['el', 'Greek (Ελληνικά)'], ['gu', 'Gujarati (ગુજરાતી)'],
+  ['he', 'Hebrew (עברית)'], ['hi', 'Hindi (हिन्दी)'], ['hu', 'Hungarian (Magyar)'], ['ig', 'Igbo'],
+  ['id', 'Indonesian (Bahasa Indonesia)'], ['it', 'Italian (Italiano)'], ['ja', 'Japanese (日本語)'], ['kn', 'Kannada (ಕನ್ನಡ)'],
+  ['kk', 'Kazakh (Қазақ)'], ['km', 'Khmer (ខ្មែរ)'], ['ko', 'Korean (한국어)'], ['lv', 'Latvian (Latviešu)'],
+  ['lt', 'Lithuanian (Lietuvių)'], ['mk', 'Macedonian (Македонски)'], ['ms', 'Malay (Bahasa Melayu)'], ['ml', 'Malayalam (മലയാളം)'],
+  ['mr', 'Marathi (मराठी)'], ['mn', 'Mongolian (Монгол)'], ['ne', 'Nepali (नेपाली)'], ['no', 'Norwegian (Norsk)'],
+  ['ps', 'Pashto (پښتو)'], ['fa', 'Persian (فارسی)'], ['pl', 'Polish (Polski)'], ['pt', 'Portuguese (Português)'],
+  ['pa', 'Punjabi (ਪੰਜਾਬੀ)'], ['ro', 'Romanian (Română)'], ['ru', 'Russian (Русский)'], ['sr', 'Serbian (Српски)'],
+  ['sd', 'Sindhi (سنڌي)'], ['si', 'Sinhala (සිංහල)'], ['sk', 'Slovak (Slovenčina)'], ['sl', 'Slovenian (Slovenščina)'],
+  ['es', 'Spanish (Español)'], ['sw', 'Swahili (Kiswahili)'], ['sv', 'Swedish (Svenska)'], ['tl', 'Tagalog'],
+  ['th', 'Thai (ไทย)'], ['tr', 'Turkish (Türkçe)'], ['uk', 'Ukrainian (Українська)'], ['ur', 'Urdu (اردو)'],
+  ['uz', 'Uzbek (O‘zbek)'], ['vi', 'Vietnamese (Tiếng Việt)'], ['yo', 'Yoruba (Yorùbá)'],
 ] as const
 const GENDER_OPTIONS = [['woman', 'Women'], ['man', 'Men'], ['non_binary', 'Non-binary'], ['prefer_not_to_say', 'Prefer not to say']] as const
 const GENERATION_OPTIONS = [['gen_alpha', 'Gen Alpha'], ['gen_z', 'Gen Z'], ['millennial', 'Millennial'], ['gen_x', 'Gen X'], ['boomer', 'Boomer']] as const
