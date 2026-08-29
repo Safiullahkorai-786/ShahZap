@@ -34,6 +34,39 @@ export function CallOverlay(props: {
   } = props
 
   const [chatOpen, setChatOpen] = useState(false)
+  const [controlsVisible, setControlsVisible] = useState(true)
+  const hideTimer = useRef<number | undefined>(undefined)
+
+  // Auto-hide controls after ~8s of inactivity, like WhatsApp. Reset when a
+  // new call becomes active so the controls always start visible.
+  useEffect(() => {
+    if (status === 'active') showControls()
+  }, [status])
+
+  useEffect(() => () => window.clearTimeout(hideTimer.current), [])
+
+  function showControls() {
+    setControlsVisible(true)
+    window.clearTimeout(hideTimer.current)
+    hideTimer.current = window.setTimeout(() => setControlsVisible(false), 8000)
+  }
+
+  // Moving the mouse or touching the screen reveals the controls.
+  function wake() {
+    if (!controlsVisible) setControlsVisible(true)
+    window.clearTimeout(hideTimer.current)
+    hideTimer.current = window.setTimeout(() => setControlsVisible(false), 8000)
+  }
+
+  // Tapping the video background toggles the controls on/off.
+  function toggleOnTap() {
+    if (controlsVisible) {
+      setControlsVisible(false)
+      window.clearTimeout(hideTimer.current)
+    } else {
+      showControls()
+    }
+  }
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null)
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null)
@@ -130,64 +163,76 @@ export function CallOverlay(props: {
     return (
       <div className="fixed inset-0 z-50 flex overflow-hidden bg-slate-950 text-white">
         {/* Call area (shrinks when the chat panel is open on desktop) */}
-        <div className={`relative flex h-full flex-col overflow-hidden ${showChat ? 'flex-1' : 'w-full'}`}>
-          {/* Remote video (full screen) or avatar for audio */}
-          {isVideo && videoEnabled ? (
-            <video ref={remoteVideoRef} autoPlay playsInline muted={false} className="h-full w-full flex-1 object-cover" />
-          ) : (
-            <div className="flex flex-1 items-center justify-center bg-slate-950">
-              <div className="flex flex-col items-center">
-                <div className="flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-violet-500 text-5xl font-bold">
-                  {otherName?.[0]?.toUpperCase() ?? '?'}
+        <div
+          className={`relative flex h-full flex-col overflow-hidden ${showChat ? 'flex-1' : 'w-full'}`}
+          onMouseMove={wake}
+          onTouchStart={wake}
+        >
+          {/* Remote video (full screen) or avatar for audio; tap toggles controls */}
+          <div className="relative min-h-0 flex-1 cursor-default" onClick={toggleOnTap}>
+            {isVideo && videoEnabled ? (
+              <video ref={remoteVideoRef} autoPlay playsInline muted={false} className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full items-center justify-center bg-slate-950">
+                <div className="flex flex-col items-center">
+                  <div className="flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-violet-500 text-5xl font-bold">
+                    {otherName?.[0]?.toUpperCase() ?? '?'}
+                  </div>
+                  <p className="mt-4 text-lg font-semibold">{otherName}</p>
+                  <p className="text-sm text-slate-400">On a {isVideo ? 'video' : 'voice'} call</p>
                 </div>
-                <p className="mt-4 text-lg font-semibold">{otherName}</p>
-                <p className="text-sm text-slate-400">On a {isVideo ? 'video' : 'voice'} call</p>
               </div>
-            </div>
-          )}
-          <audio ref={remoteAudioRef} autoPlay playsInline hidden />
-
-          {/* Local preview (PiP) for video */}
-          {isVideo && videoEnabled && (
-            <div className="absolute right-3 top-3 h-36 w-24 overflow-hidden rounded-2xl border-2 border-white/20 shadow-lg sm:h-44 sm:w-32">
-              <video ref={localVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
-            </div>
-          )}
-
-          {error && (
-            <p className="absolute inset-x-0 top-20 z-10 mx-4 rounded-xl bg-red-950/70 px-4 py-2 text-center text-sm text-red-200">{error}</p>
-          )}
-
-          {/* Controls */}
-          <div className="z-10 flex items-center justify-center gap-6 border-t border-white/10 bg-slate-950/80 px-4 py-6 backdrop-blur">
-            <ControlButton label={muted ? 'Unmute' : 'Mute'} active={muted} onClick={onToggleMute}>
-              {muted ? <MicOff size={24} /> : <Mic size={24} />}
-            </ControlButton>
-            {isVideo && (
-              <ControlButton label={videoEnabled ? 'Turn off camera' : 'Turn on camera'} active={!videoEnabled} onClick={onToggleVideo}>
-                {videoEnabled ? <Video size={24} /> : <VideoOff size={24} />}
-              </ControlButton>
             )}
-            {conversationId && (
-              <button
-                onClick={() => setChatOpen((open) => !open)}
-                aria-label="Open chat"
-                title={`Chat with ${otherName}`}
-                className={`hidden h-16 w-16 items-center justify-center rounded-full shadow-lg transition lg:flex ${
-                  showChat ? 'bg-cyan-500 text-slate-950 hover:bg-cyan-400' : 'bg-slate-700/70 text-white hover:bg-slate-600'
-                }`}
-              >
-                <MessageCircle size={26} />
-              </button>
+
+            {/* Local preview (PiP) for video */}
+            {isVideo && videoEnabled && (
+              <div className="absolute right-3 top-3 z-10 h-36 w-24 overflow-hidden rounded-2xl border-2 border-white/20 shadow-lg sm:h-44 sm:w-32">
+                <video ref={localVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+              </div>
             )}
-            <button
-              onClick={onEnd}
-              aria-label="End call"
-              className="flex h-16 w-16 items-center justify-center rounded-full bg-red-500 text-white shadow-lg transition hover:bg-red-400"
+
+            {error && (
+              <p className="absolute inset-x-0 top-20 z-10 mx-4 rounded-xl bg-red-950/70 px-4 py-2 text-center text-sm text-red-200">{error}</p>
+            )}
+
+            {/* Controls overlay — fades out after inactivity, like WhatsApp */}
+            <div
+              onClick={(e) => e.stopPropagation()}
+              onMouseMove={wake}
+              className={`absolute inset-x-0 bottom-0 z-20 flex items-center justify-center gap-6 border-t border-white/10 bg-slate-950/80 px-4 py-6 backdrop-blur transition-opacity duration-300 ${
+                controlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0'
+              }`}
             >
-              <PhoneOff size={26} />
-            </button>
+              <ControlButton label={muted ? 'Unmute' : 'Mute'} active={muted} onClick={onToggleMute}>
+                {muted ? <MicOff size={24} /> : <Mic size={24} />}
+              </ControlButton>
+              {isVideo && (
+                <ControlButton label={videoEnabled ? 'Turn off camera' : 'Turn on camera'} active={!videoEnabled} onClick={onToggleVideo}>
+                  {videoEnabled ? <Video size={24} /> : <VideoOff size={24} />}
+                </ControlButton>
+              )}
+              {conversationId && (
+                <button
+                  onClick={() => setChatOpen((open) => !open)}
+                  aria-label="Open chat"
+                  title={`Chat with ${otherName}`}
+                  className={`hidden h-16 w-16 items-center justify-center rounded-full shadow-lg transition lg:flex ${
+                    showChat ? 'bg-cyan-500 text-slate-950 hover:bg-cyan-400' : 'bg-slate-700/70 text-white hover:bg-slate-600'
+                  }`}
+                >
+                  <MessageCircle size={26} />
+                </button>
+              )}
+              <button
+                onClick={onEnd}
+                aria-label="End call"
+                className="flex h-16 w-16 items-center justify-center rounded-full bg-red-500 text-white shadow-lg transition hover:bg-red-400"
+              >
+                <PhoneOff size={26} />
+              </button>
+            </div>
           </div>
+          <audio ref={remoteAudioRef} autoPlay playsInline hidden />
         </div>
 
         {/* Chat panel — WhatsApp Web style, right-hand side, desktop only */}
