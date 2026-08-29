@@ -52,12 +52,14 @@ function formatTime(ts: string | null): string {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
 }
 
-export default function OnlineMessages() {
+export default function OnlineMessages({ onUnreadChange }: { onUnreadChange?: (count: number) => void }) {
   const router = useRouter()
   const [threads, setThreads] = useState<MsgThread[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const userIdRef = useRef<string | null>(null)
+  const onUnreadRef = useRef(onUnreadChange)
+  onUnreadRef.current = onUnreadChange
   // People permanently removed from this tab (they were offline >5 min and
   // never became friends). Persisted so a refresh doesn't bring them back.
   const hiddenRef = useRef<Set<string>>(new Set())
@@ -80,6 +82,13 @@ export default function OnlineMessages() {
     loadHidden()
     setHiddenReady(true)
   }, [])
+
+  // Report the total number of conversations with unread messages to the parent
+  // (used to render a live badge on the Messages tab even while it's not open).
+  useEffect(() => {
+    const unread = threads.reduce((sum, t) => sum + (t.unreadCount > 0 ? 1 : 0), 0)
+    onUnreadRef.current?.(unread)
+  }, [threads])
 
   useEffect(() => {
     if (!hiddenReady) return
