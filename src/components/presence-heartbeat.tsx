@@ -33,6 +33,14 @@ export function PresenceHeartbeat() {
       } catch { return false }
     }
 
+    async function reportPushPresence(active: boolean) {
+      try {
+        await supabase.rpc(active ? 'report_activity' : 'report_inactive')
+      } catch {
+        /* presence reporting is best-effort */
+      }
+    }
+
     async function beat() {
       if (!active || document.visibilityState !== 'visible') return
       try { if (window.localStorage.getItem('shahzap:onlineMode') === 'off') return } catch {}
@@ -43,12 +51,21 @@ export function PresenceHeartbeat() {
         const ok = await resolveAuth()
         if (ok && active) await supabase.rpc('touch_presence')
       }
+      // Tell the push trigger the user is actively on the app tab so it does
+      // NOT also send a native OS push (the in-app banner/sound cover it).
+      await reportPushPresence(true)
       // Deliver any inbound messages sent while online so the sender's
       // double-tick appears (and stays) even if the DM is never opened.
       void supabase.rpc('sync_deliveries')
     }
 
-    function onVisChange() { void beat() }
+    function onVisChange() {
+      // When the user leaves the tab/PWA, immediately mark push-presence
+      // inactive so native OS pushes resume (no 50s expiry wait).
+      if (!active) return
+      if (document.visibilityState === 'hidden') void reportPushPresence(false)
+      void beat()
+    }
     function onFocus() { void beat() }
 
     document.addEventListener('visibilitychange', onVisChange)

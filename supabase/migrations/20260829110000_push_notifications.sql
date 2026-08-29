@@ -128,7 +128,7 @@ as $$
 declare
   v_url text := coalesce(
     current_setting('app.settings.push_function_url', true),
-    'https://<YOUR-PROJECT-REF>.functions.supabase.co/notify-push'
+    'https://dgwotipwrfgliusiudux.functions.supabase.co/notify-push'
   );
 begin
   -- Ignore most chat-bot / guide notifications (users can't respond to them).
@@ -144,7 +144,10 @@ begin
       url := v_url,
       headers := jsonb_build_object(
         'Content-Type', 'application/json',
-        'Authorization', 'Bearer ' || coalesce(current_setting('app.settings.push_hook_secret', true), ''),
+        'Authorization', 'Bearer ' || coalesce(
+          current_setting('app.settings.push_hook_secret', true),
+          'a2cb5169e128b49e66f8cdce5bed24f2809bde009f56a0aec4cf944472488f64'
+        ),
         'Content-Profile', 'notify-push'
       ),
       body := jsonb_build_object(

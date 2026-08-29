@@ -9,6 +9,7 @@ import { isBotProfile } from '@/lib/bot'
 import { getNotifPrefs, type NotifCategory } from '@/lib/notification-prefs'
 import { notify } from '@/lib/notification-sound'
 import { getNotifDisplayPrefs, durationToMs, type BannerStackMode } from '@/lib/notification-display'
+import { isTabVisible } from '@/lib/tab'
 
 const SWIPE_THRESHOLD = 70
 const LEAVE_MS = 240
@@ -225,6 +226,27 @@ export function NotificationBanner() {
   const [actingOn, setActingOn] = useState<string | null>(null)
   const userIdRef = useRef<string | null>(null)
   const activeConversationRef = useRef<string | null>(null)
+  const tabVisibleRef = useRef<boolean>(true)
+  const [tabVisible, setTabVisible] = useState<boolean>(true)
+
+  // Only surface in-app banner toasts while the user is actively on the tab.
+  // When the tab is hidden/away, native OS pushes take over instead.
+  useEffect(() => {
+    const sync = () => {
+      const v = isTabVisible()
+      tabVisibleRef.current = v
+      setTabVisible(v)
+    }
+    sync()
+    document.addEventListener('visibilitychange', sync)
+    window.addEventListener('focus', sync)
+    window.addEventListener('blur', sync)
+    return () => {
+      document.removeEventListener('visibilitychange', sync)
+      window.removeEventListener('focus', sync)
+      window.removeEventListener('blur', sync)
+    }
+  }, [])
 
   // Track which chat is currently open so the realtime listener can suppress
   // message banners for the conversation the user is already viewing.
@@ -319,6 +341,9 @@ export function NotificationBanner() {
             const cat = kindToCategory(row.kind)
             if (!cat) return
             if (!getNotifPrefs()[cat]) return
+            // If the tab isn't visible, don't queue an in-app banner — a native
+            // OS push is being delivered instead (presence-aware trigger).
+            if (!tabVisibleRef.current) return
 
             // Don't interrupt the user with a banner for the chat they're
             // currently viewing — that message already shows inline there.
@@ -370,6 +395,9 @@ export function NotificationBanner() {
 
   // User turned off the toast banners entirely (sound + bell unaffected).
   if (!showBanner) return null
+  // Only show in-app banner toasts while the user is actively on the tab;
+  // when away, native OS pushes take over instead.
+  if (!tabVisible) return null
 
   // Never show a message banner for the conversation the user is currently
   // viewing (it's already visible inline in that chat). pathname is reactive
