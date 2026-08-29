@@ -74,6 +74,18 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     onIncoming: (target, _mode) => {
       incomingRef.current = target
     },
+    onCallFinish: (info) => {
+      // The caller inserts the single call-log row both participants see.
+      if (!info.conversationId || !userId) return
+      const supabase = createClient()
+      void supabase.rpc('insert_call_log', {
+        p_conversation_id: info.conversationId,
+        p_sender_id: userId,
+        p_mode: info.mode,
+        p_status: info.callStatus,
+        p_duration_seconds: info.durationSeconds,
+      }).then(() => {}, () => {})
+    },
   })
 
   // Load the caller's display name so the overlay/banner can show it.

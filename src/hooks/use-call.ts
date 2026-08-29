@@ -37,8 +37,15 @@ export function useCallEngine(opts: {
   ringSound?: (kind: RingKind) => void
   stopRingingSound?: () => void
   onIncoming?: (target: CallTarget, mode: CallMode) => void
+  onCallFinish?: (info: {
+    conversationId: string
+    otherId: string
+    mode: CallMode
+    callStatus: 'answered' | 'missed' | 'outgoing_unanswered'
+    durationSeconds: number
+  }) => void
 }) {
-  const { myId, ringSound, stopRingingSound, onIncoming } = opts
+  const { myId, ringSound, stopRingingSound, onIncoming, onCallFinish } = opts
 
   const [status, setStatus] = useState<CallStatus>('idle')
   const [mode, setMode] = useState<CallMode>('audio')
@@ -67,9 +74,50 @@ export function useCallEngine(opts: {
   useEffect(() => { myIdRef.current = myId }, [myId])
   const targetRef = useRef<CallTarget | null>(null)
 
-  function updateStatus(s: CallStatus) { statusRef.current = s; setStatus(s) }
+  // Call-log bookkeeping: whether WE placed the call (the caller inserts the
+  // single log row both sides see), when it went active, and whether either
+  // side ever had video on (audio calls that were upgraded count as video).
+  const wasCallerRef = useRef(false)
+  const didStartIncomingRef = useRef(false)
+  const callActiveStartRef = useRef<number | null>(null)
+  const callSawVideoRef = useRef(false)
+  const didReachActiveRef = useRef(false)
+
+  function updateStatus(s: CallStatus) {
+    statusRef.current = s
+    setStatus(s)
+    if (s === 'active') {
+      didReachActiveRef.current = true
+      if (callActiveStartRef.current === null) callActiveStartRef.current = Date.now()
+    }
+  }
   function playRing(kind: RingKind) { try { ringSound?.(kind) } catch {} }
   function stopRing() { try { stopRingingSound?.() } catch {} }
+
+  // Fire the call-log callback once per finished call, on the caller side only.
+  function emitCallFinish() {
+    const target = targetRef.current
+    const myId = myIdRef.current
+    const cb = onCallFinish
+    if (!wasCallerRef.current || !cb || !target || !target.conversationId || !myId) return
+    const duration = callActiveStartRef.current
+      ? Math.max(0, Math.floor((Date.now() - callActiveStartRef.current) / 1000))
+      : 0
+    const callStatus: 'answered' | 'missed' | 'outgoing_unanswered' =
+      didReachActiveRef.current ? 'answered'
+      : (statusRef.current === 'incoming' || didStartIncomingRef.current) ? 'missed'
+      : 'outgoing_unanswered'
+    const mode: CallMode = callSawVideoRef.current ? 'video' : 'audio'
+    cb({ conversationId: target.conversationId, otherId: target.otherId, mode, callStatus, durationSeconds: duration })
+  }
+
+  function resetCallLogRefs() {
+    wasCallerRef.current = false
+    didStartIncomingRef.current = false
+    didReachActiveRef.current = false
+    callActiveStartRef.current = null
+    callSawVideoRef.current = false
+  }
 
   // Realtime broadcast handler, shared by our inbound channel and any outbound
   // peer channel. Uses refs + functional setters so stale closures are safe.
@@ -95,6 +143,7 @@ export function useCallEngine(opts: {
         if (!peer.conversationId) return
         targetRef.current = peer
         setTarget(peer)
+        didStartIncomingRef.current = true
         ensureOutbound(peer) // so we can answer / decline / send ICE back
         updateStatus('incoming')
         onIncoming?.(peer, sig.mode)
@@ -219,6 +268,8 @@ export function useCallEngine(opts: {
   }
 
   function teardownPeer() {
+    emitCallFinish()
+    resetCallLogRefs()
     stopRing()
     window.clearTimeout(ringTimerRef.current)
     ringTimerRef.current = undefined
@@ -282,7 +333,7 @@ export function useCallEngine(opts: {
         if (!has) next.addTrack(tk)
         return next
       })
-      if (tk.kind === 'video') setRemoteVideoOn(true)
+      if (tk.kind === 'video') { setRemoteVideoOn(true); callSawVideoRef.current = true }
       // If this remote track is later removed (e.g. the peer turns video off),
       // drop it from the remote stream so the UI switches back to audio.
       tk.onended = () => {
@@ -368,6 +419,8 @@ export function useCallEngine(opts: {
     targetRef.current = peer
     setTarget(peer)
     setMode(mediaMode)
+    resetCallLogRefs()
+    wasCallerRef.current = true
     ensureOutbound(peer) // establish the peer channel BEFORE sending so the
     // initial 'call'/'offer' reach the callee (buffered until subscribed).
     const token = SESSION_TOKEN()
@@ -464,6 +517,7 @@ export function useCallEngine(opts: {
         const vt = v.getVideoTracks()[0]
         if (!vt) return
         stream.addTrack(vt)
+        callSawVideoRef.current = true
         setVideoEnabled(true)
         setLocalStream(new MediaStream(stream.getTracks()))
         if (pc) { pc.addTrack(vt, stream); await renegotiate() }
@@ -495,6 +549,7 @@ export function useCallEngine(opts: {
         const vt = v.getVideoTracks()[0]
         if (!vt) return
         stream.addTrack(vt)
+        callSawVideoRef.current = true
         setVideoEnabled(true)
         setLocalStream(new MediaStream(stream.getTracks()))
         if (pc) { pc.addTrack(vt, stream); await renegotiate() }

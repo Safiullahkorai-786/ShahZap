@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { MoreVertical, Send, UserPlus, ShieldAlert, Ban, Languages, CornerUpLeft, Pencil, Trash2, X, Check, CheckCheck, ArrowDown, ArrowLeft, SunMoon, Clock, UserCheck, UserMinus, Smile, SmilePlus, BellRing, Vibrate, VolumeX, Type, ChevronDown, Plus, Minus, Cake, Sparkles, User, Globe, Copy, Image as ImageIcon, Heart, Phone, Video } from 'lucide-react'
+import { MoreVertical, Send, UserPlus, ShieldAlert, Ban, Languages, CornerUpLeft, Pencil, Trash2, X, Check, CheckCheck, ArrowDown, ArrowLeft, SunMoon, Clock, UserCheck, UserMinus, Smile, SmilePlus, BellRing, Vibrate, VolumeX, Type, ChevronDown, Plus, Minus, Cake, Sparkles, User, Globe, Copy, Image as ImageIcon, Heart, Phone, PhoneCall, Video } from 'lucide-react'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import { getSoundPrefs, setSoundBundle, setSoundMode, notify, playFriendRequestSound, playMessageSound, playSentSound, playUnfriendSound, type SoundPrefs } from '@/lib/notification-sound'
@@ -33,6 +33,10 @@ type Message = {
   deleted_by_receiver_at?: string | null
   delivered_at?: string | null
   read_at?: string | null
+  message_type?: 'text' | 'call' | null
+  call_mode?: 'audio' | 'video' | null
+  call_status?: 'answered' | 'missed' | 'outgoing_unanswered' | null
+  call_duration_seconds?: number | null
 }
 type OtherProfile = {
   id: string
@@ -91,13 +95,35 @@ const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', 
 // last beat goes stale, and returning goes green again in near real time.
 const ONLINE_WINDOW_MS = 5 * 60 * 1000
 const EDIT_WINDOW_MS = 15 * 60 * 1000
-const MESSAGE_COLUMNS = 'id,sender_id,original_message,translated_message,created_at,reactions,edited_at,deleted_at,reply_to_message_id,deleted_by_receiver_at,delivered_at,read_at'
+const MESSAGE_COLUMNS = 'id,sender_id,original_message,translated_message,created_at,reactions,edited_at,deleted_at,reply_to_message_id,deleted_by_receiver_at,delivered_at,read_at,message_type,call_mode,call_status,call_duration_seconds'
 
 type WallpaperPrefs = { mode: 'wallpaper' | 'solid'; solid: string; dim: number }
 const SOLID_COLORS = ['#020617', '#0f172a', '#1e293b', '#083344', '#134e4a', '#1e1b4b', '#450a0a', '#052e16']
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+function formatCallDuration(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds))
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  const rem = s % 60
+  if (m < 60) return rem > 0 ? `${m}m ${rem}s` : `${m}m`
+  const h = Math.floor(m / 60)
+  const mm = m % 60
+  return `${h}h ${mm}m`
+}
+function callLogLabel(m: Message): string {
+  const kind = m.call_mode === 'video' ? 'Video' : 'Voice'
+  if (m.call_status === 'answered') return `${kind} call`
+  if (m.call_status === 'missed') return `Missed call`
+  return 'Call ended'
+}
+function callLogDetail(m: Message): string {
+  const d = m.call_duration_seconds ?? 0
+  if (m.call_status === 'answered' && d > 0) return formatCallDuration(d)
+  if (m.call_status === 'missed') return 'Missed'
+  return 'Unanswered'
 }
 function dayLabel(iso: string): string {
   const d = new Date(iso); const today = new Date(); const yesterday = new Date(Date.now() - 86400000)
@@ -1764,6 +1790,18 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
                   <span className="rounded-full bg-slate-800/80 px-3 py-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">{dayLabel(m.created_at)}</span>
                 </div>
               )}
+              {m.message_type === 'call' ? (
+                <div className="my-1 flex w-full justify-center px-1">
+                  <div className="flex max-w-[86%] flex-col items-center">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-800/80 px-3 py-1 text-[11px] font-medium text-slate-300">
+                      <PhoneCall size={13} className={m.call_status === 'answered' ? 'text-slate-400' : m.call_status === 'missed' ? 'text-cyan-400' : 'text-slate-400'} />
+                      <span>{callLogLabel(m)}</span>
+                      <span className="text-slate-500">· {callLogDetail(m)}</span>
+                    </span>
+                    <span className="mt-0.5 text-[9px] text-slate-600">{formatTime(m.created_at)}</span>
+                  </div>
+                </div>
+              ) : (
               <div className={`flex w-full px-1 ${mine ? 'justify-end' : 'justify-start'}`}>
                 <div className={`group relative flex w-fit max-w-[86%] flex-col ${mine ? 'items-end' : 'items-start'} ${reactions.length > 0 ? 'min-w-[13rem]' : ''}`}>
                   <div
@@ -1876,6 +1914,7 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
                   )}
                 </div>
               </div>
+              )}
             </div>
           )
         })}
