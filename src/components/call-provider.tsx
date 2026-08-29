@@ -8,13 +8,13 @@
 // The engine always listens on the current user's own signaling channel, so a
 // call from a friend reaches this user no matter which route they're on.
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { resolveIdentity, type Identity } from '@/lib/identity'
 import { useCallEngine, type CallTarget, type CallMode } from '@/hooks/use-call'
 import { CallOverlay } from '@/components/call-overlay'
-import { notify } from '@/lib/notification-sound'
+import { playRing, stopRing } from '@/lib/notification-sound'
 
 type CallApi = {
   status: 'idle' | 'outgoing' | 'incoming' | 'active' | 'ended'
@@ -62,7 +62,8 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
   const engine = useCallEngine({
     myId: userId,
-    ringSound: () => notify('request'),
+    ringSound: (kind) => playRing(kind),
+    stopRingingSound: () => stopRing(),
     onIncoming: (target, _mode) => {
       incomingRef.current = target
     },

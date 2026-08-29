@@ -208,3 +208,130 @@ export function playMessageSound() { notify('message') }
 export function playFriendRequestSound() { notify('request') }
 export function playUnfriendSound() { notify('unfriend') }
 export function playSentSound() { notify('sent') }
+
+// ── Call ring ───────────────────────────────────────────────────────────────
+//
+// The ringtone (the "call volume" — what you hear when someone calls). Distinct
+// INCOMING and OUTGOING rings are generated per sound pack, and any one-shot
+// cadence is replayed on a loop until stopRing() is called (or the call is
+// answered / times out).
+
+export type RingKind = 'incoming' | 'outgoing'
+
+const RING_VOLUME_KEY = 'shahzap:ring-volume'
+const DEFAULT_RING_VOLUME = 1
+
+let ringTimer: ReturnType<typeof setInterval> | undefined
+
+/**
+ * Persisted ring volume, 0..1. Defaults to full. Treated as the master gain
+ * for ring tones so a lower value softens the ringing without muting it.
+ */
+export function getRingVolume(): number {
+  if (typeof window === 'undefined') return DEFAULT_RING_VOLUME
+  try {
+    const raw = Number(window.localStorage.getItem(RING_VOLUME_KEY))
+    if (!Number.isFinite(raw)) return DEFAULT_RING_VOLUME
+    return Math.min(1, Math.max(0, raw))
+  } catch {
+    return DEFAULT_RING_VOLUME
+  }
+}
+
+export function setRingVolume(vol: number): number {
+  const next = Math.min(1, Math.max(0, vol))
+  try { window.localStorage.setItem(RING_VOLUME_KEY, String(next)) } catch {}
+  return next
+}
+
+/** Ring tones honour the volume pref via a shared gain scale. */
+function ringTone(c: AudioContext, vol: number, opts: ToneOpts & { at?: number }) {
+  const peak = (opts.peak ?? 0.16) * vol
+  tone(c, { ...opts, peak })
+}
+
+// One cadence of the ring for a given pack + direction. Each cadence is short
+// enough to fit inside its pack's ring interval below, and replayed on a loop.
+function ringClassic(c: AudioContext, vol: number, kind: RingKind) {
+  if (kind === 'incoming') {
+    ringTone(c, vol, { freq: 440, at: 0, dur: 0.45, peak: 0.32 })
+    ringTone(c, vol, { freq: 440, at: 0.55, dur: 0.45, peak: 0.32 })
+  } else {
+    ringTone(c, vol, { freq: 425, at: 0, dur: 0.32, peak: 0.2 })
+    ringTone(c, vol, { freq: 320, at: 0.42, dur: 0.3, peak: 0.18 })
+  }
+}
+
+function ringPop(c: AudioContext, vol: number, kind: RingKind) {
+  if (kind === 'incoming') {
+    ringTone(c, vol, { freq: 523.25, at: 0, dur: 0.18, peak: 0.26, type: 'triangle' })
+    ringTone(c, vol, { freq: 659.25, at: 0.2, dur: 0.18, peak: 0.26, type: 'triangle' })
+    ringTone(c, vol, { freq: 783.99, at: 0.4, dur: 0.2, peak: 0.26, type: 'triangle' })
+    ringTone(c, vol, { freq: 1046.5, at: 0.62, dur: 0.28, peak: 0.22, type: 'triangle' })
+  } else {
+    ringTone(c, vol, { freq: 392, at: 0, dur: 0.2, peak: 0.22, type: 'triangle' })
+    ringTone(c, vol, { freq: 329.63, at: 0.22, dur: 0.2, peak: 0.22, type: 'triangle' })
+    ringTone(c, vol, { freq: 261.63, at: 0.44, dur: 0.3, peak: 0.2, type: 'triangle' })
+  }
+}
+
+function ringZen(c: AudioContext, vol: number, kind: RingKind) {
+  if (kind === 'incoming') {
+    ringTone(c, vol, { freq: 440, at: 0, dur: 0.5, peak: 0.14 })
+    ringTone(c, vol, { freq: 554.37, at: 0.28, dur: 0.5, peak: 0.14 })
+  } else {
+    ringTone(c, vol, { freq: 523.25, at: 0, dur: 0.38, peak: 0.12 })
+    ringTone(c, vol, { freq: 415.3, at: 0.24, dur: 0.4, peak: 0.11 })
+  }
+}
+
+/** Loop cadence (ms) per pack — must be >= the rendered cadence length. */
+const RING_RHYTHM: Record<SoundBundle, number> = {
+  classic: 2300,
+  pop: 2000,
+  zen: 2400,
+}
+
+function ringBuzz(c: AudioContext, vol: number, kind: RingKind) {
+  const pulse = (at: number, dur: number) => {
+    ringTone(c, vol, { freq: 105, at, dur, peak: 0.3, type: 'sawtooth' })
+  }
+  if (kind === 'incoming') { pulse(0, 0.12); pulse(0.22, 0.12); pulse(0.44, 0.2) }
+  else { pulse(0, 0.12); pulse(0.2, 0.12) }
+}
+
+function playRingCadence(bundle: SoundBundle, kind: RingKind, mode: SoundMode, vol: number) {
+  const c = audio(); if (!c) return
+  if (mode === 'sound') {
+    if (bundle === 'classic') ringClassic(c, vol, kind)
+    else if (bundle === 'pop') ringPop(c, vol, kind)
+    else ringZen(c, vol, kind)
+    return
+  }
+  // buzz / haptic fallback
+  ringBuzz(c, vol, kind)
+}
+
+/**
+ * Start the looping call ring for the given direction, themed on the chosen
+ * sound pack and bound by ring volume. Calling again restarts it.
+ */
+export function playRing(kind: RingKind) {
+  stopRing()
+  const { mode, bundle } = getSoundPrefs()
+  const vol = getRingVolume()
+  if (mode === 'mute') return
+  playRingCadence(bundle, kind, mode, vol)
+  if (mode === 'buzz') {
+    // Let the OS haptics carry the loop; no audio cadence needs to repeat.
+    try { navigator.vibrate?.(kind === 'incoming' ? [250, 120, 250, 120, 250] : [140, 90, 140]) } catch {}
+    return
+  }
+  const rhythm = RING_RHYTHM[bundle] ?? 2300
+  ringTimer = setInterval(() => playRingCadence(bundle, kind, mode, vol), rhythm)
+}
+
+/** Stop the looping call ring immediately. Safe to call anytime. */
+export function stopRing() {
+  if (ringTimer) { clearInterval(ringTimer); ringTimer = undefined }
+}

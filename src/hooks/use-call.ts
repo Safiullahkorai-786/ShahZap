@@ -21,6 +21,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { CallMode, CallStatus, SignalMessage } from '@/lib/call'
 import { ICE_SERVERS, RING_MS, CALL_TIMEOUT_MS } from '@/lib/call'
+import type { RingKind } from '@/lib/notification-sound'
 
 export type { CallMode }
 
@@ -33,7 +34,7 @@ type ChannelLike = ReturnType<ReturnType<typeof createClient>['channel']>
 
 export function useCallEngine(opts: {
   myId: string | null
-  ringSound?: () => void
+  ringSound?: (kind: RingKind) => void
   stopRingingSound?: () => void
   onIncoming?: (target: CallTarget, mode: CallMode) => void
 }) {
@@ -62,7 +63,7 @@ export function useCallEngine(opts: {
   const targetRef = useRef<CallTarget | null>(null)
 
   function updateStatus(s: CallStatus) { statusRef.current = s; setStatus(s) }
-  function playRing() { try { ringSound?.() } catch {} }
+  function playRing(kind: RingKind) { try { ringSound?.(kind) } catch {} }
   function stopRing() { try { stopRingingSound?.() } catch {} }
 
   function send(signal: SignalMessage) {
@@ -175,6 +176,7 @@ export function useCallEngine(opts: {
     const pc = createPeer()
     attachLocal(pc, stream)
     updateStatus('outgoing')
+    playRing('outgoing')
     send({ type: 'call', mode: mediaMode, token, conversationId: peer.conversationId })
     // Create an incoming-call notification for the callee so they get an
     // in-app accept/decline banner (visible tab) and an OS push (away tab).
@@ -282,7 +284,7 @@ export function useCallEngine(opts: {
           setTarget(peer)
           updateStatus('incoming')
           onIncoming?.(peer, sig.mode)
-          playRing()
+          playRing('incoming')
           ringTimerRef.current = window.setTimeout(() => {
             if (statusRef.current === 'incoming') rejectCall()
           }, RING_MS)

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { friendlyError } from '@/lib/errors'
 import { ACCENTS, getSelection, applySelection, type Selection, type Base } from '@/lib/theme'
-import { getSoundPrefs, setSoundBundle, setSoundMode, notify, type SoundPrefs, type SoundMode, type SoundBundle } from '@/lib/notification-sound'
+import { getSoundPrefs, setSoundBundle, setSoundMode, notify, getRingVolume, setRingVolume, playRing, stopRing, type SoundPrefs, type SoundMode, type SoundBundle, type RingKind } from '@/lib/notification-sound'
 import { getNotifPrefs, setNotifPrefs, type NotifPrefs, type NotifCategory } from '@/lib/notification-prefs'
 import { getNotifDisplayPrefs, setNotifDisplayPrefs, BANNER_DURATIONS, type NotifDisplayPrefs, type BannerDuration, type BannerStackMode } from '@/lib/notification-display'
 import { pushSupported, isPushEnabled, enablePush, disablePush } from '@/lib/push'
@@ -180,6 +180,7 @@ export default function SettingsPage() {
   })
   const [sel, setSel] = useState<Selection>({ base: 'dark', accent: 'none' })
   const [sound, setSound] = useState<SoundPrefs>({ mode: 'sound', bundle: 'classic' })
+  const [ringVol, setRingVol] = useState<number>(() => getRingVolume())
   const [notifPrefs, setNotifPrefsState] = useState<NotifPrefs>(getNotifPrefs())
   const [notifDisplay, setNotifDisplay] = useState<NotifDisplayPrefs>(getNotifDisplayPrefs())
   const [pushOn, setPushOn] = useState<boolean>(false)
@@ -423,6 +424,37 @@ export default function SettingsPage() {
                     <span className="mt-2 block text-[10px] font-semibold uppercase tracking-wide text-cyan-300/80">{sound.bundle === id ? t('settings.sounds.pack.selected') : t('settings.sounds.pack.tapPreview')}</span>
                   </button>
                 ))}
+              </div>
+            </div>
+            <div className="space-y-3">
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Call ring &amp; volume</p>
+              <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-slate-200">Ring volume</span>
+                  <span className="text-sm font-bold text-cyan-300">{Math.round(ringVol * 100)}%</span>
+                </div>
+                <input
+                  type="range" min={0} max={100} step={5} value={Math.round(ringVol * 100)}
+                  onChange={(e) => setRingVol(setRingVolume(Number(e.target.value) / 100))}
+                  className="mt-3 w-full accent-cyan-400"
+                  aria-label="Ring volume"
+                />
+                <div className="mt-3 flex gap-2">
+                  {([['incoming', 'Incoming'], ['outgoing', 'Outgoing']] as [RingKind, string][]).map(([kind, label]) => (
+                    <button key={kind} type="button"
+                      onMouseDown={() => playRing(kind)}
+                      onMouseUp={() => stopRing()}
+                      onMouseLeave={() => stopRing()}
+                      onTouchStart={() => playRing(kind)}
+                      onTouchEnd={() => stopRing()}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); playRing(kind) } }}
+                      onKeyUp={() => stopRing()}
+                      className="flex-1 rounded-xl border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-cyan-400 hover:text-cyan-200">
+                      {label} ring
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-[11px] text-slate-500">Press and hold to preview the ring for the selected sound pack.</p>
               </div>
             </div>
             <div className="space-y-4">
