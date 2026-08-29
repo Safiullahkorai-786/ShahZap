@@ -144,6 +144,9 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
   // In-call mode fills the side panel edge-to-edge instead of the centered
   // page column, and keeps the wallpaper confined to the panel.
   const col = suppressCalls ? 'max-w-none' : 'max-w-3xl'
+  // Overlays (reaction/reply sheet, profile card, etc.) are pinned to the
+  // whole viewport on the normal page, but confined to the panel in-call.
+  const overlayPos = suppressCalls ? 'absolute inset-0' : 'fixed inset-0'
 
   const [messages, setMessages] = useState<Message[]>([])
   const [text, setText] = useState('')
@@ -714,6 +717,15 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
     el.style.height = 'auto'
     el.style.height = `${Math.min(el.scrollHeight, 132)}px`
   }, [text])
+
+  // Focus the composer reliably whenever the chat mounts so you can type
+  // immediately (the autoFocus attribute is flaky, especially when the chat
+  // is embedded in the call panel).
+  useEffect(() => {
+    if (loading || blockedAny || !userId || persona) return
+    const id = window.setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 80)
+    return () => window.clearTimeout(id)
+  }, [loading, blockedAny, userId, persona])
 
   // Laptop convenience: start typing anywhere on the page and the composer
   // wakes up and receives your keystrokes — no click into the field needed.
@@ -1535,7 +1547,7 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
 
       {/* ── User card (tap partner name/avatar) ─────────────── */}
       {cardOpen && !persona && other && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={() => setCardOpen(false)}>
+        <div className={`${overlayPos} z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm`} onClick={() => setCardOpen(false)}>
           <div role="dialog" aria-label={`${otherName} profile`} onClick={(e) => e.stopPropagation()}
             className="max-h-[calc(100dvh-2rem)] w-full max-w-sm overflow-y-auto overscroll-contain overflow-x-hidden rounded-3xl border border-slate-700 bg-slate-900 shadow-2xl shadow-black/60 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <div className="flex items-center gap-4 border-b border-slate-800 bg-slate-950/60 p-5">
@@ -1923,7 +1935,7 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
 
       {/* ── Who reacted popup ──────────────────────────────── */}
       {reactorInfo && (
-        <div className="fixed inset-0 z-40" onClick={() => setReactorInfo(null)}>
+        <div className={`${overlayPos} z-40`} onClick={() => setReactorInfo(null)}>
           <div className="absolute inset-x-0 bottom-28 mx-auto w-fit max-w-[90%] rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <p className="text-sm font-semibold">{reactorInfo.emoji} {reactorInfo.names.length > 1 ? `${reactorInfo.names.length} people reacted` : 'Reacted'}</p>
             <p className="mt-1 max-w-xs break-words text-xs leading-relaxed text-slate-300">{reactorInfo.names.join(', ')}</p>
@@ -1933,7 +1945,7 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
 
       {/* ── Block choice dialog ────────────────────────────── */}
       {blockChoiceOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setBlockChoiceOpen(false)}>
+        <div className={`${overlayPos} z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm`} onClick={() => setBlockChoiceOpen(false)}>
           <div role="dialog" aria-modal="true" className="w-full max-w-sm rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <h2 className="flex items-center gap-2 text-lg font-bold"><Ban size={18} className="text-red-400" /> Block this person?</h2>
             <p className="mt-2 text-sm leading-relaxed text-slate-400">
@@ -1956,7 +1968,7 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
 
       {/* ── Long-press action sheet ────────────────────────── */}
       {actionsMsg && (
-        <div className="fixed inset-0 z-30 bg-black/50 backdrop-blur-[2px]" onClick={() => setActionsMsg(null)}>
+        <div className={`${overlayPos} z-30 bg-black/50 backdrop-blur-[2px]`} onClick={() => setActionsMsg(null)}>
           <div className={`absolute inset-x-0 bottom-0 mx-auto ${col} rounded-t-3xl border-t border-slate-700 bg-slate-900 p-4 pb-6 shadow-2xl`}
             onClick={(e) => e.stopPropagation()}>
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-700" />
