@@ -487,7 +487,7 @@ export function CallOverlay(props: {
               <span className="rounded-full bg-black/55 px-3 py-1 text-sm font-semibold tabular-nums text-white backdrop-blur">
                 {formatCallTime(callSeconds)}
               </span>
-              {videoCall && (mainIsSelf ? muted : remoteMuted) && (
+              {(mainIsSelf ? (selfCamOn && muted) : (remoteHasVideo && remoteMuted)) && (
                 <span className="flex items-center gap-1.5 rounded-full bg-red-500/90 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur">
                   <MicOff size={13} />
                   {mainIsSelf ? 'Your mic is muted' : 'Mic muted'}
@@ -509,11 +509,18 @@ export function CallOverlay(props: {
               }`}
             >
               {showPrevVideo ? (
-                <video
-                  ref={mainIsSelf ? remoteVideoRef : localVideoRef}
-                  autoPlay playsInline muted
-                  className="h-full w-full object-cover"
-                />
+                <div className="relative h-full w-full">
+                  <video
+                    ref={mainIsSelf ? remoteVideoRef : localVideoRef}
+                    autoPlay playsInline muted
+                    className="h-full w-full object-cover"
+                  />
+                  {mainIsSelf && remoteMuted && (
+                    <span className="absolute bottom-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white shadow">
+                      <MicOff size={11} />
+                    </span>
+                  )}
+                </div>
               ) : (
                 <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-slate-800 px-1.5 py-2">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-violet-500 font-bold text-white">
