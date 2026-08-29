@@ -30,12 +30,23 @@ export function useUnreadConversations() {
 
     void fetchCount(supabase)
 
-    // Realtime: friend_requests changed → full re-query
+    // Realtime: relationship changes and incoming/read messages both affect the
+    // badge, so re-query on any of them.
     const channel = supabase
       .channel('unread-badge-v5')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'friend_requests' },
+        () => { void fetchCount(supabase) },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        () => { void fetchCount(supabase) },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'messages' },
         () => { void fetchCount(supabase) },
       )
       .subscribe()

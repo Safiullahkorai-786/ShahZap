@@ -123,6 +123,20 @@ function Avatar({ name, online, large }: { name: string | null; online: boolean;
   )
 }
 
+async function areFriends(a: string, b: string): Promise<boolean> {
+  try {
+    const supabase = createClient()
+    const { data } = await supabase.from('friend_requests')
+      .select('id')
+      .eq('status', 'accepted')
+      .or(`and(sender_id.eq.${a},receiver_id.eq.${b}),and(sender_id.eq.${b},receiver_id.eq.${a})`)
+      .maybeSingle()
+    return !!data
+  } catch {
+    return true
+  }
+}
+
 export default function ChatPage() {
   const params = useParams<{ conversationId: string }>()
   const router = useRouter()
@@ -510,16 +524,38 @@ export default function ChatPage() {
         .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'friend_requests' }, async (payload) => {
           lastRealtimeActivity = Date.now()
           // Realtime strips deleted rows to their primary key — resolve via ledger.
-          const old = payload.old as { id?: string | number }
+          const old = payload.old as { id?: string | number; sender_id?: string; receiver_id?: string; status?: string }
           const key = old?.id != null ? String(old.id) : null
           const me = userIdRef2.current
           const other = otherIdRef.current
-          if (!key || !me || !other) return
-          const entry = frRows.current.get(key)
-          if (!entry) return
-          frRows.current.delete(key)
-          const involvesUs = (entry.sender === me && entry.receiver === other) || (entry.sender === other && entry.receiver === me)
-          if (!involvesUs) return
+          if (!me || !other) return
+
+          // Prefer the ledger (loaded at mount), but the realtime event may be
+          // the only signal if this page loaded after the row was already gone.
+          let entry = (key != null ? frRows.current.get(key) : null) ?? null
+          if (key != null) frRows.current.delete(key)
+
+          if (entry) {
+            const involvesUs = (entry.sender === me && entry.receiver === other) || (entry.sender === other && entry.receiver === me)
+            if (!involvesUs) return
+          } else {
+            // Senders/deleted rows with REPLICA IDENTITY FULL carry the columns;
+            // use them if they mention this pair, otherwise fall back to a DB
+            // check just to be safe.
+            const mentionsPair =
+              old?.sender_id && old?.receiver_id &&
+              ((old.sender_id === me && old.receiver_id === other) || (old.sender_id === other && old.receiver_id === me))
+            if (!mentionsPair) {
+              // Unknown row unrelated to us — nothing to do.
+              if (!key) return
+              const still = await areFriends(me, other)
+              if (still) return
+              entry = { sender: me, receiver: other, status: 'accepted' }
+            } else {
+              entry = { sender: old!.sender_id!, receiver: old!.receiver_id!, status: old?.status ?? 'accepted' }
+            }
+          }
+
           const prev = friendStateRef.current
           // Any deletion involving this pair invalidates the accept banner.
           setIncomingReq(null)
