@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { playFriendRequestSound, playMessageSound, playUnfriendSound } from '@/lib/notification-sound'
 import { resolveIdentity, type Identity } from '@/lib/identity'
 import { isBotProfile } from '@/lib/bot'
+import { notifCategoryEnabled } from '@/lib/notification-prefs'
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 const STORAGE_KEY = 'shahzap:dismissed-notifs'
@@ -98,7 +99,9 @@ export function NotificationBell() {
 
     if (!rows) return
 
-    const fromIds = [...new Set(rows.map((r) => r.from_user_id).filter(Boolean))]
+    const visible = rows.filter((r) => notifCategoryEnabled(r.kind))
+
+    const fromIds = [...new Set(visible.map((r) => r.from_user_id).filter(Boolean))]
     const identityMap = new Map<string, Identity>()
     if (fromIds.length) {
       const { data: profiles } = await supabase
@@ -112,7 +115,7 @@ export function NotificationBell() {
       }
     }
 
-    const notifs: Notification[] = rows.map((r) => {
+    const notifs: Notification[] = visible.map((r) => {
       const identity = r.from_user_id ? (identityMap.get(r.from_user_id) ?? { label: 'Someone', colorClass: 'text-slate-300' }) : { label: 'Someone', colorClass: 'text-slate-300' }
       const unreadCount = r.unread_count ?? 1
       const text = r.kind === 'message' && unreadCount > 1
@@ -151,6 +154,7 @@ export function NotificationBell() {
           async (payload) => {
             const row = payload.new as { id: string; kind: string; from_user_id: string | null; conversation_id: string | null; text: string; created_at: string; unread_count: number }
             if (isBotProfile(row.from_user_id)) return
+            if (!notifCategoryEnabled(row.kind)) return
 
             if (row.kind === 'message') playMessageSound()
             else if (row.kind === 'friend_request') playFriendRequestSound()
@@ -194,6 +198,14 @@ export function NotificationBell() {
           { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
           (payload) => {
             const row = payload.new as { id: string; unread_count: number; kind: string; conversation_id: string | null }
+            if (!notifCategoryEnabled(row.kind)) {
+              setItems((cur) => {
+                const next = cur.filter((n) => n.id !== row.id)
+                setBadge(calcBadge(next))
+                return next
+              })
+              return
+            }
             setItems((cur) => {
               const updated = cur.map((n) => {
                 if (n.id !== row.id) return n

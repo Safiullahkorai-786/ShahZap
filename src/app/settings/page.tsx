@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { friendlyError } from '@/lib/errors'
 import { ACCENTS, getSelection, applySelection, type Selection, type Base } from '@/lib/theme'
 import { getSoundPrefs, setSoundBundle, setSoundMode, notify, type SoundPrefs, type SoundMode, type SoundBundle } from '@/lib/notification-sound'
+import { getNotifPrefs, setNotifPrefs, type NotifPrefs, type NotifCategory } from '@/lib/notification-prefs'
 import { AppHeader } from '@/components/app-header'
 import { Shimmer } from '@/components/shimmer'
 import { useI18n } from '@/lib/i18n/provider'
@@ -177,6 +178,7 @@ export default function SettingsPage() {
   })
   const [sel, setSel] = useState<Selection>({ base: 'dark', accent: 'none' })
   const [sound, setSound] = useState<SoundPrefs>({ mode: 'sound', bundle: 'classic' })
+  const [notifPrefs, setNotifPrefsState] = useState<NotifPrefs>(getNotifPrefs())
   const [interfaceLanguage, setInterfaceLanguage] = useState('en')
   const [chatLanguage, setChatLanguage] = useState('en')
 
@@ -216,6 +218,14 @@ export default function SettingsPage() {
     { id: 'classic', label: t('settings.sounds.pack.classic'), hint: t('settings.sounds.pack.classicHint') },
     { id: 'pop', label: t('settings.sounds.pack.pop'), hint: t('settings.sounds.pack.popHint') },
     { id: 'zen', label: t('settings.sounds.pack.zen'), hint: t('settings.sounds.pack.zenHint') },
+  ]
+
+  const notifOptions: { id: NotifCategory; label: string; hint: string }[] = [
+    { id: 'message', label: t('settings.notifications.message'), hint: t('settings.notifications.messageHint') },
+    { id: 'friend_request', label: t('settings.notifications.friendRequest'), hint: t('settings.notifications.friendRequestHint') },
+    { id: 'block', label: t('settings.notifications.block'), hint: t('settings.notifications.blockHint') },
+    { id: 'unfriend', label: t('settings.notifications.unfriend'), hint: t('settings.notifications.unfriendHint') },
+    { id: 'delete_chat', label: t('settings.notifications.deleteChat'), hint: t('settings.notifications.deleteChatHint') },
   ]
 
   useEffect(() => {
@@ -346,6 +356,17 @@ export default function SettingsPage() {
                 <SelectStr label={t('settings.sounds.chatLang')} hint={t('settings.sounds.chatLangHint')} value={chatLanguage} onChange={setChatLanguage} options={LANGUAGES} />
               </div>
             </div>
+          </Section>
+
+          <Section title={t('settings.notifications.title')} description={t('settings.notifications.desc')}>
+            {notifOptions.map(({ id, label, hint }) => (
+              <Toggle key={id} checked={notifPrefs[id]} label={label} hint={hint}
+                onChange={(v) => setNotifPrefsState((c) => {
+                  const next = { ...c, [id]: v }
+                  setNotifPrefs(next)
+                  return next
+                })} />
+            ))}
           </Section>
 
           <Section title={t('settings.meet.title')} description={t('settings.meet.desc')}>

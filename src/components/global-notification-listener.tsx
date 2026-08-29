@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { playFriendRequestSound, playMessageSound, playUnfriendSound } from '@/lib/notification-sound'
 import { isBotProfile } from '@/lib/bot'
+import { notifCategoryEnabled } from '@/lib/notification-prefs'
 
 /**
  * Global notification listener — mounts in the root layout so sounds
@@ -32,6 +33,7 @@ export function GlobalNotificationListener() {
           (payload) => {
             const row = payload.new as { kind: string; from_user_id: string | null }
             if (row.from_user_id && isBotProfile(row.from_user_id)) return
+            if (!notifCategoryEnabled(row.kind)) return
 
             switch (row.kind) {
               case 'message':
