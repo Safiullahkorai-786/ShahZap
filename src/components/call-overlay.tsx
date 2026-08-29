@@ -80,11 +80,12 @@ export function CallOverlay(props: {
   }
   function expandPip() { setMinimized(false) }
 
-  // Open the full DM page with the person we're calling. The active call stays
-  // alive and auto-minimizes to the floating window (pushed through the router).
+  // Open the full DM page with the person we're calling. The call is minimized
+  // to the floating window so you can chat while it keeps running.
   function goToDm() {
     if (!conversationId) return
     setChatOpen(false)
+    setMinimized(true)
     router.push(`/chat/${conversationId}`)
   }
 
@@ -100,9 +101,9 @@ export function CallOverlay(props: {
   }
 
   // Live unread-message badge for the chat button, so you can see when the
-  // person on the call is texting you. Mirrors the friends-page logic: count
-  // inbound messages without read_at, increment on each new inbound message,
-  // and reset once those messages are actually read.
+  // person on the call is texting you. Based on the friends-page logic: count
+  // inbound messages without read_at, grow (+1) on each new inbound message,
+  // and reset to 0 once those messages are actually read.
   const uidRef = useRef<string | null>(null)
   const convRef = useRef<string | undefined>(conversationId)
   convRef.current = conversationId
@@ -111,16 +112,10 @@ export function CallOverlay(props: {
     let alive = true
     let channel: { unsubscribe: () => void } | null = null
 
-    async function load() {
-      let uid = uidRef.current
-      if (!uid) {
-        const { data: us } = await supabase.auth.getUser()
-        uid = us?.user?.id ?? null
-        uidRef.current = uid
-      }
-      if (!alive || !uid) return
+    async function recompute(uid = uidRef.current) {
+      if (!uid || alive === false) return
       const conv = convRef.current
-      if (!conv) { setUnread(0); return }
+      if (!conv) return
       const { count } = await supabase.from('messages')
         .select('id', { count: 'exact', head: true })
         .eq('conversation_id', conv)
@@ -129,40 +124,44 @@ export function CallOverlay(props: {
       if (alive) setUnread(count ?? 0)
     }
 
-    // Re-sync the badge to the true unread count (e.g. after messages are read).
-    function recompute() {
-      const uid = uidRef.current
-      if (!uid) return
+    async function setup() {
+      let uid = uidRef.current
+      if (!uid) {
+        const { data: us } = await supabase.auth.getUser()
+        uid = us?.user?.id ?? null
+        uidRef.current = uid
+      }
+      if (!alive) return
+      if (!uid) { setUnread(0); return }
       const conv = convRef.current
-      if (!conv) return
-      void supabase.from('messages')
-        .select('id', { count: 'exact', head: true })
-        .eq('conversation_id', conv)
-        .neq('sender_id', uid)
-        .is('read_at', null)
-        .then(({ count }) => { if (alive) setUnread(count ?? 0) })
+      if (!conv) { setUnread(0); return }
+      await recompute(uid)
+
+      // Subscribe only after the current user id is known so we never mistake
+      // our own outbound messages for unread inbound ones.
+      channel = supabase
+        .channel('call-chat-unread')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+          const msg = payload.new as { conversation_id: string; sender_id: string; read_at: string | null }
+          if (!alive || msg.conversation_id !== convRef.current) return
+          if (msg.sender_id === uidRef.current) return
+          if (msg.read_at) { void recompute(); return }
+          setUnread((c) => Math.min(c + 1, 99))
+        })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, (payload) => {
+          const msg = payload.new as { conversation_id: string; sender_id: string; read_at: string | null }
+          const old = payload.old as { read_at?: string | null } | null
+          if (!alive || msg.conversation_id !== convRef.current) return
+          if (msg.sender_id === uidRef.current) return
+          // Only reconcile when this message actually got read (read_at set).
+          // Ignore incidental delivery-timestamp updates so the badge doesn't
+          // flash back to a stale count.
+          if (old && !old.read_at && msg.read_at) void recompute()
+        })
+        .subscribe()
     }
 
-    void load()
-    channel = supabase
-      .channel('call-chat-unread')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
-        const msg = payload.new as { conversation_id: string; sender_id: string; read_at: string | null }
-        if (!alive || msg.conversation_id !== convRef.current) return
-        if (msg.sender_id === uidRef.current) return
-        // New inbound message → accumulate (1, 2, 3…). Explicitly skip resetting
-        // on INSERT so the badge grows instead of flashing back to 1.
-        if (msg.read_at) { recompute(); return }
-        setUnread((c) => Math.min(c + 1, 99))
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, (payload) => {
-        const msg = payload.new as { conversation_id: string; sender_id: string; read_at: string | null }
-        if (!alive || msg.conversation_id !== convRef.current) return
-        if (msg.sender_id === uidRef.current) return
-        // A message became read (or a delivery timestamp changed) — reconcile.
-        recompute()
-      })
-      .subscribe()
+    void setup()
     return () => { alive = false; channel?.unsubscribe() }
   }, [conversationId])
 
@@ -315,8 +314,11 @@ export function CallOverlay(props: {
   // ── Active call ───────────────────────────────────────────────────────
   if (status === 'active') {
     const showChat = chatOpen && !!conversationId
-    const remoteHasVideo = (remoteStream?.getVideoTracks() ?? []).length > 0
-    const localHasVideo = (localStream?.getVideoTracks() ?? []).length > 0
+    // Only treat the remote as having video if at least one live (not ended)
+    // video track is present — so when the other person turns their camera
+    // off mid-call we fall back to the avatar/profile instead of a frozen frame.
+    const remoteHasVideo = (remoteStream?.getVideoTracks().filter((t) => t.readyState !== 'ended') ?? []).length > 0
+    const localHasVideo = (localStream?.getVideoTracks().filter((t) => t.readyState !== 'ended') ?? []).length > 0
     const videoCall = remoteHasVideo || (videoEnabled && localHasVideo)
 
     // WhatsApp-style minimized floating call window — movable by dragging the
