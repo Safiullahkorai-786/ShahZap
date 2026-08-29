@@ -34,17 +34,15 @@ export function CallOverlay(props: {
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null)
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null)
 
-  // Attach local preview whenever the local stream (re)appears; release it when
-  // the call ends so the browser's camera/mic indicator turns off.
+  // Attach local preview whenever the local stream (re)appears.
   useEffect(() => {
     const v = localVideoRef.current
     if (!v) return
-    if (localStream && v.srcObject !== localStream) {
-      v.srcObject = localStream
-    } else if (!localStream && v.srcObject) {
-      v.pause()
-      v.srcObject = null
-    }
+    if (localStream && v.srcObject !== localStream) v.srcObject = localStream
+    else if (!localStream && v.srcObject) { v.pause(); v.srcObject = null }
+    // Clear srcObject on unmount so mobile browsers release the capture
+    // device even if the call ends by closing/tearing down the overlay.
+    return () => { if (v) { v.pause(); v.srcObject = null } }
   }, [status, mode, localStream])
 
   // Attach remote video/audio whenever the remote stream (re)appears, so a
@@ -59,6 +57,10 @@ export function CallOverlay(props: {
     } else {
       if (rv && rv.srcObject) { rv.pause(); rv.srcObject = null }
       if (ra && ra.srcObject) { ra.pause(); ra.srcObject = null }
+    }
+    return () => {
+      if (rv) { rv.pause(); rv.srcObject = null }
+      if (ra) { ra.pause(); ra.srcObject = null }
     }
   }, [status, mode, remoteStream])
 
