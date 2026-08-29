@@ -6,7 +6,7 @@
 
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, MessageCircle, Minimize2, Maximize2 } from 'lucide-react'
+import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, MessageCircle, Minimize2, Maximize2, User } from 'lucide-react'
 import { CallChatPanel } from '@/components/call-chat-panel'
 import { createClient } from '@/lib/supabase/client'
 
@@ -197,6 +197,29 @@ export function CallOverlay(props: {
   }
   function onPipPointerUp() { dragRef.current = null }
 
+  // WhatsApp-style self/remote swap: tapping the small preview card swaps what
+  // is shown big (remote) vs. small (self). The small card is also draggable.
+  const [previewSwapped, setPreviewSwapped] = useState(false)
+  const [prevPos, setPrevPos] = useState<{ x: number; y: number } | null>(null)
+  const prevDragRef = useRef<{ dx: number; dy: number } | null>(null)
+  const prevW = 96
+  const prevH = 136
+  function onPrevPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
+    const left = prevPos ? prevPos.x : e.currentTarget.getBoundingClientRect().left
+    const top = prevPos ? prevPos.y : e.currentTarget.getBoundingClientRect().top
+    prevDragRef.current = { dx: e.clientX - left, dy: e.clientY - top }
+    e.currentTarget.setPointerCapture?.(e.pointerId)
+  }
+  function onPrevPointerMove(e: ReactPointerEvent<HTMLDivElement>) {
+    if (!prevDragRef.current) return
+    let x = e.clientX - prevDragRef.current.dx
+    let y = e.clientY - prevDragRef.current.dy
+    x = Math.max(4, Math.min(window.innerWidth - prevW - 4, x))
+    y = Math.max(4, Math.min(window.innerHeight - prevH - 4, y))
+    setPrevPos({ x, y })
+  }
+  function onPrevPointerUp() { prevDragRef.current = null }
+
   // When the user navigates away from the call's conversation (e.g. browser
   // back) while in a full-screen call, auto-minimize to the floating window so
   // they can keep roaming the site with the call still running. This only fires
@@ -243,7 +266,7 @@ export function CallOverlay(props: {
     // Clear srcObject on unmount so mobile browsers release the capture
     // device even if the call ends by closing/tearing down the overlay.
     return () => { if (v) { v.pause(); v.srcObject = null } }
-  }, [status, mode, localStream, minimized])
+  }, [status, mode, localStream, minimized, previewSwapped])
 
   // Attach remote video/audio whenever the remote stream (re)appears, so a
   // track arriving a beat after the UI is shown still lights up the feed.
@@ -262,7 +285,7 @@ export function CallOverlay(props: {
       if (rv) { rv.pause(); rv.srcObject = null }
       if (ra) { ra.pause(); ra.srcObject = null }
     }
-  }, [status, mode, remoteStream, minimized])
+  }, [status, mode, remoteStream, minimized, previewSwapped])
 
   if (!open) return null
 
@@ -327,7 +350,14 @@ export function CallOverlay(props: {
     // off mid-call we fall back to the avatar/profile instead of a frozen frame.
     const remoteHasVideo = (remoteStream?.getVideoTracks().filter((t) => t.readyState !== 'ended') ?? []).length > 0
     const localHasVideo = (localStream?.getVideoTracks().filter((t) => t.readyState !== 'ended') ?? []).length > 0
-    const videoCall = remoteHasVideo || (videoEnabled && localHasVideo)
+    const selfCamOn = videoEnabled && localHasVideo
+    const videoCall = remoteHasVideo || selfCamOn
+
+    // WhatsApp-style swap: previewSwapped exchanges which person is big (main)
+    // vs. small (preview). Default: other person big, self small.
+    const mainIsSelf = previewSwapped
+    const showMainVideo = mainIsSelf ? selfCamOn : remoteHasVideo
+    const showPrevVideo = mainIsSelf ? remoteHasVideo : selfCamOn
 
     // WhatsApp-style minimized floating call window — movable by dragging the
     // video, double-click to cycle size (small -> double -> double -> back to
@@ -387,18 +417,23 @@ export function CallOverlay(props: {
           className={`relative flex h-full flex-col overflow-hidden ${showChat ? 'flex-1' : 'w-full'}`}
           onMouseMove={wake}
         >
-          {/* Remote video (full screen) or avatar for audio; tap toggles controls */}
+          {/* Main content — other person by default, self after tapping the
+              preview (WhatsApp-style swap). Tap toggles the controls. */}
           <div className="relative min-h-0 flex-1 cursor-default" onClick={toggleOnTap}>
-            {remoteHasVideo ? (
+            {showMainVideo ? (
               <div className="relative h-full w-full">
-                <video ref={remoteVideoRef} autoPlay playsInline muted={false} className="h-full w-full object-cover" />
-                {/* Themed active-call indicator + remote mic status on the video */}
+                <video
+                  ref={mainIsSelf ? localVideoRef : remoteVideoRef}
+                  autoPlay playsInline muted={mainIsSelf}
+                  className="h-full w-full object-cover"
+                />
+                {/* Themed active-call indicator + mic status on the video */}
                 <span aria-hidden className="absolute left-3 top-3 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold text-white backdrop-blur"
                   style={{ background: 'var(--a1, rgba(34,211,238,.9))' }}>
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-slate-950" />
                   Active
                 </span>
-                {remoteMuted && (
+                {!mainIsSelf && remoteMuted && (
                   <span className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-red-500 text-white shadow-lg">
                     <MicOff size={20} />
                   </span>
@@ -407,34 +442,49 @@ export function CallOverlay(props: {
             ) : (
               <div className="flex h-full items-center justify-center bg-slate-950">
                 <div className="flex flex-col items-center">
-                  {/* Active call ring + remote mic status, themed with the accent */}
+                  {/* Active call ring + mic status, themed with the accent */}
                   <div className="relative">
-                    <span aria-hidden className={`absolute -inset-2 rounded-full opacity-70 ${remoteMuted ? 'bg-red-500/20' : ''}`} style={{ boxShadow: `0 0 0 3px var(--a1, #22d3ee), 0 0 35px var(--a1, #22d3ee)` }} />
+                    <span aria-hidden className={`absolute -inset-2 rounded-full opacity-70 ${!mainIsSelf && remoteMuted ? 'bg-red-500/20' : ''}`} style={{ boxShadow: `0 0 0 3px var(--a1, #22d3ee), 0 0 35px var(--a1, #22d3ee)` }} />
                     <div className="flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-violet-500 text-5xl font-bold">
-                      {otherName?.[0]?.toUpperCase() ?? '?'}
+                      {mainIsSelf ? <User size={44} /> : (otherName?.[0]?.toUpperCase() ?? '?')}
                     </div>
-                    {remoteMuted && (
+                    {!mainIsSelf && remoteMuted && (
                       <span className="absolute -bottom-1 -right-1 flex h-9 w-9 items-center justify-center rounded-full bg-red-500 text-white shadow-lg">
                         <MicOff size={18} />
                       </span>
                     )}
                   </div>
-                  <p className="mt-5 text-lg font-semibold">{otherName}</p>
+                  <p className="mt-5 text-lg font-semibold">{mainIsSelf ? 'You' : otherName}</p>
                   <p className="flex items-center gap-2 text-sm text-slate-400">
                     <span className="h-2 w-2 animate-pulse rounded-full" style={{ background: 'var(--a1, #22d3ee)' }} />
-                    {remoteMuted ? 'Mic muted' : 'On a ' + (videoCall ? 'video' : 'voice') + ' call'}
+                    {!mainIsSelf && remoteMuted ? 'Mic muted' : 'On a ' + (videoCall ? 'video' : 'voice') + ' call'}
                   </p>
                 </div>
               </div>
             )}
 
-            {/* Local preview (PiP) — always shown; shows the avatar when camera is off */}
-            <div className="absolute right-3 top-3 z-10 h-36 w-24 overflow-hidden rounded-2xl border-2 border-white/20 shadow-lg sm:h-44 sm:w-32">
-              {videoEnabled && localHasVideo ? (
-                <video ref={localVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+            {/* Small preview card — draggable; shows the other person after a
+                swap. Tap it to swap who is shown big vs. small. */}
+            <div
+              onPointerDown={onPrevPointerDown}
+              onPointerMove={onPrevPointerMove}
+              onPointerUp={onPrevPointerUp}
+              onDoubleClick={() => setPreviewSwapped((v) => !v)}
+              onClick={(e) => { e.stopPropagation(); setPreviewSwapped((v) => !v) }}
+              style={prevPos ? { left: prevPos.x, top: prevPos.y } : undefined}
+              className={`absolute right-3 top-3 z-10 h-[136px] w-24 cursor-grab touch-none overflow-hidden rounded-2xl border-2 border-white/20 shadow-lg active:cursor-grabbing ${
+                prevPos ? '' : ''
+              }`}
+            >
+              {showPrevVideo ? (
+                <video
+                  ref={mainIsSelf ? remoteVideoRef : localVideoRef}
+                  autoPlay playsInline muted
+                  className="h-full w-full object-cover"
+                />
               ) : (
                 <div className="flex h-full w-full items-center justify-center bg-slate-800">
-                  <span className="text-4xl font-bold text-slate-200">You</span>
+                  <span className="text-4xl font-bold text-slate-200">{mainIsSelf ? (otherName?.[0]?.toUpperCase() ?? '?') : <User size={28} />}</span>
                 </div>
               )}
             </div>
