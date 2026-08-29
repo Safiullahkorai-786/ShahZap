@@ -11,6 +11,7 @@ import { friendlyError } from '@/lib/errors'
 import { getBotPersona, isBotProfile } from '@/lib/bot'
 import { AdsterraBanner } from '@/components/adsterra-banner'
 import { resolveIdentity, type Identity } from '@/lib/identity'
+import { registerChatComposerFocus } from '@/lib/chat-composer-focus'
 import { useSiteActive } from '@/hooks/use-site-active'
 import { Shimmer } from '@/components/shimmer'
 import { RichText } from '@/components/rich-text'
@@ -323,7 +324,6 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
     let lastRealtimeActivity = Date.now()
     let channelStatus = ''
     let smartPollTimer: number | undefined
-    let staleCheckTimer: number | undefined
     let presenceCheckTimer: number | undefined
     const otherRef: { current: OtherProfile | null } = { current: null }
     const otherIdRef: { current: string | null } = { current: null }
@@ -342,9 +342,9 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
     }
 
     // ── Smart fallback polling ───────────────────────────────────────────
-    // Only run when Realtime is down or silent. Saves ~1 200 req/hr.
+    // Poll cadence for the always-on safety net so new messages and read
+    // receipts surface even when Realtime silently misses message INSERTs.
     const SMART_POLL_MS = 5_000
-    const STALE_MS = 30_000
 
     async function pollMessages() {
       if (!active) return
@@ -389,13 +389,6 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
 
     function stopSmartPoll() {
       if (smartPollTimer) { window.clearInterval(smartPollTimer); smartPollTimer = undefined }
-    }
-
-    function checkStaleness() {
-      if (!active || !channelStatus) return
-      if (channelStatus !== 'SUBSCRIBED') { startSmartPoll(); return }
-      if (Date.now() - lastRealtimeActivity > STALE_MS) { startSmartPoll(); return }
-      stopSmartPoll()
     }
 
     async function load() {
@@ -650,15 +643,20 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
         })
 .subscribe((status) => {
           channelStatus = status
-          if (status === 'SUBSCRIBED') {
-            lastRealtimeActivity = Date.now()
-            stopSmartPoll()
-            if (!staleCheckTimer) staleCheckTimer = window.setInterval(checkStaleness, SMART_POLL_MS)
-          } else {
-            startSmartPoll()
-          }
+          lastRealtimeActivity = Date.now()
+          // Keep the fallback poll running no matter what. Relying on the
+          // websocket alone is fragile: this guarantees new messages and
+          // read-receipts always surface.
+          startSmartPoll()
         })
       channelRef.current = channel
+
+      // Always run the polling safety net, independent of subscribe status.
+      // This is essential for the call's side chat panel, whose ChatRoom
+      // shares the singleton Supabase client's channel with the DM page under
+      // the call — there its .subscribe() can be a no-op (its callback never
+      // fires), so this is the only reliable way it picks up new messages.
+      startSmartPoll()
 
       // ── Presence: re-evaluate the online window as time passes. ──
       // last_active_at is kept fresh by the realtime profiles UPDATE handler;
@@ -677,7 +675,6 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
       channelRef.current = null
       if (channel) void supabase.removeChannel(channel)
       if (smartPollTimer) window.clearInterval(smartPollTimer)
-      if (staleCheckTimer) window.clearInterval(staleCheckTimer)
       if (presenceCheckTimer) window.clearInterval(presenceCheckTimer)
       window.clearTimeout(typingStopTimer.current)
       window.clearTimeout(partnerTypingExpiry.current)

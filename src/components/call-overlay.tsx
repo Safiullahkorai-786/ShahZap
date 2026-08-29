@@ -9,6 +9,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, MessageCircle, Minimize2, Maximize2, User } from 'lucide-react'
 import { CallChatPanel } from '@/components/call-chat-panel'
 import { createClient } from '@/lib/supabase/client'
+import { focusChatComposerNow } from '@/lib/chat-composer-focus'
 
 type Status = 'idle' | 'outgoing' | 'incoming' | 'active' | 'ended'
 
@@ -115,8 +116,10 @@ export function CallOverlay(props: {
     if (!conversationId) return
     setChatOpen(false)
     setMinimized(true)
-    // Tell the DM page to focus the composer (and pop the keyboard on mobile)
-    // since the user is opening chat from the call's chat button.
+    // Synchronously focus the (possibly already-mounted) chat composer inside
+    // this same tap gesture — this is what makes iOS reliably pop the keyboard.
+    focusChatComposerNow()
+    // Fallback for a freshly-mounted chat page: tell it to focus the composer.
     try { sessionStorage.setItem('shahzap_call_chat_focus', '1') } catch {}
     router.push(`/chat/${conversationId}`)
   }
