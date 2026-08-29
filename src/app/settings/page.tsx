@@ -387,7 +387,7 @@ export default function SettingsPage() {
               <div className="grid grid-cols-6 gap-2">
                 {durationOptions.map(({ id, label }) => (
                   <button key={String(id)} onClick={() => setNotifDisplay(setNotifDisplayPrefs({ ...notifDisplay, duration: id }))}
-                    className={`rounded-xl border px-2 py-2.5 text-xs font-semibold transition ${notifDisplay.duration === id ? 'border-cyan-400 bg-cyan-400/10 text-cyan-200 ring-1 ring-cyan-400/50' : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-500'}`}>
+                    className={`whitespace-nowrap rounded-xl border px-2 py-2.5 text-xs font-semibold transition ${id === 'never' ? 'col-span-2' : ''} ${notifDisplay.duration === id ? 'border-cyan-400 bg-cyan-400/10 text-cyan-200 ring-1 ring-cyan-400/50' : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-500'}`}>
                     {label}
                   </button>
                 ))}
