@@ -164,7 +164,7 @@ async function areFriends(a: string, b: string): Promise<boolean> {
   }
 }
 
-export function ChatRoom({ conversationId, suppressCalls = false }: { conversationId: string; suppressCalls?: boolean }) {
+export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall = false }: { conversationId: string; suppressCalls?: boolean; markReadInCall?: boolean }) {
   const router = useRouter()
   const { t } = useI18n()
   // In-call mode fills the side panel edge-to-edge instead of the centered
@@ -297,6 +297,11 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
   // reads the latest value.
   const coveringChatRef = useRef(call.coveringChat)
   useEffect(() => { coveringChatRef.current = call.coveringChat }, [call.coveringChat])
+  // When this chat is embedded in the call's side panel (CallChatPanel) the
+  // messages ARE visible beside the call even though the call isn't minimized,
+  // so we must still mark them as read. Kept in a ref for the same reason.
+  const markReadInCallRef = useRef(markReadInCall)
+  useEffect(() => { markReadInCallRef.current = markReadInCall }, [markReadInCall])
 
   // Arriving via a call notification's Answer/Decline action (?answer=1 /
   // ?decline=1) — auto-answer or auto-decline the still-ringing call in the
@@ -692,8 +697,9 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
       // If a full-screen call is covering this chat (not minimized to PiP), the
       // user can't actually see the messages — so don't stamp them as read.
       // They only count as read once the call is minimized/ended and the DM is
-      // actually visible.
-      if (coveringChatRef.current) return
+      // actually visible. Exception: when this room is embedded in the call's
+      // side panel the messages ARE visible beside the call, so mark them read.
+      if (coveringChatRef.current && !markReadInCallRef.current) return
       // 0. Deliver inbound messages FIRST so delivered_at is set before read_at.
       //    This ensures the client sees double-white tick before blue tick.
       await supabase.rpc('sync_deliveries').then(() => {}, () => {})
@@ -759,11 +765,22 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
   // Focus the composer reliably whenever the chat mounts so you can type
   // immediately (the autoFocus attribute is flaky, especially when the chat
   // is embedded in the call panel). On touch devices skip this so the mobile
-  // keyboard doesn't pop up on its own when a call screen or DM is opened.
+  // keyboard doesn't pop up on its own when a call screen or DM is opened —
+  // EXCEPT when the user explicitly opened chat from the call's chat button
+  // (the CallOverlay sets a sessionStorage flag for that): then the keyboard
+  // should appear automatically so they can type right away.
   useEffect(() => {
     if (loading || blockedAny || !userId || persona) return
-    if (typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches) return
-    const id = window.setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 80)
+    const fromCallChat = (() => {
+      if (typeof window === 'undefined') return false
+      try { return sessionStorage.getItem('shahzap_call_chat_focus') === '1' } catch { return false }
+    })()
+    const isTouch = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
+    if (!fromCallChat && isTouch) return
+    if (fromCallChat) {
+      try { sessionStorage.removeItem('shahzap_call_chat_focus') } catch {}
+    }
+    const id = window.setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 120)
     return () => window.clearTimeout(id)
   }, [loading, blockedAny, userId, persona])
 

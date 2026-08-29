@@ -115,6 +115,9 @@ export function CallOverlay(props: {
     if (!conversationId) return
     setChatOpen(false)
     setMinimized(true)
+    // Tell the DM page to focus the composer (and pop the keyboard on mobile)
+    // since the user is opening chat from the call's chat button.
+    try { sessionStorage.setItem('shahzap_call_chat_focus', '1') } catch {}
     router.push(`/chat/${conversationId}`)
   }
 

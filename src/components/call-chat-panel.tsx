@@ -13,7 +13,7 @@ export function CallChatPanel({ conversationId }: {
 }) {
   return (
     <div className="relative h-full w-full overflow-hidden bg-slate-950">
-      <ChatRoom conversationId={conversationId} suppressCalls />
+      <ChatRoom conversationId={conversationId} suppressCalls markReadInCall />
     </div>
   )
 }
