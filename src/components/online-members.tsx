@@ -344,10 +344,12 @@ export default function OnlineMembers({ members: initialMembers, loading: server
               onClick={() => openChat(m.id)}
               className="flex cursor-pointer items-center gap-3 px-1 py-3 transition hover:bg-slate-900/40 sm:px-2">
               {/* Avatar */}
-              <div className="relative h-12 w-12 flex-none overflow-hidden rounded-full bg-gradient-to-br from-cyan-600 to-cyan-400 sm:h-14 sm:w-14">
-                <span className="flex h-full w-full items-center justify-center text-lg font-bold text-white sm:text-xl">
-                  {(m.display_name ?? '?')[0]?.toUpperCase() ?? '?'}
-                </span>
+              <div className="relative flex-none">
+                <div className="h-12 w-12 overflow-hidden rounded-full bg-gradient-to-br from-cyan-600 to-cyan-400 sm:h-14 sm:w-14">
+                  <span className="flex h-full w-full items-center justify-center text-lg font-bold text-white sm:text-xl">
+                    {(m.display_name ?? '?')[0]?.toUpperCase() ?? '?'}
+                  </span>
+                </div>
                 <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-slate-950 bg-emerald-400" />
               </div>
 

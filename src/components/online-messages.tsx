@@ -339,10 +339,12 @@ export default function OnlineMessages({ onUnreadChange }: { onUnreadChange?: (c
           <div key={t.conversationId}
             onClick={() => router.push(`/chat/${t.conversationId}`)}
             className="flex cursor-pointer items-center gap-3 px-1 py-3 transition hover:bg-slate-900/40 sm:px-2">
-            <div className="relative h-12 w-12 flex-none overflow-hidden rounded-full bg-gradient-to-br from-cyan-600 to-cyan-400 sm:h-14 sm:w-14">
-              <span className="flex h-full w-full items-center justify-center text-lg font-bold text-white sm:text-xl">
-                {(t.displayName)[0]?.toUpperCase() ?? '?'}
-              </span>
+            <div className="relative flex-none">
+              <div className="h-12 w-12 overflow-hidden rounded-full bg-gradient-to-br from-cyan-600 to-cyan-400 sm:h-14 sm:w-14">
+                <span className="flex h-full w-full items-center justify-center text-lg font-bold text-white sm:text-xl">
+                  {(t.displayName)[0]?.toUpperCase() ?? '?'}
+                </span>
+              </div>
               <span className={`absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-slate-950 ${t.isOnline ? 'bg-emerald-400' : 'bg-slate-600'}`} />
             </div>
             <div className="min-w-0 flex-1">
