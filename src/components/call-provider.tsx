@@ -52,7 +52,6 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const [userId, setUserId] = useState<string | null>(null)
   const [otherName, setOtherName] = useState('…')
-  const [selfName, setSelfName] = useState('')
   const [callMinimized, setCallMinimized] = useState(false)
   const incomingRef = useRef<CallTarget | null>(null)
 
@@ -99,28 +98,6 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     return () => { active = false }
   }, [engine.target?.otherId])
 
-  // Load the current user's own display name so the local preview card can
-  // mirror the remote info (avatar + name) while the camera is off.
-  useEffect(() => {
-    if (!userId) return
-    let active = true
-    const supabase = createClient()
-    void supabase.from('profiles')
-      .select('display_name,gender,gender_visible')
-      .eq('id', userId)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!active) return
-        if (data) {
-          const id: Identity = resolveIdentity(data as never)
-          setSelfName(id.label === 'Anonymous' ? 'You' : id.label)
-        } else {
-          setSelfName('You')
-        }
-      })
-    return () => { active = false }
-  }, [userId])
-
   // Clear any pending incoming-call notification for a conversation once the
   // caller answers / declines / ends, so it doesn't linger in the bell.
   function resolveCallNotif() {
@@ -162,7 +139,6 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         videoEnabled={engine.videoEnabled}
         error={engine.error}
         otherName={otherName}
-        selfName={selfName}
         conversationId={engine.target?.conversationId}
         localStream={engine.localStream}
         remoteStream={engine.remoteStream}

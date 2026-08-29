@@ -22,7 +22,6 @@ export function CallOverlay(props: {
   videoEnabled: boolean
   error: string
   otherName: string
-  selfName: string
   conversationId?: string
   localStream: MediaStream | null
   remoteStream: MediaStream | null
@@ -34,7 +33,7 @@ export function CallOverlay(props: {
   onMinimizedChange: (minimized: boolean) => void
 }) {
   const {
-    open, status, mode, muted, remoteMuted, remoteVideoOn, videoEnabled, error, otherName, selfName,
+    open, status, mode, muted, remoteMuted, remoteVideoOn, videoEnabled, error, otherName,
     localStream, remoteStream, onAccept, onReject, onEnd, onToggleMute, onToggleVideo,
     conversationId, onMinimizedChange,
   } = props
@@ -458,17 +457,6 @@ export function CallOverlay(props: {
                   autoPlay playsInline muted={mainIsSelf}
                   className="h-full w-full object-cover"
                 />
-                {/* Themed active-call indicator + mic status on the video */}
-                <span aria-hidden className="absolute left-3 top-3 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold text-white backdrop-blur"
-                  style={{ background: 'var(--a1, rgba(34,211,238,.9))' }}>
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-slate-950" />
-                  Active
-                </span>
-                {!mainIsSelf && remoteMuted && (
-                  <span className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-red-500 text-white shadow-lg">
-                    <MicOff size={20} />
-                  </span>
-                )}
               </div>
             ) : (
               <div className="flex h-full items-center justify-center bg-slate-950">
@@ -495,10 +483,16 @@ export function CallOverlay(props: {
             )}
 
             {/* Call duration — top center, always visible during an active call */}
-            <div className="pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2">
+            <div className="pointer-events-none absolute left-1/2 top-3 z-20 flex -translate-x-1/2 flex-col items-center gap-1.5">
               <span className="rounded-full bg-black/55 px-3 py-1 text-sm font-semibold tabular-nums text-white backdrop-blur">
                 {formatCallTime(callSeconds)}
               </span>
+              {!mainIsSelf && remoteMuted && videoCall && (
+                <span className="flex items-center gap-1.5 rounded-full bg-red-500/90 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur">
+                  <MicOff size={13} />
+                  Mic muted
+                </span>
+              )}
             </div>
 
             {/* Small preview card — draggable; shows the other person after a
@@ -522,11 +516,11 @@ export function CallOverlay(props: {
                 />
               ) : (
                 <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-slate-800 px-1.5 py-2">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-violet-500 text-lg font-bold text-white">
-                    {mainIsSelf ? (otherName?.[0]?.toUpperCase() ?? '?') : (selfName?.[0]?.toUpperCase() ?? 'Y')}
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-violet-500 font-bold text-white">
+                    {mainIsSelf ? (otherName?.[0]?.toUpperCase() ?? '?') : <User size={20} />}
                   </div>
                   <span className="max-w-full truncate text-[11px] font-semibold leading-tight text-slate-200">
-                    {mainIsSelf ? (otherName || '…') : (selfName || 'You')}
+                    {mainIsSelf ? (otherName || '…') : 'You'}
                   </span>
                   {mainIsSelf ? (
                     remoteMuted && (
