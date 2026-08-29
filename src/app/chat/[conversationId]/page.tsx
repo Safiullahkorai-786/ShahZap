@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { MoreVertical, Send, UserPlus, ShieldAlert, Ban, Languages, UserCircle2, CornerUpLeft, Pencil, Trash2, X, Check, CheckCheck, ArrowDown, SunMoon, Clock, UserCheck, UserMinus, Smile, SmilePlus, BellRing, Vibrate, VolumeX, Type, ChevronDown, Plus, Minus, Cake, Sparkles, User, Globe, Copy, Image as ImageIcon, Heart } from 'lucide-react'
+import { MoreVertical, Send, UserPlus, ShieldAlert, Ban, Languages, CornerUpLeft, Pencil, Trash2, X, Check, CheckCheck, ArrowDown, SunMoon, Clock, UserCheck, UserMinus, Smile, SmilePlus, BellRing, Vibrate, VolumeX, Type, ChevronDown, Plus, Minus, Cake, Sparkles, User, Globe, Copy, Image as ImageIcon, Heart, Phone, Video } from 'lucide-react'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import { getSoundPrefs, setSoundBundle, setSoundMode, notify, playFriendRequestSound, playMessageSound, playSentSound, playUnfriendSound, type SoundPrefs } from '@/lib/notification-sound'
@@ -17,6 +17,8 @@ import { RichText } from '@/components/rich-text'
 import { EmojiPicker } from '@/components/emoji-picker'
 import { getRegionForCountry, REGION_LABELS, getCountryName } from '@/lib/regions'
 import { ACCENTS, getSelection, applySelection, type Selection } from '@/lib/theme'
+import { useCall } from '@/hooks/use-call'
+import { CallOverlay } from '@/components/call-overlay'
 
 type Reactions = Record<string, string[]> | null
 type Message = {
@@ -248,6 +250,14 @@ export default function ChatPage() {
 
   const persona = getBotPersona(otherId)
   const otherName = persona ? persona.name : other?.display_name || t('profile.userFallback')
+
+  const call = useCall({
+    myId: userId,
+    otherId,
+    conversationId,
+    enabled: !persona && !!userId && !!otherId,
+    ringSound: () => notify('request'),
+  })
 
   useEffect(() => {
     const supabase = createClient()
@@ -1284,7 +1294,26 @@ export default function ChatPage() {
             </span>
           </button>
 
-          <button onClick={() => router.push('/match')} className="mr-1 flex-none rounded-full bg-cyan-400/10 px-4 py-2 text-xs font-bold text-cyan-300 transition hover:bg-cyan-400/20">Next</button>
+          {!persona && (
+            <div className="flex flex-none items-center gap-0.5">
+              <button
+                type="button"
+                aria-label="Start voice call"
+                onClick={() => void call.startCall('audio')}
+                className="flex h-10 w-10 items-center justify-center rounded-full text-emerald-300 transition hover:bg-emerald-400/10 hover:text-emerald-200"
+              >
+                <Phone size={19} />
+              </button>
+              <button
+                type="button"
+                aria-label="Start video call"
+                onClick={() => void call.startCall('video')}
+                className="flex h-10 w-10 items-center justify-center rounded-full text-cyan-300 transition hover:bg-cyan-400/10 hover:text-cyan-200"
+              >
+                <Video size={20} />
+              </button>
+            </div>
+          )}
         </div>
 
         {menuOpen && (
@@ -1466,9 +1495,6 @@ export default function ChatPage() {
               )}
 
               <div className="border-t border-slate-800" />
-              <button onClick={() => { setMenuOpen(false); router.push('/match') }} className="flex w-full items-center gap-3 px-4 py-3 text-sm transition hover:bg-slate-800">
-                <UserCircle2 size={17} className="text-cyan-300" /> Next match
-              </button>
             </div>
           </>
         )}
@@ -1948,6 +1974,25 @@ export default function ChatPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {!persona && (
+        <CallOverlay
+          open={call.status !== 'idle' || !!call.error}
+          status={call.status}
+          mode={call.mode}
+          muted={call.muted}
+          videoEnabled={call.videoEnabled}
+          error={call.error}
+          otherName={otherName}
+          localStream={call.localStream}
+          remoteStream={call.remoteStream}
+          onAccept={() => void call.acceptCall()}
+          onReject={() => call.rejectCall()}
+          onEnd={() => call.endCall()}
+          onToggleMute={() => call.toggleMute()}
+          onToggleVideo={() => call.toggleVideo()}
+        />
       )}
     </main>
   )
