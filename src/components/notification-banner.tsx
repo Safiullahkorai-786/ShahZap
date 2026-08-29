@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { MessageCircle, UserPlus, UserMinus, Ban, Trash2, X, Check } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { resolveIdentity, type Identity } from '@/lib/identity'
@@ -218,10 +218,20 @@ function BannerCard({ item, autoHideMs, acting, onOpen, onAct, onDismiss, compac
 
 export function NotificationBanner() {
   const router = useRouter()
+  const pathname = usePathname()
   const [queue, setQueue] = useState<BannerItem[]>([])
   const [prefs, setPrefs] = useState<BannerStackMode | null>(null)
   const [actingOn, setActingOn] = useState<string | null>(null)
   const userIdRef = useRef<string | null>(null)
+  const activeConversationRef = useRef<string | null>(null)
+
+  // Track which chat is currently open so the realtime listener can suppress
+  // message banners for the conversation the user is already viewing.
+  useEffect(() => {
+    const m = /^\/chat\/([^/]+)/.exec(pathname)
+    activeConversationRef.current = m ? decodeURIComponent(m[1]) : null
+  }, [pathname])
+
 
   // Reflect display-preference changes (Settings) live.
   useEffect(() => {
@@ -309,6 +319,14 @@ export function NotificationBanner() {
             if (!cat) return
             if (!getNotifPrefs()[cat]) return
 
+            // Don't interrupt the user with a banner for the chat they're
+            // currently viewing — that message already shows inline there.
+            if (
+              row.kind === 'message' &&
+              row.conversation_id &&
+              row.conversation_id === activeConversationRef.current
+            ) return
+
             let identity: Identity = { label: 'Someone', colorClass: 'text-slate-300' }
             if (row.from_user_id) {
               const { data: p } = await supabase.from('profiles')
@@ -345,22 +363,33 @@ export function NotificationBanner() {
     }
   }, [])
 
-  if (queue.length === 0) return null
-
   const display = getNotifDisplayPrefs()
   const autoHideMs = durationToMs(display.duration)
   const stack = prefs ?? display.stack
 
+  // Never show a message banner for the conversation the user is currently
+  // viewing (it's already visible inline in that chat).
+  // Never show a message banner for the conversation the user is currently
+  // viewing (it's already visible inline in that chat). pathname is reactive
+  // so this stays up to date as the user navigates between chats.
+  const chatMatch = /^\/chat\/([^/]+)/.exec(pathname)
+  const activeConv = chatMatch ? decodeURIComponent(chatMatch[1]) : null
+  const filtered = activeConv
+    ? queue.filter((x) => !(x.kind === 'message' && x.href === `/chat/${activeConv}`))
+    : queue
+
+  if (filtered.length === 0) return null
+
   // Which banners are visible and their vertical order.
   let visible: BannerItem[] = []
   if (stack === 'single') {
-    visible = [queue[0]]
+    visible = [filtered[0]]
   } else if (stack === 'stack-new-top') {
     // Newest on top; cap how many pile up.
-    visible = queue.slice(-MAX_VISIBLE_STACK).reverse()
+    visible = filtered.slice(-MAX_VISIBLE_STACK).reverse()
   } else {
     // stack-new-bottom: newest at the bottom, older ones stay on top.
-    visible = queue.slice(-MAX_VISIBLE_STACK)
+    visible = filtered.slice(-MAX_VISIBLE_STACK)
   }
 
   // Compact look when more than one card is showing at once.
