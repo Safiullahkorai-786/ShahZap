@@ -48,16 +48,6 @@ export function CallOverlay(props: {
 
   useEffect(() => () => window.clearTimeout(hideTimer.current), [])
 
-  // Warn before the page actually unloads while a call is active. Browser back
-  // that triggers a full reload (not a soft SPA nav) would otherwise silently
-  // drop the call — this surfaces a "Leave site?" prompt so the user can cancel.
-  useEffect(() => {
-    if (status !== 'active') return
-    const h = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
-    window.addEventListener('beforeunload', h)
-    return () => window.removeEventListener('beforeunload', h)
-  }, [status])
-
   function showControls() {
     setControlsVisible(true)
     window.clearTimeout(hideTimer.current)
@@ -100,15 +90,19 @@ export function CallOverlay(props: {
 
   // When the user navigates away from the call's conversation (e.g. browser
   // back) while in a full-screen call, auto-minimize to the floating window so
-  // they can keep roaming the site with the call still running.
+  // they can keep roaming the site with the call still running. This only fires
+  // on an actual pathname change — not when the user later manually expands the
+  // PiP (that must stay maximized).
+  const lastPathRef = useRef<string | null>(null)
   useEffect(() => {
+    if (lastPathRef.current === pathname) return
+    lastPathRef.current = pathname
     if (status !== 'active') return
-    if (minimized) return
     if (!conversationId) return
     if (pathname && pathname.startsWith(`/chat/${conversationId}`)) return
-    const id = window.setTimeout(minimizePip, 0)
-    return () => window.clearTimeout(id)
-  }, [pathname, status, minimized, conversationId])
+    window.setTimeout(minimizePip, 0)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname])
 
   // Moving the mouse or touching the screen reveals the controls.
   function wake() {
