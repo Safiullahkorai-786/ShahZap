@@ -23,6 +23,10 @@ type CallApi = {
   videoEnabled: boolean
   error: string
   otherName: string
+  // True while an active call is showing full-screen (not minimized to the
+  // floating window). Used by the DM to skip auto read-marking: if the call is
+  // covering the chat, inbound messages must NOT be marked as seen.
+  coveringChat: boolean
   startCall: (mode: CallMode, target: CallTarget) => void
   acceptCall: () => void
   rejectCall: () => void
@@ -46,6 +50,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const [userId, setUserId] = useState<string | null>(null)
   const [otherName, setOtherName] = useState('…')
+  const [callMinimized, setCallMinimized] = useState(false)
   const incomingRef = useRef<CallTarget | null>(null)
 
   useEffect(() => {
@@ -107,6 +112,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     videoEnabled: engine.videoEnabled,
     error: engine.error,
     otherName,
+    coveringChat: engine.status === 'active' && !callMinimized,
     startCall: (mode, target) => void engine.startCall(mode, target),
     acceptCall: () => void engine.acceptCall(),
     rejectCall: () => void engine.rejectCall(),
@@ -130,6 +136,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         conversationId={engine.target?.conversationId}
         localStream={engine.localStream}
         remoteStream={engine.remoteStream}
+        onMinimizedChange={setCallMinimized}
         onAccept={() => {
           const t = incomingRef.current
           resolveCallNotif()

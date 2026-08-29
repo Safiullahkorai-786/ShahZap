@@ -28,11 +28,12 @@ export function CallOverlay(props: {
   onEnd: () => void
   onToggleMute: () => void
   onToggleVideo: () => void
+  onMinimizedChange: (minimized: boolean) => void
 }) {
   const {
     open, status, mode, muted, videoEnabled, error, otherName,
     localStream, remoteStream, onAccept, onReject, onEnd, onToggleMute, onToggleVideo,
-    conversationId,
+    conversationId, onMinimizedChange,
   } = props
 
   const [chatOpen, setChatOpen] = useState(false)
@@ -172,6 +173,12 @@ export function CallOverlay(props: {
     if (unread > prevUnreadRef.current) showControls()
     prevUnreadRef.current = unread
   }, [unread])
+
+  // Report whether the call is minimized so the DM/other pages know whether the
+  // full-screen call is currently covering the chat (to gate auto read-marking).
+  useEffect(() => {
+    onMinimizedChange(minimized)
+  }, [minimized, onMinimizedChange])
 
   function onPipPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
     const left = pipPos ? pipPos.x : e.currentTarget.getBoundingClientRect().left

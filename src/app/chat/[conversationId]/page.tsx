@@ -265,6 +265,13 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
 
   const call = useCall()
 
+  // Tracks whether a full-screen call currently covers this chat (vs. the
+  // minimized floating window). Used to skip read-marking when the user can't
+  // actually see the messages. Kept in a ref so the read-marking closure always
+  // reads the latest value.
+  const coveringChatRef = useRef(call.coveringChat)
+  useEffect(() => { coveringChatRef.current = call.coveringChat }, [call.coveringChat])
+
   // Arriving via a call notification's Answer/Decline action (?answer=1 /
   // ?decline=1) — auto-answer or auto-decline the still-ringing call in the
   // global call engine, matching the user's chosen action.
@@ -656,6 +663,11 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
 
     async function mark() {
       const supabase = createClient()
+      // If a full-screen call is covering this chat (not minimized to PiP), the
+      // user can't actually see the messages — so don't stamp them as read.
+      // They only count as read once the call is minimized/ended and the DM is
+      // actually visible.
+      if (coveringChatRef.current) return
       // 0. Deliver inbound messages FIRST so delivered_at is set before read_at.
       //    This ensures the client sees double-white tick before blue tick.
       await supabase.rpc('sync_deliveries').then(() => {}, () => {})
