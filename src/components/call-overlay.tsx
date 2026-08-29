@@ -17,6 +17,7 @@ export function CallOverlay(props: {
   status: Status
   mode: 'audio' | 'video'
   muted: boolean
+  remoteMuted: boolean
   videoEnabled: boolean
   error: string
   otherName: string
@@ -31,7 +32,7 @@ export function CallOverlay(props: {
   onMinimizedChange: (minimized: boolean) => void
 }) {
   const {
-    open, status, mode, muted, videoEnabled, error, otherName,
+    open, status, mode, muted, remoteMuted, videoEnabled, error, otherName,
     localStream, remoteStream, onAccept, onReject, onEnd, onToggleMute, onToggleVideo,
     conversationId, onMinimizedChange,
   } = props
@@ -389,25 +390,54 @@ export function CallOverlay(props: {
           {/* Remote video (full screen) or avatar for audio; tap toggles controls */}
           <div className="relative min-h-0 flex-1 cursor-default" onClick={toggleOnTap}>
             {remoteHasVideo ? (
-              <video ref={remoteVideoRef} autoPlay playsInline muted={false} className="h-full w-full object-cover" />
+              <div className="relative h-full w-full">
+                <video ref={remoteVideoRef} autoPlay playsInline muted={false} className="h-full w-full object-cover" />
+                {/* Themed active-call indicator + remote mic status on the video */}
+                <span aria-hidden className="absolute left-3 top-3 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold text-white backdrop-blur"
+                  style={{ background: 'var(--a1, rgba(34,211,238,.9))' }}>
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-slate-950" />
+                  Active
+                </span>
+                {remoteMuted && (
+                  <span className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-red-500 text-white shadow-lg">
+                    <MicOff size={20} />
+                  </span>
+                )}
+              </div>
             ) : (
               <div className="flex h-full items-center justify-center bg-slate-950">
                 <div className="flex flex-col items-center">
-                  <div className="flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-violet-500 text-5xl font-bold">
-                    {otherName?.[0]?.toUpperCase() ?? '?'}
+                  {/* Active call ring + remote mic status, themed with the accent */}
+                  <div className="relative">
+                    <span aria-hidden className={`absolute -inset-2 rounded-full opacity-70 ${remoteMuted ? 'bg-red-500/20' : ''}`} style={{ boxShadow: `0 0 0 3px var(--a1, #22d3ee), 0 0 35px var(--a1, #22d3ee)` }} />
+                    <div className="flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-violet-500 text-5xl font-bold">
+                      {otherName?.[0]?.toUpperCase() ?? '?'}
+                    </div>
+                    {remoteMuted && (
+                      <span className="absolute -bottom-1 -right-1 flex h-9 w-9 items-center justify-center rounded-full bg-red-500 text-white shadow-lg">
+                        <MicOff size={18} />
+                      </span>
+                    )}
                   </div>
-                  <p className="mt-4 text-lg font-semibold">{otherName}</p>
-                  <p className="text-sm text-slate-400">On a {videoCall ? 'video' : 'voice'} call</p>
+                  <p className="mt-5 text-lg font-semibold">{otherName}</p>
+                  <p className="flex items-center gap-2 text-sm text-slate-400">
+                    <span className="h-2 w-2 animate-pulse rounded-full" style={{ background: 'var(--a1, #22d3ee)' }} />
+                    {remoteMuted ? 'Mic muted' : 'On a ' + (videoCall ? 'video' : 'voice') + ' call'}
+                  </p>
                 </div>
               </div>
             )}
 
-            {/* Local preview (PiP) for video */}
-            {videoEnabled && localHasVideo && (
-              <div className="absolute right-3 top-3 z-10 h-36 w-24 overflow-hidden rounded-2xl border-2 border-white/20 shadow-lg sm:h-44 sm:w-32">
+            {/* Local preview (PiP) — always shown; shows the avatar when camera is off */}
+            <div className="absolute right-3 top-3 z-10 h-36 w-24 overflow-hidden rounded-2xl border-2 border-white/20 shadow-lg sm:h-44 sm:w-32">
+              {videoEnabled && localHasVideo ? (
                 <video ref={localVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
-              </div>
-            )}
+              ) : (
+                <div className="flex h-full w-full items-center justify-center bg-slate-800">
+                  <span className="text-4xl font-bold text-slate-200">You</span>
+                </div>
+              )}
+            </div>
 
             {error && (
               <p className="absolute inset-x-0 top-20 z-10 mx-4 rounded-xl bg-red-950/70 px-4 py-2 text-center text-sm text-red-200">{error}</p>

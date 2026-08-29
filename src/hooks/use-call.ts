@@ -43,6 +43,7 @@ export function useCallEngine(opts: {
   const [status, setStatus] = useState<CallStatus>('idle')
   const [mode, setMode] = useState<CallMode>('audio')
   const [muted, setMuted] = useState(false)
+  const [remoteMuted, setRemoteMuted] = useState(false)
   const [videoEnabled, setVideoEnabled] = useState(true)
   const [error, setError] = useState('')
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
@@ -161,6 +162,11 @@ export function useCallEngine(opts: {
         }
         break
       }
+      case 'mute': {
+        if (sig.token !== tokenRef.current) return
+        setRemoteMuted(sig.muted)
+        break
+      }
       default:
         break
     }
@@ -226,6 +232,7 @@ export function useCallEngine(opts: {
     tokenRef.current = null
     setVideoEnabled(true)
     setMuted(false)
+    setRemoteMuted(false)
   }
 
   function createPeer(): RTCPeerConnection {
@@ -409,11 +416,14 @@ export function useCallEngine(opts: {
 
   const toggleMute = useCallback(() => {
     if (!localStreamRef.current) return
-    setMuted((m) => {
-      const next = !m
-      localStreamRef.current!.getAudioTracks().forEach((tk) => { tk.enabled = !next })
-      return next
-    })
+    const audioTracks = localStreamRef.current.getAudioTracks()
+    const currentlyMuted = audioTracks.length === 0 || audioTracks.every((tk) => !tk.enabled)
+    const next = !currentlyMuted
+    audioTracks.forEach((tk) => { tk.enabled = !next })
+    setMuted(next)
+    // Tell the other person whether we're muted so they can see it on their
+    // side (e.g. a "mic off" indicator next to our video/avatar).
+    send({ type: 'mute', muted: next, token: tokenRef.current ?? '' })
   }, [])
 
   const toggleVideo = useCallback(async () => {
@@ -499,6 +509,7 @@ export function useCallEngine(opts: {
     status,
     mode,
     muted,
+    remoteMuted,
     videoEnabled,
     error,
     localStream,
