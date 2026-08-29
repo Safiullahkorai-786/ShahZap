@@ -1317,21 +1317,22 @@ export default function ChatPage() {
                 type="button"
                 aria-label="Start video call"
                 onClick={() => void call.startCall('video')}
-                className="flex h-10 w-10 items-center justify-center rounded-full text-cyan-300 transition hover:bg-cyan-400/10 hover:text-cyan-200"
+                className="flex h-11 w-11 items-center justify-center rounded-full text-[var(--a2,#38bdf8)] transition hover:bg-cyan-400/10 hover:text-[var(--a1,#7dd3fc)]"
               >
-                <Video size={20} />
+                <Video size={24} />
               </button>
             </div>
           ) : entry === 'match' ? (
-            <button onClick={() => router.push('/match')} className="mr-1 flex-none rounded-full bg-cyan-400/10 px-4 py-2 text-xs font-bold text-cyan-300 transition hover:bg-cyan-400/20">Next</button>
+            <button onClick={() => router.push('/match')} className="mr-1 flex flex-none items-center gap-1.5 rounded-full bg-cyan-400/10 px-4 py-2 text-xs font-bold text-cyan-300 transition hover:bg-cyan-400/20">Next</button>
           ) : (
             <button
               type="button"
               aria-label="Back"
               onClick={() => (entry === 'online' ? router.push('/online') : router.back())}
-              className="flex h-10 w-10 flex-none items-center justify-center rounded-full text-slate-300 transition hover:bg-slate-800 hover:text-white"
+              className="mr-1 flex flex-none items-center gap-1.5 rounded-full bg-slate-700/30 px-4 py-2 text-xs font-bold text-slate-200 transition hover:bg-slate-700/50 hover:text-white"
             >
-              <ArrowLeft size={20} />
+              <ArrowLeft size={16} />
+              Back
             </button>
           )}
         </div>
