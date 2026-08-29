@@ -138,11 +138,9 @@ async function areFriends(a: string, b: string): Promise<boolean> {
   }
 }
 
-export default function ChatPage() {
-  const params = useParams<{ conversationId: string }>()
+export function ChatRoom({ conversationId, suppressCalls = false }: { conversationId: string; suppressCalls?: boolean }) {
   const router = useRouter()
   const { t } = useI18n()
-  const conversationId = params.conversationId
 
   const [messages, setMessages] = useState<Message[]>([])
   const [text, setText] = useState('')
@@ -1312,17 +1310,21 @@ export default function ChatPage() {
             <div className="flex flex-none items-center gap-0.5">
               <button
                 type="button"
-                aria-label="Start voice call"
+                aria-label={suppressCalls ? 'Already in a call' : 'Start voice call'}
+                title={suppressCalls ? 'Already in a call' : undefined}
+                disabled={suppressCalls}
                 onClick={() => otherId && void call.startCall('audio', { conversationId, otherId })}
-                className="flex h-11 w-11 items-center justify-center rounded-full text-[var(--a1,#7dd3fc)] transition hover:bg-cyan-400/10 hover:text-[var(--a2,#38bdf8)]"
+                className={`flex h-11 w-11 items-center justify-center rounded-full text-[var(--a1,#7dd3fc)] transition ${suppressCalls ? 'cursor-not-allowed text-slate-500 opacity-50' : 'hover:bg-cyan-400/10 hover:text-[var(--a2,#38bdf8)]'}`}
               >
                 <Phone size={24} />
               </button>
               <button
                 type="button"
-                aria-label="Start video call"
+                aria-label={suppressCalls ? 'Already in a call' : 'Start video call'}
+                title={suppressCalls ? 'Already in a call' : undefined}
+                disabled={suppressCalls}
                 onClick={() => otherId && void call.startCall('video', { conversationId, otherId })}
-                className="flex h-11 w-11 items-center justify-center rounded-full text-[var(--a2,#38bdf8)] transition hover:bg-cyan-400/10 hover:text-[var(--a1,#7dd3fc)]"
+                className={`flex h-11 w-11 items-center justify-center rounded-full text-[var(--a2,#38bdf8)] transition ${suppressCalls ? 'cursor-not-allowed text-slate-500 opacity-50' : 'hover:bg-cyan-400/10 hover:text-[var(--a1,#7dd3fc)]'}`}
               >
                 <Video size={24} />
               </button>
@@ -2003,4 +2005,10 @@ export default function ChatPage() {
       )}
     </main>
   )
+}
+
+export default function ChatPage() {
+  const params = useParams<{ conversationId: string }>()
+  const conversationId = params.conversationId ?? ''
+  return <ChatRoom conversationId={conversationId} />
 }
