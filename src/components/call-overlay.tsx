@@ -356,7 +356,7 @@ export function CallOverlay(props: {
         {/* Chat panel — WhatsApp Web style, right-hand side, desktop only */}
         {showChat && conversationId && (
           <div className="hidden h-full w-[26rem] shrink-0 lg:block">
-            <CallChatPanel conversationId={conversationId} otherName={otherName} onClose={() => setChatOpen(false)} />
+            <CallChatPanel conversationId={conversationId} />
           </div>
         )}
       </div>
