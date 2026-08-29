@@ -596,7 +596,7 @@ export function CallOverlay(props: {
                   }`}
                 >
                   <MessageCircle size={26} />
-                  {unread > 0 && (
+                  {!chatOpen && unread > 0 && (
                     <span className="pointer-events-none absolute -right-1 -top-1 flex h-6 min-w-[1.5rem] items-center justify-center rounded-full px-1.5 text-xs font-bold text-slate-950 shadow" style={{ background: 'var(--a1, #e5e7eb)' }}>
                       {unread > 99 ? '99+' : unread}
                     </span>
