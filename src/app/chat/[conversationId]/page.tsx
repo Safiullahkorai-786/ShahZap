@@ -141,6 +141,9 @@ async function areFriends(a: string, b: string): Promise<boolean> {
 export function ChatRoom({ conversationId, suppressCalls = false }: { conversationId: string; suppressCalls?: boolean }) {
   const router = useRouter()
   const { t } = useI18n()
+  // In-call mode fills the side panel edge-to-edge instead of the centered
+  // page column, and keeps the wallpaper confined to the panel.
+  const col = suppressCalls ? 'max-w-none' : 'max-w-3xl'
 
   const [messages, setMessages] = useState<Message[]>([])
   const [text, setText] = useState('')
@@ -1281,7 +1284,9 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
           height stable while the keyboard is up. Constrained to the
           centered chat column (max-w-3xl) so it only shows behind the
           message area, not the full screen. */}
-      <div aria-hidden className="pointer-events-none fixed left-1/2 top-0 z-0 h-screen w-full max-w-3xl -translate-x-1/2"
+      <div aria-hidden className={suppressCalls
+          ? 'pointer-events-none absolute inset-0 z-0'
+          : 'pointer-events-none fixed left-1/2 top-0 z-0 h-screen w-full max-w-3xl -translate-x-1/2'}
         style={{
           backgroundColor: wallpaper.solid,
           backgroundImage: `linear-gradient(rgba(2,6,23,${wallpaper.dim}), rgba(2,6,23,${wallpaper.dim}))${wallpaper.mode === 'wallpaper' ? ', url(/ShahZap_Bg.png)' : ''}`,
@@ -1291,7 +1296,7 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
       />
       {/* ── Header ─────────────────────────────────────────── */}
       <header className="relative z-20 flex-none border-b border-slate-800 bg-slate-900 px-2 py-2.5 backdrop-blur">
-        <div className="mx-auto flex max-w-3xl items-center gap-1.5">
+        <div className={`mx-auto flex ${col} items-center gap-1.5`}>
           <button aria-label="More options" onClick={() => setMenuOpen((v) => !v)}
             className="flex h-10 w-10 flex-none items-center justify-center rounded-full text-slate-300 transition hover:bg-slate-800 hover:text-white">
             <MoreVertical size={20} />
@@ -1634,7 +1639,7 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
       )}
 
       {incomingReq && (
-        <div className="relative z-10 mx-auto w-full max-w-3xl px-3 pt-3">
+        <div className={`relative z-10 mx-auto w-full ${col} px-3 pt-3`}>
           <div className="flex items-center gap-3 rounded-2xl border border-cyan-500/40 bg-cyan-950/40 p-3.5 shadow-lg">
             <span className="flex h-9 w-9 flex-none items-center justify-center rounded-xl bg-cyan-400/15 text-cyan-300"><UserPlus size={18} /></span>
             <span className="min-w-0 flex-1 text-sm">
@@ -1658,7 +1663,7 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
       </div>
 
       {(statusLine || blockedByMe) && (
-        <div className="relative z-10 mx-auto w-full max-w-3xl px-3">
+        <div className={`relative z-10 mx-auto w-full ${col} px-3`}>
           <p className={`pt-2 text-xs ${blockedByMe ? 'text-red-300' : 'text-emerald-300'}`}>
             {blockedByMe ? 'You blocked this user. Use the ⋮ menu to unblock.' : statusLine}
           </p>
@@ -1666,7 +1671,7 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
       )}
 
       {/* ── Messages ───────────────────────────────────────── */}
-      <div ref={scrollRef} className="relative z-10 mx-auto min-h-0 w-full max-w-3xl flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-4 text-left">
+      <div ref={scrollRef} className={`relative z-10 mx-auto min-h-0 w-full ${col} flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-4 text-left`}>
         {loading && (
             <div aria-busy="true" className="space-y-3 pt-2">
               {[['62%','justify-end'],['45%','justify-start'],['68%','justify-end'],['40%','justify-start'],['56%','justify-end']].map(([w,side],i)=>(
@@ -1836,12 +1841,12 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
         )}
       </div>
 
-      {error && <p className="mx-auto w-full max-w-3xl px-3 pb-2 text-xs text-red-300">{error}</p>}
+      {error && <p className={`mx-auto w-full ${col} px-3 pb-2 text-xs text-red-300`}>{error}</p>}
 
       {/* ── Composer ───────────────────────────────────────── */}
       <form ref={formRef} onSubmit={send} className="relative z-10 flex-none border-t border-slate-800 bg-slate-900 px-3 pt-2"
         style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
-        <div className="mx-auto max-w-3xl">
+        <div className={`mx-auto ${col}`}>
           {composerQuote && (
             <div className={`mb-2 flex items-center gap-2 rounded-xl border-l-4 p-2.5 ${composerMode === 'edit' ? 'border-amber-400 bg-amber-950/20' : 'border-cyan-400 bg-cyan-950/20'}`}>
               {composerMode === 'edit'
@@ -1952,7 +1957,7 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
       {/* ── Long-press action sheet ────────────────────────── */}
       {actionsMsg && (
         <div className="fixed inset-0 z-30 bg-black/50 backdrop-blur-[2px]" onClick={() => setActionsMsg(null)}>
-          <div className="absolute inset-x-0 bottom-0 mx-auto max-w-3xl rounded-t-3xl border-t border-slate-700 bg-slate-900 p-4 pb-6 shadow-2xl"
+          <div className={`absolute inset-x-0 bottom-0 mx-auto ${col} rounded-t-3xl border-t border-slate-700 bg-slate-900 p-4 pb-6 shadow-2xl`}
             onClick={(e) => e.stopPropagation()}>
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-700" />
             <p className="mb-3 truncate rounded-lg bg-slate-950/70 px-3 py-2 text-xs text-slate-400">
