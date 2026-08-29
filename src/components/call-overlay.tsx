@@ -48,6 +48,16 @@ export function CallOverlay(props: {
 
   useEffect(() => () => window.clearTimeout(hideTimer.current), [])
 
+  // Warn before the page actually unloads while a call is active. Browser back
+  // that triggers a full reload (not a soft SPA nav) would otherwise silently
+  // drop the call — this surfaces a "Leave site?" prompt so the user can cancel.
+  useEffect(() => {
+    if (status !== 'active') return
+    const h = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', h)
+    return () => window.removeEventListener('beforeunload', h)
+  }, [status])
+
   function showControls() {
     setControlsVisible(true)
     window.clearTimeout(hideTimer.current)
@@ -241,14 +251,22 @@ export function CallOverlay(props: {
               {muted ? <MicOff size={11} /> : <Mic size={11} />}
             </span>
           </div>
-          <div className="flex w-12 flex-col items-center justify-center gap-3 bg-slate-900/90 p-1.5">
+          <div className="flex w-14 flex-col items-center justify-center gap-3 bg-slate-900/90 p-1.5">
             <button onClick={expandPip} aria-label="Maximize" title="Maximize"
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-700 text-white transition hover:bg-slate-600">
-              <Maximize2 size={15} />
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-700 text-white transition hover:bg-slate-600">
+              <Maximize2 size={16} />
+            </button>
+            <button onClick={onToggleMute} aria-label={muted ? 'Unmute' : 'Mute'} title={muted ? 'Unmute' : 'Mute'}
+              className={`flex h-10 w-10 items-center justify-center rounded-full text-white transition hover:bg-slate-600 ${muted ? 'bg-red-500 hover:bg-red-400' : 'bg-slate-700'}`}>
+              {muted ? <MicOff size={16} /> : <Mic size={16} />}
+            </button>
+            <button onClick={onToggleVideo} aria-label="Toggle camera" title="Camera"
+              className={`flex h-10 w-10 items-center justify-center rounded-full text-white transition hover:bg-slate-600 ${localHasVideo && videoEnabled ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-600/70'}`}>
+              {localHasVideo && videoEnabled ? <Video size={16} /> : <VideoOff size={16} />}
             </button>
             <button onClick={onEnd} aria-label="End call" title="End call"
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-red-500 text-white transition hover:bg-red-400">
-              <PhoneOff size={15} />
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500 text-white transition hover:bg-red-400">
+              <PhoneOff size={16} />
             </button>
           </div>
           <audio ref={remoteAudioRef} autoPlay playsInline hidden />
