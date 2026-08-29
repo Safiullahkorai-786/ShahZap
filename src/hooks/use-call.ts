@@ -4,6 +4,13 @@
 // signaling bus (SDP offer/answer + ICE candidates). Once connected, all
 // audio/video streams go device-to-device over an encrypted (DTLS-SRTP)
 // peer connection, so our servers carry ~zero media traffic and cost.
+//
+// Media correctness notes:
+//  - Remote/local streams are surfaced via React STATE, not refs. Each new
+//    inbound track replaces the stream object reference (copying existing
+//    tracks), so the media <video>/<audio> elements re-attach their
+//    `srcObject` and never show a stale "black" feed even when the peer's
+//    camera/audio arrives a moment after the call UI appears.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -30,10 +37,11 @@ export function useCall(opts: {
   const [muted, setMuted] = useState(false)
   const [videoEnabled, setVideoEnabled] = useState(true)
   const [error, setError] = useState('')
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null)
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null)
 
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
-  const remoteStreamRef = useRef<MediaStream | null>(null)
   const chRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null)
   const tokenRef = useRef<string | null>(null)
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([])
@@ -65,12 +73,13 @@ export function useCall(opts: {
       pc.onicecandidate = null
       pc.ontrack = null
       pc.onconnectionstatechange = null
+      pc.ontrack = null
       pc.close()
       pcRef.current = null
     }
-    const ls = localStreamRef.current
-    if (ls) { ls.getTracks().forEach((tk) => tk.stop()); localStreamRef.current = null }
-    if (remoteStreamRef.current) { remoteStreamRef.current.getTracks().forEach((tk) => tk.stop()); remoteStreamRef.current = null }
+    if (localStreamRef.current) { localStreamRef.current.getTracks().forEach((tk) => tk.stop()); localStreamRef.current = null }
+    setLocalStream(null)
+    setRemoteStream(null)
     pendingIceRef.current = []
     pendingOfferRef.current = null
     tokenRef.current = null
@@ -88,14 +97,22 @@ export function useCall(opts: {
     pc.onconnectionstatechange = () => {
       const s = pc.connectionState
       if (s === 'connected') { stopRing(); updateStatus('active') }
-      if (s === 'failed' || s === 'disconnected') { updateStatus('ended'); teardownPeer() }
-      if (s === 'closed') updateStatus('idle')
+      if (s === 'failed' || s === 'disconnected' || s === 'closed') {
+        updateStatus('ended')
+        teardownPeer()
+      }
     }
     pc.ontrack = (ev) => {
-      if (!remoteStreamRef.current) remoteStreamRef.current = new MediaStream()
-      const stream = ev.streams[0]
-      if (stream) stream.getTracks().forEach((tk) => remoteStreamRef.current!.addTrack(tk))
-      else if (ev.track) remoteStreamRef.current.addTrack(ev.track)
+      const incoming = ev.streams[0]
+        ? (ev.streams[0].getTracks() ?? [])
+        : ev.track ? [ev.track] : []
+      if (!incoming.length) return
+      setRemoteStream((prev) => {
+        const next = new MediaStream()
+        if (prev) prev.getTracks().forEach((tk) => next.addTrack(tk))
+        incoming.forEach((tk) => next.addTrack(tk))
+        return next
+      })
       updateStatus('active')
     }
     pcRef.current = pc
@@ -108,9 +125,11 @@ export function useCall(opts: {
         video: mediaMode === 'video',
         audio: true,
       })
+      setLocalStream(localStreamRef.current)
     } else if (mediaMode === 'video' && localStreamRef.current.getVideoTracks().length === 0) {
       const v = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
       v.getVideoTracks().forEach((tk) => localStreamRef.current!.addTrack(tk))
+      setLocalStream(new MediaStream(localStreamRef.current.getTracks()))
     }
     return localStreamRef.current
   }
@@ -308,8 +327,8 @@ export function useCall(opts: {
     muted,
     videoEnabled,
     error,
-    localStream: localStreamRef,
-    remoteStream: remoteStreamRef,
+    localStream,
+    remoteStream,
     startCall,
     acceptCall,
     rejectCall,

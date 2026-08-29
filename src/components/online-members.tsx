@@ -246,7 +246,7 @@ export default function OnlineMembers({ members: initialMembers, loading: server
     const { data, error: rpcError } = await supabase.rpc('start_direct_chat', { p_other_profile_id: memberId })
     setOpeningId(null)
     if (rpcError) { setError(friendlyError(rpcError, 'Could not open the chat. Please try again.')); return }
-    router.push(`/chat/${data as string}`)
+    router.push(`/chat/${data as string}?from=online`)
   }
 
   const filtered = members.filter((m) => {

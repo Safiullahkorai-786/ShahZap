@@ -32,7 +32,7 @@ export function ZapChatButton({
       setBusy(false)
       return
     }
-    router.push(`/chat/${data as string}`)
+    router.push(`/chat/${data as string}?from=bot`)
   }
 
   return (

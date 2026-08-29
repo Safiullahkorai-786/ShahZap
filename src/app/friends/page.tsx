@@ -725,7 +725,7 @@ export default function FriendsPage() {
     setFriends((prev) => prev.map((f) => f.id === profileId ? { ...f, unreadCount: 0, isTyping: false } : f))
 
     setOpeningId(null)
-    router.push(`/chat/${convId}`)
+    router.push(`/chat/${convId}?from=friends`)
   }, [openingId, router])
 
   const incoming = requests.filter((r) => r.status === 'pending' && r.receiver_id === userId)

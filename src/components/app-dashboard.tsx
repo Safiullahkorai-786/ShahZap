@@ -84,7 +84,7 @@ export function AppDashboard({ profile, conversations }: { profile: DashboardPro
             <p className="mt-1 text-xs text-slate-400">{t('home.conversationsHint')}</p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               {conversations!.map((conversation) => (
-                <Link key={conversation.id} href={`/chat/${conversation.id}`} className="group flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900/70 p-4 transition hover:border-cyan-900/60 hover:bg-slate-900">
+                <Link key={conversation.id} href={`/chat/${conversation.id}?from=dashboard`} className="group flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900/70 p-4 transition hover:border-cyan-900/60 hover:bg-slate-900">
                   <span>
                     <span className="block text-sm font-semibold">💬 {t('home.conversation')}</span>
                     <span className="mt-0.5 block text-xs text-slate-500">{t('home.started')} {new Date(conversation.started_at).toLocaleString()}</span>

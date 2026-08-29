@@ -260,7 +260,7 @@ export default function MatchPage() {
   // Auto-enter chat on match
   useEffect(() => {
     if (!matched) return
-    const t = window.setTimeout(() => router.replace(`/chat/${matched.conversationId}`), 900)
+    const t = window.setTimeout(() => router.replace(`/chat/${matched.conversationId}?from=match`), 900)
     return () => window.clearTimeout(t)
   }, [matched, router])
 
@@ -302,7 +302,7 @@ export default function MatchPage() {
               <h1 className="mt-2 text-2xl font-bold">{t('match.found')}</h1>
               <p className="mt-3 text-slate-400">{t('match.opening')}</p>
               <div className="mx-auto mt-8 h-16 w-16 animate-pulse rounded-full border-4 border-cyan-400/50" />
-              <button onClick={() => router.replace(`/chat/${matched.conversationId}`)} className="mt-8 rounded-xl bg-cyan-400 px-8 py-4 font-bold text-slate-950">{t('match.enterNow')}</button>
+              <button onClick={() => router.replace(`/chat/${matched.conversationId}?from=match`)} className="mt-8 rounded-xl bg-cyan-400 px-8 py-4 font-bold text-slate-950">{t('match.enterNow')}</button>
             </>
           ) : (
             <>

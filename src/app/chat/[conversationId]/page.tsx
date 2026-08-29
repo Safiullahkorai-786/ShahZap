@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { MoreVertical, Send, UserPlus, ShieldAlert, Ban, Languages, CornerUpLeft, Pencil, Trash2, X, Check, CheckCheck, ArrowDown, SunMoon, Clock, UserCheck, UserMinus, Smile, SmilePlus, BellRing, Vibrate, VolumeX, Type, ChevronDown, Plus, Minus, Cake, Sparkles, User, Globe, Copy, Image as ImageIcon, Heart, Phone, Video } from 'lucide-react'
+import { MoreVertical, Send, UserPlus, ShieldAlert, Ban, Languages, CornerUpLeft, Pencil, Trash2, X, Check, CheckCheck, ArrowDown, ArrowLeft, SunMoon, Clock, UserCheck, UserMinus, Smile, SmilePlus, BellRing, Vibrate, VolumeX, Type, ChevronDown, Plus, Minus, Cake, Sparkles, User, Globe, Copy, Image as ImageIcon, Heart, Phone, Video } from 'lucide-react'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import { getSoundPrefs, setSoundBundle, setSoundMode, notify, playFriendRequestSound, playMessageSound, playSentSound, playUnfriendSound, type SoundPrefs } from '@/lib/notification-sound'
@@ -251,11 +251,20 @@ export default function ChatPage() {
   const persona = getBotPersona(otherId)
   const otherName = persona ? persona.name : other?.display_name || t('profile.userFallback')
 
+  // Which surface opened this chat: 'match' | 'friends' | 'online' | 'profile'
+  // | 'bot' | 'notification' | 'dashboard' | '' (unknown). Determines whether
+  // the header shows Next (match), a Back button, or call icons (friends only).
+  const [entry] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get('from') ?? '' } catch { return '' }
+  })
+
+  const isFriend = friendState === 'friends'
+
   const call = useCall({
     myId: userId,
     otherId,
     conversationId,
-    enabled: !persona && !!userId && !!otherId,
+    enabled: isFriend && !!userId && !!otherId,
     ringSound: () => notify('request'),
   })
 
@@ -1294,7 +1303,7 @@ export default function ChatPage() {
             </span>
           </button>
 
-          {!persona && (
+          {isFriend ? (
             <div className="flex flex-none items-center gap-0.5">
               <button
                 type="button"
@@ -1313,6 +1322,17 @@ export default function ChatPage() {
                 <Video size={20} />
               </button>
             </div>
+          ) : entry === 'match' ? (
+            <button onClick={() => router.push('/match')} className="mr-1 flex-none rounded-full bg-cyan-400/10 px-4 py-2 text-xs font-bold text-cyan-300 transition hover:bg-cyan-400/20">Next</button>
+          ) : (
+            <button
+              type="button"
+              aria-label="Back"
+              onClick={() => (entry === 'online' ? router.push('/online') : router.back())}
+              className="flex h-10 w-10 flex-none items-center justify-center rounded-full text-slate-300 transition hover:bg-slate-800 hover:text-white"
+            >
+              <ArrowLeft size={20} />
+            </button>
           )}
         </div>
 

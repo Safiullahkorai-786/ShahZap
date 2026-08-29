@@ -17,8 +17,8 @@ export function CallOverlay(props: {
   videoEnabled: boolean
   error: string
   otherName: string
-  localStream: React.MutableRefObject<MediaStream | null>
-  remoteStream: React.MutableRefObject<MediaStream | null>
+  localStream: MediaStream | null
+  remoteStream: MediaStream | null
   onAccept: () => void
   onReject: () => void
   onEnd: () => void
@@ -34,19 +34,20 @@ export function CallOverlay(props: {
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null)
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null)
 
-  // Attach local preview
+  // Attach local preview whenever the local stream (re)appears.
   useEffect(() => {
     const v = localVideoRef.current
-    const s = localStream.current
-    if (v && s && v.srcObject !== s) v.srcObject = s
-  }, [status, mode, videoEnabled, localStream])
+    if (v && localStream && v.srcObject !== localStream) v.srcObject = localStream
+  }, [status, mode, localStream])
 
-  // Attach remote video/audio
+  // Attach remote video/audio whenever the remote stream (re)appears, so a
+  // track arriving a beat after the UI is shown still lights up the feed.
   useEffect(() => {
-    const s = remoteStream.current
-    if (remoteVideoRef.current && s && remoteVideoRef.current.srcObject !== s) remoteVideoRef.current.srcObject = s
-    if (remoteAudioRef.current && s && remoteAudioRef.current.srcObject !== s) remoteAudioRef.current.srcObject = s
-  }, [status, remoteStream])
+    const rv = remoteVideoRef.current
+    const ra = remoteAudioRef.current
+    if (rv && remoteStream && rv.srcObject !== remoteStream) rv.srcObject = remoteStream
+    if (ra && remoteStream && ra.srcObject !== remoteStream) ra.srcObject = remoteStream
+  }, [status, mode, remoteStream])
 
   if (!open) return null
 

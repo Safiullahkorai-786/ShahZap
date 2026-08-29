@@ -337,7 +337,7 @@ export default function OnlineMessages({ onUnreadChange }: { onUnreadChange?: (c
         const identity = resolveIdentity({ display_name: t.displayName, gender: t.gender, gender_visible: t.genderVisible })
         return (
           <div key={t.conversationId}
-            onClick={() => router.push(`/chat/${t.conversationId}`)}
+            onClick={() => router.push(`/chat/${t.conversationId}?from=online`)}
             className="flex cursor-pointer items-center gap-3 px-1 py-3 transition hover:bg-slate-900/40 sm:px-2">
             <div className="relative flex-none">
               <div className="h-12 w-12 overflow-hidden rounded-full bg-gradient-to-br from-cyan-600 to-cyan-400 sm:h-14 sm:w-14">
@@ -371,7 +371,7 @@ export default function OnlineMessages({ onUnreadChange }: { onUnreadChange?: (c
                 {t.unreadCount > 9 ? '9+' : t.unreadCount}
               </span>
             )}
-            <button aria-label="Open chat" onClick={(e) => { e.stopPropagation(); router.push(`/chat/${t.conversationId}`) }}
+            <button aria-label="Open chat" onClick={(e) => { e.stopPropagation(); router.push(`/chat/${t.conversationId}?from=online`) }}
               className="flex h-8 w-8 flex-none items-center justify-center rounded-full border border-slate-700 text-slate-300 transition hover:border-cyan-400 hover:bg-cyan-400/10 hover:text-cyan-200">
               <MessageCircle size={15} />
             </button>

@@ -130,7 +130,7 @@ export default function ProfilePage() {
     const { data, error: e } = await supabase.rpc('start_direct_chat', { p_other_profile_id: id })
     setOpeningChat(false)
     if (e) { setError(friendlyError(e, 'Could not open the chat. Please try again.')); return }
-    router.push(`/chat/${data as string}`)
+    router.push(`/chat/${data as string}?from=profile`)
   }
 
   const REPORT_REASONS = ['harassment', 'spam', 'hate_speech', 'sexual_content', 'scam', 'impersonation', 'underage_concern', 'threatening_behavior', 'other']

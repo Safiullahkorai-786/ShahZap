@@ -313,10 +313,9 @@ export function NotificationBanner() {
     if (status === 'accepted') {
       // Jump straight into the chat with the new friend.
       const { data: convId } = await supabase.rpc('start_direct_chat', { p_other_profile_id: senderId })
-      if (convId) {
-        window.dispatchEvent(new CustomEvent('shahzap:opened-chat', { detail: `/chat/${convId}` }))
-        router.push(`/chat/${convId}`)
-      }
+        if (convId) {
+          router.push(`/chat/${convId}?from=notification`)
+        }
     }
   }
 
