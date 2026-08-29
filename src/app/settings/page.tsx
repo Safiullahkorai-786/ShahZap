@@ -273,16 +273,23 @@ export default function SettingsPage() {
 
   async function togglePush(next: boolean) {
     setPushBusy(true); setPushError(null)
-    const res = next ? await enablePush() : await disablePush()
-    setPushBusy(false)
-    if (res === true) {
-      setPushOn(next)
-    } else if (res === 'unsupported') {
-      setPushError(t('settings.notifications.pushUnsupported'))
-    } else if (res === 'denied') {
-      setPushError(t('settings.notifications.pushDenied'))
-    } else {
+    try {
+      const res = next ? await enablePush() : await disablePush()
+      if (res === true) {
+        setPushOn(next)
+      } else if (res === 'unsupported') {
+        setPushError(t('settings.notifications.pushUnsupported'))
+      } else if (res === 'denied') {
+        setPushError(t('settings.notifications.pushDenied'))
+      } else if (res === 'db') {
+        setPushError(t('settings.notifications.pushError'))
+      } else {
+        setPushError(t('settings.notifications.pushError'))
+      }
+    } catch {
       setPushError(t('settings.notifications.pushError'))
+    } finally {
+      setPushBusy(false)
     }
   }
 
