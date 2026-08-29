@@ -77,6 +77,13 @@ export const en = {
       unfriendHint: 'Alert when someone unfriends you.',
       deleteChat: 'Chat deleted',
       deleteChatHint: 'Alert when someone deletes your chat.',
+      showBanner: 'Banner popups',
+      showBannerHint: 'Show a pop-up banner when a notification arrives. Turning this off still plays sound and updates the bell.',
+      pushEnabled: 'Mobile push notifications',
+      pushEnabledHint: 'Receive notifications on your phone even when ShahZap is closed (via your browser).',
+      pushUnsupported: 'Push notifications are not supported in this browser.',
+      pushDenied: 'Permission was denied. Allow notifications in your browser settings first.',
+      pushError: 'Something went wrong enabling push notifications. Please try again.',
       duration: 'Show duration',
       durationHint: 'How long each banner stays on screen before auto-hiding. "Never" keeps it until you dismiss it.',
       never: 'Never',
@@ -370,6 +377,15 @@ export const ur: Dict = {
       deleteChat: 'چیٹ حذف',
       deleteChatHint: 'الارٹ جب کوئی آپ کی چیٹ حذف کرے۔',
 
+      showBanner: 'بینر پاپ اپ',
+      showBannerHint: 'جب نوٹیفکیشن آئے تو پاپ اپ بینر دکھائیں۔ اسے بند کرنے سے آواز اور گھنٹی پھر بھی چلتی ہیں۔',
+      pushEnabled: 'موبائل پش نوٹیفکیشن',
+      pushEnabledHint: 'شاہ زیپ بند ہونے پر بھی اپنے فون پر نوٹیفکیشن حاصل کریں (براؤزر کے ذریعے)۔',
+
+      pushUnsupported: 'یہ براؤزر پش نوٹیفکیشن کو سپورٹ نہیں کرتا۔',
+      pushDenied: 'اجازت مسترد کر دی گئی۔ پہلے براؤزر کی سیٹنگز میں نوٹیفکیشن کی اجازت دیں۔',
+      pushError: 'پش نوٹیفکیشن فعال کرنے میں کچھ خرابی ہوئی۔ دوبارہ کوشش کریں۔',
+
       duration: 'دکھانے کی مدت',
       durationHint: 'ہر بینر خود بخود چھپنے سے پہلے کتنی دیر سکرین پر رہتا ہے۔ "کبھی نہیں" اُسے آپ کے نظر ہٹانے تک رکھتا ہے۔',
       never: 'کبھی نہیں',
@@ -660,6 +676,15 @@ export const ar: Dict = {
       unfriendHint: 'تنبيه عندما يلغي أحدهم صداقتك.',
       deleteChat: 'حذف المحادثة',
       deleteChatHint: 'تنبيه عندما يحذف أحدهم محادثتك.',
+
+      showBanner: 'لافتات منبثقة',
+      showBannerHint: 'اعرض لافتة منبثقة عند وصول إشعار. إيقاف هذا لا يزال يشغّل الصوت ويحدّث الجرس.',
+      pushEnabled: 'إشعارات الهاتف',
+      pushEnabledHint: 'استقبل إشعارات على هاتفك حتى عند إغلاق شاه زاب (عبر المتصفح).',
+
+      pushUnsupported: 'هذا المتصفح لا يدعم إشعارات الدفع.',
+      pushDenied: 'تم رفض الإذن. اسمح بالإشعارات في إعدادات المتصفح أولاً.',
+      pushError: 'حدث خطأ أثناء تفعيل إشعارات الدفع. حاول مجددًا.',
 
       duration: 'مدة العرض',
       durationHint: 'مدة بقاء كل لافتة على الشاشة قبل أن تختفي تلقائيًا. "أبدًا" تُبقيها حتى ترفضها بنفسك.',
@@ -952,6 +977,15 @@ export const hi: Dict = {
       deleteChat: 'चैट हटाई गई',
       deleteChatHint: 'जब कोई आपकी चैट हटाए तो अलर्ट।',
 
+      showBanner: 'बैनर पॉपअप',
+      showBannerHint: 'जब नोटिफिकेशन आए तो पॉपअप बैनर दिखाएँ। इसे बंद करने पर भी आवाज़ और घंटी काम करती हैं।',
+      pushEnabled: 'मोबाइल पुश नोटिफिकेशन',
+      pushEnabledHint: 'शाहज़ैप बंद होने पर भी अपने फ़ोन पर नोटिफिकेशन पाएँ (ब्राउज़र के ज़रिए)।',
+
+      pushUnsupported: 'यह ब्राउज़र पुश नोटिफिकेशन सपोर्ट नहीं करता।',
+      pushDenied: 'अनुमति अस्वीकार कर दी गई। पहले ब्राउज़र सेटिंग में नोटिफिकेशन की अनुमति दें।',
+      pushError: 'पुश नोटिफिकेशन चालू करने में कुछ गड़बड़ हुई। कृपया फिर कोशिश करें।',
+
       duration: 'दिखाने की अवधि',
       durationHint: 'हर बैनर अपने आप छिपने से पहले कितनी देर स्क्रीन पर रहता है। "कभी नहीं" इसे तब तक रखता है जब तक आप इसे हटाते नहीं।',
       never: 'कभी नहीं',
@@ -1242,6 +1276,15 @@ export const bn: Dict = {
       deleteChat: 'চ্যাট মুছে ফেলা',
       deleteChatHint: 'কেউ আপনার চ্যাট মুছে ফেললে অ্যালার্ট।',
 
+      showBanner: 'ব্যানার পপআপ',
+      showBannerHint: 'নোটিফিকেশন এলে একটি পপআপ ব্যানার দেখান। এটি বন্ধ করলেও শব্দ এবং ঘণ্টা চলবে।',
+      pushEnabled: 'মোবাইল পুশ নোটিফিকেশন',
+      pushEnabledHint: 'শাহজ্যাপ বন্ধ থাকলেও ফোনে নোটিফিকেশন পান (ব্রাউজারের মাধ্যমে)।',
+
+      pushUnsupported: 'এই ব্রাউজারটি পুশ নোটিফিকেশন সাপোর্ট করে না।',
+      pushDenied: 'অনুমতি প্রত্যাখ্যান করা হয়েছে। আগে ব্রাউজার সেটিংসে নোটিফিকেশন অনুমতি দিন।',
+      pushError: 'পুশ নোটিফিকেশন চালু করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।',
+
       duration: 'দেখার সময়কাল',
       durationHint: 'প্রতিটি ব্যানার স্বয়ংক্রিয়ভাবে লুকানোর আগে কতক্ষণ স্ক্রিনে থাকে। "কখনই নয়" এটিকে আপনি বাদ না দেওয়া পর্যন্ত রাখে।',
       never: 'কখনই না',
@@ -1530,6 +1573,15 @@ export const fr: Dict = {
       unfriendHint: 'Alerte quand quelqu’un vous retire comme ami.',
       deleteChat: 'Chat supprimé',
       deleteChatHint: 'Alerte quand quelqu’un supprime votre chat.',
+
+      showBanner: 'Bannières pop-up',
+      showBannerHint: 'Afficher une bannière pop-up quand une notification arrive. Désactiver conserve le son et la cloche.',
+      pushEnabled: 'Notifications push mobiles',
+      pushEnabledHint: 'Recevez des notifications sur votre téléphone même lorsque ShahZap est fermé (via le navigateur).',
+
+      pushUnsupported: 'Ce navigateur ne prend pas en charge les notifications push.',
+      pushDenied: 'Autorisation refusée. Autorisez les notifications dans les paramètres du navigateur.',
+      pushError: 'Une erreur est survenue lors de l\'activation des notifications push. Réessayez.',
 
       duration: 'Durée d\'affichage',
       durationHint: 'Combien de temps chaque bannière reste à l\'écran avant de se masquer automatiquement. « Jamais » la garde jusqu\'à ce que vous la fermiez.',
@@ -1820,6 +1872,15 @@ export const de: Dict = {
       deleteChat: 'Chat gelöscht',
       deleteChatHint: 'Hinweis, wenn jemand Ihren Chat löscht.',
 
+      showBanner: 'Banner-Popups',
+      showBannerHint: 'Beim Eintreffen einer Benachrichtigung ein Pop-up anzeigen. Aus schaltet weiterhin Ton und Glocke.',
+      pushEnabled: 'Mobile Push-Benachrichtigungen',
+      pushEnabledHint: 'Erhalte Benachrichtigungen auf deinem Telefon, auch wenn ShahZap geschlossen ist (über den Browser).',
+
+      pushUnsupported: 'Dieser Browser unterstützt keine Push-Benachrichtigungen.',
+      pushDenied: 'Berechtigung verweigert. Erlauben Sie zuerst Benachrichtigungen in den Browsereinstellungen.',
+      pushError: 'Beim Aktivieren von Push-Benachrichtigungen ist ein Fehler aufgetreten. Bitte erneut versuchen.',
+
       duration: 'Anzeigedauer',
       durationHint: 'Wie lange jede Benachrichtigung sichtbar bleibt, bevor sie automatisch ausgeblendet wird. „Nie“ bleibt sie, bis Sie sie schließen.',
       never: 'Nie',
@@ -2108,6 +2169,15 @@ export const es: Dict = {
       unfriendHint: 'Alerta cuando alguien deja de ser tu amigo.',
       deleteChat: 'Chat eliminado',
       deleteChatHint: 'Alerta cuando alguien elimina tu chat.',
+
+      showBanner: 'Banners emergentes',
+      showBannerHint: 'Mostrar un banner emergente cuando llegue una notificación. Desactivarlo sigue reproduciendo el sonido y la campana.',
+      pushEnabled: 'Notificaciones push móviles',
+      pushEnabledHint: 'Recibe notificaciones en tu teléfono incluso cuando ShahZap está cerrado (a través del navegador).',
+
+      pushUnsupported: 'Este navegador no admite notificaciones push.',
+      pushDenied: 'Permiso denegado. Permite las notificaciones en la configuración del navegador primero.',
+      pushError: 'Ocurrió un error al activar las notificaciones push. Inténtalo de nuevo.',
 
       duration: 'Duración de visualización',
       durationHint: 'Cuánto tiempo permanece cada aviso en pantalla antes de ocultarse solo. «Nunca» lo mantiene hasta que lo cierras.',
@@ -2398,6 +2468,15 @@ export const pt: Dict = {
       deleteChat: 'Chat excluído',
       deleteChatHint: 'Alerta quando alguém exclui seu chat.',
 
+      showBanner: 'Banners pop-up',
+      showBannerHint: 'Mostrar um banner pop-up quando chegar uma notificação. Desativar continua tocando o som e o sino.',
+      pushEnabled: 'Notificações push para celular',
+      pushEnabledHint: 'Receba notificações no seu telefone mesmo com o ShahZap fechado (pelo navegador).',
+
+      pushUnsupported: 'Este navegador não suporta notificações push.',
+      pushDenied: 'Permissão negada. Permita notificações nas configurações do navegador primeiro.',
+      pushError: 'Ocorreu um erro ao ativar as notificações push. Tente novamente.',
+
       duration: 'Duração de exibição',
       durationHint: 'Quanto tempo cada banner fica na tela antes de ocultar automaticamente. "Nunca" o mantém até você fechá-lo.',
       never: 'Nunca',
@@ -2686,6 +2765,15 @@ export const id: Dict = {
       unfriendHint: 'Alert saat seseorang berhenti berteman dengan Anda.',
       deleteChat: 'Chat dihapus',
       deleteChatHint: 'Alert saat seseorang menghapus chat Anda.',
+
+      showBanner: 'Munculkan banner',
+      showBannerHint: 'Tampilkan banner pop-up saat notifikasi masuk. Mematikannya tetap memutar suara dan lonceng.',
+      pushEnabled: 'Notifikasi push seluler',
+      pushEnabledHint: 'Terima notifikasi di ponsel Anda bahkan saat ShahZap ditutup (melalui browser).',
+
+      pushUnsupported: 'Browser ini tidak mendukung notifikasi push.',
+      pushDenied: 'Izin ditolak. Izinkan notifikasi di pengaturan browser terlebih dahulu.',
+      pushError: 'Terjadi kesalahan saat mengaktifkan notifikasi push. Silakan coba lagi.',
 
       duration: 'Durasi tampil',
       durationHint: 'Berapa lama setiap banner tampil di layar sebelum otomatis disembunyikan. "Jangan pernah" menyimpannya sampai Anda menutupnya.',
@@ -2976,6 +3064,15 @@ export const tr: Dict = {
       deleteChat: 'Sohbet silindi',
       deleteChatHint: 'Birisi sohbetinizi sildiğinde uyarı.',
 
+      showBanner: 'Bildirim pencereleri',
+      showBannerHint: 'Bir bildirim geldiğinde açılır pencere göster. Kapatmak sesi ve zili yine de çalar.',
+      pushEnabled: 'Mobil push bildirimleri',
+      pushEnabledHint: 'ShahZap kapalıyken bile telefonunuza bildirim alın (tarayıcı üzerinden).',
+
+      pushUnsupported: 'Bu tarayıcı push bildirimlerini desteklemiyor.',
+      pushDenied: 'İzin reddedildi. Önce tarayıcı ayarlarından bildirimlere izin verin.',
+      pushError: 'Push bildirimleri etkinleştirilirken bir sorun oluştu. Lütfen tekrar deneyin.',
+
       duration: 'Gösterim süresi',
       durationHint: 'Her bildirimin otomatik gizlenmeden önce ekranda ne kadar kaldığı. "Asla" onu siz kapatana kadar tutar.',
       never: 'Asla',
@@ -3264,6 +3361,15 @@ export const fa: Dict = {
       unfriendHint: 'هشدار وقتی کسی دوستی را با شما تمام می‌کند.',
       deleteChat: 'حذف چت',
       deleteChatHint: 'هشدار وقتی کسی چت شما را حذف می‌کند.',
+
+      showBanner: 'پاپ‌آپ بنر',
+      showBannerHint: 'وقتی اعلان می‌رسد یک بنر پاپ‌آپ نشان بده. خاموش کردن آن همچنان صدا و زنگ را پخش می‌کند.',
+      pushEnabled: 'اعلان‌های فشاری موبایل',
+      pushEnabledHint: 'حتی وقتی شازپ بسته است، اعلان‌ها را روی گوشی دریافت کنید (از طریق مرورگر).',
+
+      pushUnsupported: 'این مرورگر از اعلان‌های فشاری پشتیبانی نمی‌کند.',
+      pushDenied: 'اجازه رد شد. ابتدا در تنظیمات مرورگر به اعلان‌ها اجازه دهید.',
+      pushError: 'در فعال‌سازی اعلان‌های فشاری خطایی رخ داد. دوباره تلاش کنید.',
 
       duration: 'مدت نمایش',
       durationHint: 'مدت ماندن هر بنر روی صفحه قبل از مخفی شدن خودکار. «هرگز» آن را تا وقتی که رد کنید نگه می‌دارد.',
@@ -3554,6 +3660,15 @@ export const ru: Dict = {
       deleteChat: 'Чат удалён',
       deleteChatHint: 'Оповещение, когда ваш чат удаляют.',
 
+      showBanner: 'Всплывающие баннеры',
+      showBannerHint: 'Показывать всплывающий баннер при уведомлении. Отключение по-прежнему включает звук и колокольчик.',
+      pushEnabled: 'Мобильные push-уведомления',
+      pushEnabledHint: 'Получайте уведомления на телефоне, даже когда ShahZap закрыт (через браузер).',
+
+      pushUnsupported: 'Этот браузер не поддерживает push-уведомления.',
+      pushDenied: 'Доступ запрещён. Сначала разрешите уведомления в настройках браузера.',
+      pushError: 'Не удалось включить push-уведомления. Повторите попытку.',
+
       duration: 'Длительность показа',
       durationHint: 'Сколько каждый баннер находится на экране до автоматического скрытия. «Никогда» — пока вы не закроете его.',
       never: 'Никогда',
@@ -3842,6 +3957,15 @@ export const zh_cn: Dict = {
       unfriendHint: '当有人与您解除好友关系时提醒。',
       deleteChat: '聊天已删除',
       deleteChatHint: '当有人删除您的聊天时提醒。',
+
+      showBanner: '横幅弹窗',
+      showBannerHint: '收到通知时显示弹窗横幅。关闭它仍会播放声音和更新通知铃铛。',
+      pushEnabled: '手机推送通知',
+      pushEnabledHint: '即使在 ShahZap 关闭时也能在手机上收到通知（通过浏览器）。',
+
+      pushUnsupported: '此浏览器不支持推送通知。',
+      pushDenied: '权限被拒绝。请先在浏览器设置中允许通知。',
+      pushError: '启用推送通知时出错。请重试。',
 
       duration: '显示时长',
       durationHint: '每条横幅在自动隐藏前在屏幕上停留的时间。选择"从不"则一直保留，直到您关闭它。',
@@ -4132,6 +4256,15 @@ export const ja: Dict = {
       deleteChat: 'チャット削除',
       deleteChatHint: '誰かがあなたのチャットを削除したときにアラート。',
 
+      showBanner: 'バナーのポップアップ',
+      showBannerHint: '通知が届いたときにポップアップバナーを表示します。オフにしても音とベルは鳴ります。',
+      pushEnabled: 'モバイルプッシュ通知',
+      pushEnabledHint: 'ShahZapを閉じていてもスマホで通知を受け取れます（ブラウザ経由）。',
+
+      pushUnsupported: 'このブラウザはプッシュ通知をサポートしていません。',
+      pushDenied: '許可が拒否されました。ブラウザの設定で通知を許可してください。',
+      pushError: 'プッシュ通知を有効にする際にエラーが発生しました。もう一度お試しください。',
+
       duration: '表示時間',
       durationHint: '各バナーが自動で消える前に画面に表示される時間。「なし」は、閉じるまで表示し続けます。',
       never: 'なし',
@@ -4420,6 +4553,15 @@ export const ko: Dict = {
       unfriendHint: '누군가 당신과 친구를 끊으면 알림.',
       deleteChat: '채팅 삭제',
       deleteChatHint: '누군가 당신의 채팅을 삭제하면 알림.',
+
+      showBanner: '배너 팝업',
+      showBannerHint: '알림이 오면 팝업 배너를 표시합니다. 꺼도 소리와 벨은 울립니다.',
+      pushEnabled: '모바일 푸시 알림',
+      pushEnabledHint: 'ShahZap이 꺼져 있어도 휴대폰으로 알림을 받으세요(브라우저 경유).',
+
+      pushUnsupported: '이 브라우저는 푸시 알림을 지원하지 않습니다.',
+      pushDenied: '권한이 거부되었습니다. 브라우저 설정에서 알림을 먼저 허용하세요.',
+      pushError: '푸시 알림을 활성화하는 중 오류가 발생했습니다. 다시 시도해 주세요.',
 
       duration: '표시 시간',
       durationHint: '각 배너가 자동으로 숨겨지기 전에 화면에 유지되는 시간입니다. "안 함"은 직접 닫을 때까지 유지합니다.',
@@ -4710,6 +4852,15 @@ export const it: Dict = {
       deleteChat: 'Chat eliminata',
       deleteChatHint: 'Avviso quando qualcuno elimina la tua chat.',
 
+      showBanner: 'Banner a comparsa',
+      showBannerHint: 'Mostra un banner a comparsa quando arriva una notifica. Disattivare mantiene suono e campanella.',
+      pushEnabled: 'Notifiche push mobili',
+      pushEnabledHint: 'Ricevi notifiche sul telefono anche quando ShahZap è chiuso (tramite il browser).',
+
+      pushUnsupported: 'Questo browser non supporta le notifiche push.',
+      pushDenied: 'Permesso negato. Consenti le notifiche nelle impostazioni del browser.',
+      pushError: 'Si è verificato un errore nell\'attivazione delle notifiche push. Riprova.',
+
       duration: 'Durata di visualizzazione',
       durationHint: 'Per quanto tempo ogni banner resta a schermo prima di nascondersi da solo. "Mai" lo mantiene fino a quando non lo chiudi.',
       never: 'Mai',
@@ -4998,6 +5149,15 @@ export const pl: Dict = {
       unfriendHint: 'Alert, gdy ktoś usunie Cię ze znajomych.',
       deleteChat: 'Usunięty czat',
       deleteChatHint: 'Alert, gdy ktoś usunie Twój czat.',
+
+      showBanner: 'Wyskakujące banery',
+      showBannerHint: 'Pokaż wyskakujący baner, gdy pojawi się powiadomienie. Wyłączenie nadal gra dźwięk i dzwonek.',
+      pushEnabled: 'Mobilne powiadomienia push',
+      pushEnabledHint: 'Otrzymuj powiadomienia na telefonie nawet, gdy ShahZap jest zamknięty (przez przeglądarkę).',
+
+      pushUnsupported: 'Ta przeglądarka nie obsługuje powiadomień push.',
+      pushDenied: 'Odmowa uprawnień. Najpierw zezwól na powiadomienia w ustawieniach przeglądarki.',
+      pushError: 'Wystąpił błąd podczas włączania powiadomień push. Spróbuj ponownie.',
 
       duration: 'Czas wyświetlania',
       durationHint: 'Jak długo każdy baner pozostaje na ekranie, zanim automatycznie zniknie. „Nigdy“ pozostawia go do momentu zamknięcia.',
@@ -5288,6 +5448,15 @@ export const nl: Dict = {
       deleteChat: 'Chat verwijderd',
       deleteChatHint: 'Waarschuwing wanneer iemand uw chat verwijdert.',
 
+      showBanner: 'Popup-banners',
+      showBannerHint: 'Toon een pop-up-banner wanneer een melding binnenkomt. Uit zetten speelt nog steeds geluid en bel.',
+      pushEnabled: 'Mobiele pushmeldingen',
+      pushEnabledHint: 'Ontvang meldingen op je telefoon, zelfs als ShahZap gesloten is (via de browser).',
+
+      pushUnsupported: 'Deze browser ondersteunt geen pushmeldingen.',
+      pushDenied: 'Toestemming geweigerd. Sta meldingen eerst toe in de browserinstellingen.',
+      pushError: 'Er is een fout opgetreden bij het inschakelen van pushmeldingen. Probeer het opnieuw.',
+
       duration: 'Weergaveduur',
       durationHint: 'Hoelang elke melding op het scherm blijft voordat hij automatisch verdwijnt. \'Nooit\' houdt hem totdat je hem sluit.',
       never: 'Nooit',
@@ -5576,6 +5745,15 @@ export const uk: Dict = {
       unfriendHint: 'Оповіщення, коли вас видаляють з друзів.',
       deleteChat: 'Чат видалено',
       deleteChatHint: 'Оповіщення, коли ваш чат видаляють.',
+
+      showBanner: 'Спливаючі банери',
+      showBannerHint: 'Показувати спливаючий банер при сповіщенні. Вимкнення все одно вмикає звук і дзвіночок.',
+      pushEnabled: 'Мобільні push-сповіщення',
+      pushEnabledHint: 'Отримуйте сповіщення на телефоні, навіть коли ShahZap закрито (через браузер).',
+
+      pushUnsupported: 'Цей браузер не підтримує push-сповіщення.',
+      pushDenied: 'Дозвіл відхилено. Спочатку дозвольте сповіщення в налаштуваннях браузера.',
+      pushError: 'Помилка під час увімкнення push-сповіщень. Спробуйте ще раз.',
 
       duration: 'Тривалість показу',
       durationHint: 'Скільки кожен банер залишається на екрані до автоматичного приховування. «Ніколи» утримує його, поки ви не закриєте.',
@@ -5866,6 +6044,15 @@ export const el: Dict = {
       deleteChat: 'Διαγραφή συνομιλίας',
       deleteChatHint: 'Ειδοποίηση όταν κάποιος διαγράφει τη συνομιλία σας.',
 
+      showBanner: 'Αναδυόμενα banners',
+      showBannerHint: 'Εμφάνιση αναδυόμενου banner όταν έρχεται μια ειδοποίηση. Η απενεργοποίηση εξακολουθεί να παίζει ήχο και κουδούνι.',
+      pushEnabled: 'Ειδοποιήσεις push κινητού',
+      pushEnabledHint: 'Λάβετε ειδοποιήσεις στο τηλέφωνό σας ακόμη και όταν το ShahZap είναι κλειστό (μέσω προγράμματος περιήγησης).',
+
+      pushUnsupported: 'Αυτό το πρόγραμμα περιήγησης δεν υποστηρίζει ειδοποιήσεις push.',
+      pushDenied: 'Άδεια απορρίφθηκε. Επιτρέψτε τις ειδοποιήσεις στις ρυθμίσεις του προγράμματος περιήγησης.',
+      pushError: 'Παρουσιάστηκε σφάλμα κατά την ενεργοποίηση των ειδοποιήσεων push. Δοκιμάστε ξανά.',
+
       duration: 'Διάρκεια εμφάνισης',
       durationHint: 'Πόσο καιρό μένει κάθε banner στην οθόνη πριν κρυφτεί αυτόματα. «Ποτέ» το κρατάει μέχρι να το κλείσεις.',
       never: 'Ποτέ',
@@ -6154,6 +6341,15 @@ export const vi: Dict = {
       unfriendHint: 'Cảnh báo khi ai đó hủy kết bạn với bạn.',
       deleteChat: 'Chat đã xóa',
       deleteChatHint: 'Cảnh báo khi ai đó xóa chat của bạn.',
+
+      showBanner: 'Banner bật lên',
+      showBannerHint: 'Hiện banner bật lên khi có thông báo. Tắt vẫn phát âm thanh và chuông.',
+      pushEnabled: 'Thông báo đẩy trên điện thoại',
+      pushEnabledHint: 'Nhận thông báo trên điện thoại ngay cả khi ShahZap đã đóng (qua trình duyệt).',
+
+      pushUnsupported: 'Trình duyệt này không hỗ trợ thông báo đẩy.',
+      pushDenied: 'Quyền bị từ chối. Hãy cho phép thông báo trong cài đặt trình duyệt trước.',
+      pushError: 'Đã xảy ra lỗi khi bật thông báo đẩy. Vui lòng thử lại.',
 
       duration: 'Thời gian hiển thị',
       durationHint: 'Mỗi thông báo hiển thị trên màn hình bao lâu trước khi tự ẩn. "Không bao giờ" giữ nó cho đến khi bạn đóng.',
@@ -6444,6 +6640,15 @@ export const th: Dict = {
       deleteChat: 'ลบแชท',
       deleteChatHint: 'แจ้งเตือนเมื่อมีคนลบแชทของคุณ',
 
+      showBanner: 'ป๊อปอัปแบนเนอร์',
+      showBannerHint: 'แสดงแบนเนอร์ป๊อปอัปเมื่อมีการแจ้งเตือน การปิดยังคงเล่นเสียงและกระดิ่ง',
+      pushEnabled: 'การแจ้งเตือนแบบพุชบนมือถือ',
+      pushEnabledHint: 'รับการแจ้งเตือนบนโทรศัพท์แม้ ShahZap ถูกปิด (ผ่านเบราว์เซอร์)',
+
+      pushUnsupported: 'เบราว์เซอร์นี้ไม่รองรับการแจ้งเตือนแบบพุช',
+      pushDenied: 'ปฏิเสธการอนุญาต กรุณาอนุญาตการแจ้งเตือนในการตั้งค่าเบราว์เซอร์ก่อน',
+      pushError: 'เกิดข้อผิดพลาดในการเปิดใช้การแจ้งเตือนแบบพุช กรุณาลองอีกครั้ง',
+
       duration: 'ระยะเวลาแสดงผล',
       durationHint: 'แต่ละแบนเนอร์จะอยู่บนหน้าจอนานเท่าใดก่อนจะซ่อนโดยอัตโนมัติ "ไม่ต้อง" จะค้างไว้จนกว่าคุณจะปิดเอง',
       never: 'ไม่ต้อง',
@@ -6732,6 +6937,15 @@ export const ms: Dict = {
       unfriendHint: 'Amaran apabila seseorang membuang anda sebagai rakan.',
       deleteChat: 'Chat dipadam',
       deleteChatHint: 'Amaran apabila seseorang memadam chat anda.',
+
+      showBanner: 'Banner pop timbul',
+      showBannerHint: 'Papar banner pop timbul apabila notifikasi tiba. Mematikannya tetap memainkan bunyi dan loceng.',
+      pushEnabled: 'Pemberitahuan push mudah alih',
+      pushEnabledHint: 'Terima pemberitahuan pada telefon anda walaupun ShahZap ditutup (melalui pelayar).',
+
+      pushUnsupported: 'Pelayar ini tidak menyokong pemberitahuan push.',
+      pushDenied: 'Kebenaran ditolak. Sila benarkan pemberitahuan dalam tetapan pelayar dahulu.',
+      pushError: 'Berlaku ralat semasa mengaktifkan pemberitahuan push. Sila cuba lagi.',
 
       duration: 'Tempoh paparan',
       durationHint: 'Berapa lama setiap banner kekal di skrin sebelum disembunyikan secara automatik. \'Tidak pernah\' mengekalkannya sehingga anda menutupnya.',
@@ -7022,6 +7236,15 @@ export const tl: Dict = {
       deleteChat: 'Tinanggal na chat',
       deleteChatHint: 'Alerto kapag may nagtanggal ng chat mo.',
 
+      showBanner: 'Mga pop-up na banner',
+      showBannerHint: 'Magpakita ng pop-up na banner kapag may dumating na notipikasyon. Ang pag-off ay nagpapatugtog pa rin ng tunog at kampana.',
+      pushEnabled: 'Mobile push notifications',
+      pushEnabledHint: 'Makatanggap ng notipikasyon sa iyong telepono kahit sarado ang ShahZap (sa pamamagitan ng browser).',
+
+      pushUnsupported: 'Hindi sinusuportahan ng browser na ito ang push notifications.',
+      pushDenied: 'Tinanggihan ang pahintulot. Payagan munang mag-notify sa mga setting ng browser.',
+      pushError: 'May naganap na error sa pag-enable ng push notifications. Subukan muli.',
+
       duration: 'Tagal ng pagpapakita',
       durationHint: 'Gaano katagal nananatili sa screen ang bawat banner bago awtomatikong itago. Hindi kailanman, hanggang sarado mo ito.',
       never: 'Hindi kailanman',
@@ -7310,6 +7533,15 @@ export const he: Dict = {
       unfriendHint: 'התראה כשמישהו מבטל את החברות איתך.',
       deleteChat: 'הצ\'אט נמחק',
       deleteChatHint: 'התראה כשמישהו מוחק את הצ\'אט שלך.',
+
+      showBanner: 'חלונות באנר',
+      showBannerHint: 'הצג באנר קופץ כאשר מגיעה התראה. כיבוי עדיין משמיע צליל ופעמון.',
+      pushEnabled: 'התראות פוש לנייד',
+      pushEnabledHint: 'קבל התראות בטלפון גם כששהזפ סגור (דרך הדפדפן).',
+
+      pushUnsupported: 'דפדפן זה אינו תומך בהתראות פוש.',
+      pushDenied: 'ההרשאה נדחתה. אפשר התראות בהגדרות הדפדפן תחילה.',
+      pushError: 'אירעה שגיאה בהפעלת התראות הפוש. נסו שוב.',
 
       duration: 'משך תצוגה',
       durationHint: 'כמה זמן כל באנר נשאר על המסך לפני שהוא נסתר אוטומטית. \'אף פעם\' משאיר אותו עד שתסגרו אותו.',
@@ -7600,6 +7832,15 @@ export const ro: Dict = {
       deleteChat: 'Chat șters',
       deleteChatHint: 'Alertă când cineva șterge chat-ul tău.',
 
+      showBanner: 'Bannere pop-up',
+      showBannerHint: 'Afișează un banner pop-up când ajunge o notificare. Dezactivarea redă tot sunetul și clopoțelul.',
+      pushEnabled: 'Notificări push mobile',
+      pushEnabledHint: 'Primește notificări pe telefon chiar și când ShahZap este închis (prin browser).',
+
+      pushUnsupported: 'Acest browser nu suportă notificările push.',
+      pushDenied: 'Permisiune refuzată. Permite notificările în setările browserului întâi.',
+      pushError: 'A apărut o eroare la activarea notificărilor push. Încearcă din nou.',
+
       duration: 'Durata de afișare',
       durationHint: 'Cât timp rămâne fiecare banner pe ecran înainte să se ascundă automat. „Niciodată“ îl păstrează până îl închizi.',
       never: 'Niciodată',
@@ -7888,6 +8129,15 @@ export const sv: Dict = {
       unfriendHint: 'Avisering när någon tar bort dig som vän.',
       deleteChat: 'Chatt raderad',
       deleteChatHint: 'Avisering när någon raderar din chatt.',
+
+      showBanner: 'Popup-banners',
+      showBannerHint: 'Visa en popup-banner när ett meddelande kommer. Att stänga av spelar fortfarande ljud och klocka.',
+      pushEnabled: 'Mobila pushaviseringar',
+      pushEnabledHint: 'Få aviseringar på telefonen även när ShahZap är stängt (via webbläsaren).',
+
+      pushUnsupported: 'Den här webbläsaren stöder inte pushaviseringar.',
+      pushDenied: 'Behörigheten nekades. Tillåt aviseringar i webbläsarinställningarna först.',
+      pushError: 'Ett fel uppstod när pushaviseringar aktiverades. Försök igen.',
 
       duration: 'Visningstid',
       durationHint: 'Hur länge varje banner stannar på skärmen innan den döljs automatiskt. \'Aldrig\' håller kvar den tills du stänger den.',
@@ -8178,6 +8428,15 @@ export const no: Dict = {
       deleteChat: 'Chatt slettet',
       deleteChatHint: 'Varsel når noen sletter chatten din.',
 
+      showBanner: 'Popup-bannere',
+      showBannerHint: 'Vis en popup-banner når det kommer et varsel. Å slå av spiller fortsatt lyd og bjelle.',
+      pushEnabled: 'Mobil push-varsler',
+      pushEnabledHint: 'Få varsler på telefonen selv når ShahZap er lukket (via nettleseren).',
+
+      pushUnsupported: 'Denne nettleseren støtter ikke push-varsler.',
+      pushDenied: 'Tillatelse nektet. Tillat varsler i nettleserinnstillingene først.',
+      pushError: 'Det oppstod en feil under aktivering av push-varsler. Prøv igjen.',
+
       duration: 'Visningsvarighet',
       durationHint: 'Hvor lenge hvert banner holder seg på skjermen før det skjules automatisk. \'Aldri\' holder det til du lukker det.',
       never: 'Aldri',
@@ -8466,6 +8725,15 @@ export const da: Dict = {
       unfriendHint: 'Advarsel, når nogen fjerner dig som ven.',
       deleteChat: 'Chat slettet',
       deleteChatHint: 'Advarsel, når nogen sletter din chat.',
+
+      showBanner: 'Popup-bannere',
+      showBannerHint: 'Vis en popup-banner, når der kommer en notifikation. Fra valg afspiller stadig lyd og klokke.',
+      pushEnabled: 'Mobile push-notifikationer',
+      pushEnabledHint: 'Modtag notifikationer på din telefon, selv når ShahZap er lukket (via browseren).',
+
+      pushUnsupported: 'Denne browser understøtter ikke push-notifikationer.',
+      pushDenied: 'Tilladelse nægtet. Tillad notifikationer i browserindstillingerne først.',
+      pushError: 'Der opstod en fejl under aktivering af push-notifikationer. Prøv igen.',
 
       duration: 'Varighed for visning',
       durationHint: 'Hvor længe hver bannermeddelelse bliver på skærmen, før den skjules automatisk. \'Aldrig\' beholder den, indtil du lukker den.',
@@ -8756,6 +9024,15 @@ export const cs: Dict = {
       deleteChat: 'Chat smazán',
       deleteChatHint: 'Upozornění, když někdo smaže váš chat.',
 
+      showBanner: 'Vyskakovací bannery',
+      showBannerHint: 'Zobrazit vyskakovací banner, když přijde oznámení. Vypnutí stále přehrává zvuk a zvonek.',
+      pushEnabled: 'Mobilní push oznámení',
+      pushEnabledHint: 'Dostávejte oznámení na telefon, i když je ShahZap zavřený (přes prohlížeč).',
+
+      pushUnsupported: 'Tento prohlížeč nepodporuje push oznámení.',
+      pushDenied: 'Oprávnění zamítnuto. Nejprve povolte oznámení v nastavení prohlížeče.',
+      pushError: 'Při povolování push oznámení došlo k chybě. Zkuste to znovu.',
+
       duration: 'Doba zobrazení',
       durationHint: 'Jak dlouho zůstane každý banner na obrazovce, než se automaticky skryje. „Nikdy“ jej ponechá, dokud jej nezavřeš.',
       never: 'Nikdy',
@@ -9044,6 +9321,15 @@ export const sk: Dict = {
       unfriendHint: 'Upozornenie, keď vás niekto odstráni z priateľov.',
       deleteChat: 'Chat odstránený',
       deleteChatHint: 'Upozornenie, keď niekto odstráni váš chat.',
+
+      showBanner: 'Vyskakovacie bannery',
+      showBannerHint: 'Zobraziť vyskakovací banner, keď príde oznámenie. Vypnutie stále prehráva zvuk a zvonček.',
+      pushEnabled: 'Mobilné push oznámenia',
+      pushEnabledHint: 'Dostávajte oznámenia na telefón, aj keď je ShahZap zatvorený (cez prehliadač).',
+
+      pushUnsupported: 'Tento prehliadač nepodporuje push oznámenia.',
+      pushDenied: 'Oprávnenie zamietnuté. Najprv povoľte oznámenia v nastaveniach prehliadača.',
+      pushError: 'Pri povoľovaní push oznámení sa vyskytla chyba. Skúste to znova.',
 
       duration: 'Trvanie zobrazenia',
       durationHint: 'Ako dlho zostane každý banner na obrazovke, kým sa automaticky skryje. \'Nikdy\' ho ponechá, až kým ho nezavriete.',
@@ -9334,6 +9620,15 @@ export const hu: Dict = {
       deleteChat: 'Csevegés törölve',
       deleteChatHint: 'Figyelmeztetés, ha valaki törli a csevegésedet.',
 
+      showBanner: 'Felugró bannerek',
+      showBannerHint: 'Felugró banner megjelenítése, amikor értesítés érkezik. Kikapcsolva is szól a hang és a csengő.',
+      pushEnabled: 'Mobil push értesítések',
+      pushEnabledHint: 'Értesítéseket kap a telefonján, még ha a ShahZap zárva is van (böngészőn keresztül).',
+
+      pushUnsupported: 'Ez a böngésző nem támogatja a push értesítéseket.',
+      pushDenied: 'Az engedély megtagadva. Előbb engedélyezze az értesítéseket a böngésző beállításaiban.',
+      pushError: 'Hiba történt a push értesítések engedélyezésekor. Próbálja újra.',
+
       duration: 'Megjelenítés időtartama',
       durationHint: 'Mennyi ideig marad képernyőn minden banner, mielőtt automatikusan eltűnik. A „Soha“ addig tartja, amíg be nem zárod.',
       never: 'Soha',
@@ -9623,6 +9918,15 @@ export const fi: Dict = {
       deleteChat: 'Keskustelu poistettu',
       deleteChatHint: 'Hälytys, kun joku poistaa keskustelusi.',
 
+      showBanner: 'Ponnahdusbannerit',
+      showBannerHint: 'Näytä ponnahdusbanneri, kun ilmoitus saapuu. Sammutus soittaa silti äänen ja kellon.',
+      pushEnabled: 'Mobiilit push-ilmoitukset',
+      pushEnabledHint: 'Saat ilmoituksia puhelimeesi, vaikka ShahZap olisi suljettu (selaimen kautta).',
+
+      pushUnsupported: 'Tämä selain ei tue push-ilmoituksia.',
+      pushDenied: 'Lupa evätty. Salli ilmoitukset ensin selaimen asetuksissa.',
+      pushError: 'Push-ilmoitusten käyttöönotossa tapahtui virhe. Yritä uudelleen.',
+
       duration: 'Näyttöaika',
       durationHint: 'Kuinka kauan kukin banneri pysyy ruudulla ennen kuin se piilotetaan automaattisesti. \'Ei koskaan\' pitää sen, kunnes suljet sen.',
       never: 'Ei koskaan',
@@ -9910,6 +10214,15 @@ export const bg: Dict = {
       unfriendHint: 'Предупреждение, когато някой ви премахне от приятели.',
       deleteChat: 'Чат изтрит',
       deleteChatHint: 'Предупреждение, когато някой изтрие чата ви.',
+
+      showBanner: 'Изскачащи банери',
+      showBannerHint: 'Показване на изскачащ банер при известие. Изключването продължава да пуска звук и звънец.',
+      pushEnabled: 'Мобилни push известия',
+      pushEnabledHint: 'Получавайте известия на телефона си, дори когато ShahZap е затворен (през браузър).',
+
+      pushUnsupported: 'Този браузър не поддържа push известия.',
+      pushDenied: 'Разрешението е отказано. Първо разрешете известия в настройките на браузъра.',
+      pushError: 'Възникна грешка при активирането на push известията. Опитайте отново.',
 
       duration: 'Продължителност на показване',
       durationHint: 'Колко време всеки банер остава на екрана, преди да се скрие автоматично. „Никога“ го задържа, докато не го затворите.',
@@ -10200,6 +10513,15 @@ export const hr: Dict = {
       deleteChat: 'Chat izbrisan',
       deleteChatHint: 'Upozorenje kad netko izbriše vaš chat.',
 
+      showBanner: 'Skakači banneri',
+      showBannerHint: 'Prikaži skakaći banner kada stigne obavijest. Isključivanje i dalje pušta zvuk i zvono.',
+      pushEnabled: 'Mobilne push obavijesti',
+      pushEnabledHint: 'Primajte obavijesti na telefon čak i kad je ShahZap zatvoren (putem preglednika).',
+
+      pushUnsupported: 'Ovaj preglednik ne podržava push obavijesti.',
+      pushDenied: 'Odobrenje odbijeno. Najprije dopustite obavijesti u postavkama preglednika.',
+      pushError: 'Došlo je do pogreške pri uključivanju push obavijesti. Pokušajte ponovno.',
+
       duration: 'Trajanje prikaza',
       durationHint: 'Koliko dugo svaki banner ostaje na zaslonu prije nego što se automatski sakrije. \'Nikada\' ga zadržava dok ga ne zatvorite.',
       never: 'Nikada',
@@ -10488,6 +10810,15 @@ export const sr: Dict = {
       unfriendHint: 'Упозорење када вас неко уклони из пријатеља.',
       deleteChat: 'Ћаскање обрисано',
       deleteChatHint: 'Упозорење када неко обрише ваше ћаскање.',
+
+      showBanner: 'Искачући банери',
+      showBannerHint: 'Прикажи искачући банер када стигне обавештење. Искључивање и даље пушта звук и звоно.',
+      pushEnabled: 'Мобилна push обавештења',
+      pushEnabledHint: 'Примајте обавештења на телефону чак и када је ShahZap затворен (преко претраживача).',
+
+      pushUnsupported: 'Овај прегледач не подржава push обавештења.',
+      pushDenied: 'Дозвола одбијена. Прво дозволите обавештења у подешавањима прегледача.',
+      pushError: 'Дошло је до грешке при укључивању push обавештења. Покушајте поново.',
 
       duration: 'Трајање приказа',
       durationHint: 'Колико сваки банер остаје на екрану пре него што се аутоматски сакрије. „Никад“ га држи док га сами не затворите.',
@@ -10778,6 +11109,15 @@ export const mk: Dict = {
       deleteChat: 'Ќаскање избришано',
       deleteChatHint: 'Предупредување кога некој го брише вашето ќаскање.',
 
+      showBanner: 'Искокачки банери',
+      showBannerHint: 'Прикажи исокачки банер кога ќе пристигне известување. Исклучувањето сепак пушта звук и ѕвонче.',
+      pushEnabled: 'Мобилни push известувања',
+      pushEnabledHint: 'Примајте известувања на телефонот дури и кога ShahZap е затворен (преку прелистувач).',
+
+      pushUnsupported: 'Овој прелистувач не поддржува push известувања.',
+      pushDenied: 'Дозволата е одбиена. Прво дозволете известувања во поставките на прелистувачот.',
+      pushError: 'Се појави грешка при вклучувањето на push известувањата. Обидете се повторно.',
+
       duration: 'Времетраење на приказ',
       durationHint: 'Колку долго секој банер останува на екранот пред да се скрие автоматски. „Никогаш“ го држи додека не го затворите.',
       never: 'Никогаш',
@@ -11066,6 +11406,15 @@ export const sl: Dict = {
       unfriendHint: 'Opozorilo, ko vas nekdo odstrani iz prijateljev.',
       deleteChat: 'Klepet izbrisan',
       deleteChatHint: 'Opozorilo, ko nekdo izbriše vaš klepet.',
+
+      showBanner: 'Pojavni bannserji',
+      showBannerHint: 'Prikaži pojavni banner, ko pride obvestilo. Izklop še vedno predvaja zvok in zvonec.',
+      pushEnabled: 'Mobilna push obvestila',
+      pushEnabledHint: 'Prejemajte obvestila na telefonu, tudi ko je ShahZap zaprt (prek brskalnika).',
+
+      pushUnsupported: 'Ta brskalnik ne podpira push obvestil.',
+      pushDenied: 'Dovoljenje zavrnjeno. Najprej dovolite obvestila v nastavitvah brskalnika.',
+      pushError: 'Pri omogočanju push obvestil je prišlo do napake. Poskusite znova.',
 
       duration: 'Trajanje prikaza',
       durationHint: 'Koliko dolgo vsak pasič ostane na zaslonu, preden se samodejno skrije. \'Nikoli\' ga obdrži, dokler ga ne zaprete.',
@@ -11356,6 +11705,15 @@ export const lt: Dict = {
       deleteChat: 'Pokalbis ištrintas',
       deleteChatHint: 'Įspėjimas, kai kas nors ištrina jūsų pokalbį.',
 
+      showBanner: 'Iššokantys baneriai',
+      showBannerHint: 'Rodyti iššokantį reklamjuostės pranešimą, kai ateina įspėjimas. Išjungus vis tiek skamba garsas ir varpelis.',
+      pushEnabled: 'Mobilieji push pranešimai',
+      pushEnabledHint: 'Gaukite pranešimus telefone net tada, kai ShahZap uždarytas (per naršyklę).',
+
+      pushUnsupported: 'Ši naršyklė nepalaiko push pranešimų.',
+      pushDenied: 'Leidimas atmestas. Pirmiausia leiskite pranešimus naršyklės nustatymuose.',
+      pushError: 'Įjungiant push pranešimus įvyko klaida. Bandykite dar kartą.',
+
       duration: 'Rodymo trukmė',
       durationHint: 'Kiek laiko kiekviena juosta išlieka ekrane, kol automatiškai pasislepia. \'Niekada\' ją išlaiko, kol patys neuždarysite.',
       never: 'Niekada',
@@ -11644,6 +12002,15 @@ export const lv: Dict = {
       unfriendHint: 'Brīdinājums, kad kāds pārtrauc draudzību ar jums.',
       deleteChat: 'Tērzēšana dzēsta',
       deleteChatHint: 'Brīdinājums, kad kāds dzēš jūsu tērzēšanu.',
+
+      showBanner: 'Uznirstošie baneri',
+      showBannerHint: 'Rādīt uznirstošu baneri, kad pienāk paziņojums. Izslēdzot joprojām skan skaņa un zvans.',
+      pushEnabled: 'Mobilie push paziņojumi',
+      pushEnabledHint: 'Saņemiet paziņojumus tālrunī arī tad, kad ShahZap ir aizvērts (pārlūkā).',
+
+      pushUnsupported: 'Šī pārlūkprogramma neatbalsta push paziņojumus.',
+      pushDenied: 'Atļauja liegta. Vispirms atļaujiet paziņojumus pārlūkprogrammas iestatījumos.',
+      pushError: 'Iespējojot push paziņojumus, radās kļūda. Mēģiniet vēlreiz.',
 
       duration: 'Parādīšanas ilgums',
       durationHint: 'Cik ilgi katra josla paliek uz ekrāna, pirms tā automātiski pazūd. «Nekad» to patur, līdz to aizverat pats.',
@@ -11934,6 +12301,15 @@ export const et: Dict = {
       deleteChat: 'Vestlus kustutatud',
       deleteChatHint: 'Hoiatus, kui keegi kustutab teie vestluse.',
 
+      showBanner: 'Hüpikbännerid',
+      showBannerHint: 'Kuva hüpikbänner, kui saabub teade. Väljalülitamine mängib siiski heli ja kella.',
+      pushEnabled: 'Mobiilsed push-teated',
+      pushEnabledHint: 'Saage teateid oma telefonile ka siis, kui ShahZap on suletud (brauseri kaudu).',
+
+      pushUnsupported: 'See brauser ei toeta push-teateid.',
+      pushDenied: 'Luba keelatud. Lubage esmalt märguanded brauseri seadetes.',
+      pushError: 'Push-teadete lubamisel tekkis viga. Proovige uuesti.',
+
       duration: 'Kuvamise kestus',
       durationHint: 'Kui kaua iga bänner ekraanile jääb, enne kui see automaatselt peidetakse. \'Mitte kunagi\' hoiab seda, kuni te selle sulgete.',
       never: 'Mitte kunagi',
@@ -12222,6 +12598,15 @@ export const gu: Dict = {
       unfriendHint: 'કોઈ તમને મિત્ર તરીકે દૂર કરે ત્યારે ચેતવણી.',
       deleteChat: 'ચેટ કાઢી નાખવામાં આવી',
       deleteChatHint: 'કોઈ તમારી ચેટ કાઢી નાખે ત્યારે ચેતવણી.',
+
+      showBanner: 'બેનર પોપઅપ',
+      showBannerHint: 'નોટિફિકેશન આવે ત્યારે પોપઅપ બેનર બતાવો. તેને બંધ કરવાથી પણ અવાજ અને ઘંટ વાગે છે.',
+      pushEnabled: 'મોબાઇલ પુશ નોટિફિકેશન',
+      pushEnabledHint: 'ShahZap બંધ હોય ત્યારે પણ ફોન પર નોટિફિકેશન મેળવો (બ્રાઉઝર દ્વારા).',
+
+      pushUnsupported: 'આ બ્રાઉઝર પુશ નોટિફિકેશન સપોર્ટ કરતું નથી.',
+      pushDenied: 'પરવાનગી નકારવામાં આવી. પહેલા બ્રાઉઝર સેટિંગ્સમાં નોટિફિકેશનની પરવાનગી આપો.',
+      pushError: 'પુશ નોટિફિકેશન સક્રિય કરવામાં કંઈક ભૂલ થઈ. ફરી પ્રયાસ કરો.',
 
       duration: 'બતાવવાનો સમયગાળો',
       durationHint: 'દરેક બૅનર ઓટોમૅટિક રીતે છુપાવાના પહેલા સ્ક્રીન પર કેટલો સમય રહે છે. \'ક્યારેય નહીં\' તેને તમે બંધ ન કરો ત્યાં સુધી રાખે છે.',
@@ -12512,6 +12897,15 @@ export const mr: Dict = {
       deleteChat: 'चॅट हटवली',
       deleteChatHint: 'कोणी तुमची चॅट हटवल्यावर अलर्ट.',
 
+      showBanner: 'बॅनर पॉप-अप',
+      showBannerHint: 'सूचना आल्यावर पॉप-अप बॅनर दाखवा. तो बंद केल्यावरही आवाज आणि घंटा वाजते.',
+      pushEnabled: 'मोबाइल पुश सूचना',
+      pushEnabledHint: 'ShahZap बंद असला तरी फोनवर सूचना मिळवा (ब्राउझरद्वारे).',
+
+      pushUnsupported: 'हा ब्राउझर पुश सूचना सपोर्ट करत नाही.',
+      pushDenied: 'परवानगी नाकारली. प्रथम ब्राउझर सेटिंग्जमध्ये सूचनांना परवानगी द्या.',
+      pushError: 'पुश सूचना चालू करताना काहीतरी चूक झाली. पुन्हा प्रयत्न करा.',
+
       duration: 'दाखवण्याचा कालावधी',
       durationHint: 'प्रत्येक बॅनर लपवण्यापूर्वी स्क्रीनवर किती वेळ राहतो. \'कधीही नाही\' तुम्ही बंद करेपर्यंत तो ठेवतो.',
       never: 'कधीही नाही',
@@ -12800,6 +13194,15 @@ export const pa: Dict = {
       unfriendHint: 'ਜਦੋਂ ਕੋਈ ਤੁਹਾਡੀ ਦੋਸਤੀ ਖਤਮ ਕਰੇ ਤਾਂ ਅਲਰਟ।',
       deleteChat: 'ਚੈਟ ਮਿਟਾਈ ਗਈ',
       deleteChatHint: 'ਜਦੋਂ ਕੋਈ ਤੁਹਾਡੀ ਚੈਟ ਮਿਟਾਵੇ ਤਾਂ ਅਲਰਟ।',
+
+      showBanner: 'ਬੈਨਰ ਪੌਪ-ਅੱਪ',
+      showBannerHint: 'ਜਦੋਂ ਨੋਟੀਫਿਕੇਸ਼ਨ ਆਵੇ ਤਾਂ ਪੌਪ-ਅੱਪ ਬੈਨਰ ਦਿਖਾਓ। ਬੰਦ ਕਰਨ ਤੋਂ ਬਾਅਦ ਵੀ ਆਵਾਜ਼ ਅਤੇ ਘੰਟੀ ਵੱਜਦੀ ਹੈ।',
+      pushEnabled: 'ਮੋਬਾਈਲ ਪੁਸ਼ ਨੋਟੀਫਿਕੇਸ਼ਨ',
+      pushEnabledHint: 'ShahZap ਬੰਦ ਹੋਣ ਤੇ ਵੀ ਆਪਣੇ ਫੋਨ ਤੇ ਨੋਟੀਫਿਕੇਸ਼ਨ ਲਵੋ (ਬ੍ਰਾਊਜ਼ਰ ਰਾਹੀਂ)।',
+
+      pushUnsupported: 'ਇਹ ਬ੍ਰਾਊਜ਼ਰ ਪੁਸ਼ ਨੋਟੀਫਿਕੇਸ਼ਨ ਸਪੋਰਟ ਨਹੀਂ ਕਰਦਾ।',
+      pushDenied: 'ਇਜਾਜ਼ਤ ਰੱਦ ਕੀਤੀ ਗਈ। ਪਹਿਲਾਂ ਬ੍ਰਾਊਜ਼ਰ ਸੈਟਿੰਗਾਂ ਵਿੱਚ ਨੋਟੀਫਿਕੇਸ਼ਨ ਦੀ ਇਜਾਜ਼ਤ ਦਿਓ।',
+      pushError: 'ਪੁਸ਼ ਨੋਟੀਫਿਕੇਸ਼ਨ ਚਾਲੂ ਕਰਨ ਵਿੱਚ ਕੋਈ ਗਲਤੀ ਹੋਈ। ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।',
 
       duration: 'ਦਿਖਾਉਣ ਦਾ ਸਮਾਂ',
       durationHint: 'ਹਰ ਬੈਨਰ ਆਪਣੇ ਆਪ ਲੁਕਣ ਤੋਂ ਪਹਿਲਾਂ ਸਕਰੀਨ ਉੱਤੇ ਕਿੰਨਾ ਚਿਰ ਰਹਿੰਦਾ ਹੈ। \'ਕਦੇ ਨਹੀਂ\' ਇਸ ਨੂੰ ਉਦੋਂ ਤੱਕ ਰੱਖਦਾ ਹੈ ਜਦੋਂ ਤੱਕ ਤੁਸੀਂ ਇਸ ਨੂੰ ਬੰਦ ਨਹੀਂ ਕਰਦੇ।',
@@ -13090,6 +13493,15 @@ export const ne: Dict = {
       deleteChat: 'च्याट मेटियो',
       deleteChatHint: 'कसैले तपाईंको च्याट मेटाउँदा अलर्ट।',
 
+      showBanner: 'ब्यानर पप-अप',
+      showBannerHint: 'सूचना आउँदा पप-अप ब्यानर देखाउनुहोस्। यसलाई बन्द गर्दा पनि आवाज र घण्टी बज्छ।',
+      pushEnabled: 'मोबाइल पुश सूचना',
+      pushEnabledHint: 'ShahZap बन्द भए पनि आफ्नो फोनमा सूचना पाउनुहोस् (ब्राउजर मार्फत)।',
+
+      pushUnsupported: 'यो ब्राउजरले पुश सूचनालाई समर्थन गर्दैन।',
+      pushDenied: 'अनुमति अस्वीकार गरियो। पहिले ब्राउजर सेटिङमा सूचनालाई अनुमति दिनुहोस्।',
+      pushError: 'पुश सूचना सक्रिय गर्न केही गडबड भयो। फेरि प्रयास गर्नुहोस्।',
+
       duration: 'देखाउने समय',
       durationHint: 'प्रत्येक ब्यानर स्वतः लुक्नु अघि स्क्रिनमा कति समय रहन्छ। \'कहिल्यै होइन\' ले तपाईंले बन्द नगरेसम्म राख्छ।',
       never: 'कहिल्यै होइन',
@@ -13378,6 +13790,15 @@ export const kn: Dict = {
       unfriendHint: 'ಯಾರಾದರೂ ನಿಮ್ಮ ಸ್ನೇಹ ಕೊನೆಗೊಳಿಸಿದಾಗ ಅಲರ್ಟ್.',
       deleteChat: 'ಚಾಟ್ ಅಳಿಸಲಾಗಿದೆ',
       deleteChatHint: 'ಯಾರಾದರೂ ನಿಮ್ಮ ಚಾಟ್ ಅಳಿಸಿದಾಗ ಅಲರ್ಟ್.',
+
+      showBanner: 'ಬ್ಯಾನರ್ ಪಾಪ್-ಅಪ್',
+      showBannerHint: 'ಅಧಿಸೂಚನೆ ಬಂದಾಗ ಪಾಪ್-ಅಪ್ ಬ್ಯಾನರ್ ತೋರಿಸಿ. ಆಫ್ ಮಾಡಿದರೂ ಧ್ವನಿ ಮತ್ತು ಗಂಟೆ ಬಾರಿಸುತ್ತದೆ.',
+      pushEnabled: 'ಮೊಬೈಲ್ ಪುಶ್ ಅಧಿಸೂಚನೆಗಳು',
+      pushEnabledHint: 'ShahZap ಮುಚ್ಚಿದ್ದರೂ ಫೋನ್ನಲ್ಲಿ ಅಧಿಸೂಚನೆ ಪಡೆಯಿರಿ (ಬ್ರೌಸರ್ ಮೂಲಕ).',
+
+      pushUnsupported: 'ಈ ಬ್ರೌಸರ್ ಪುಶ್ ಅಧಿಸೂಚನೆಗಳನ್ನು ಬೆಂಬಲಿಸುವುದಿಲ್ಲ.',
+      pushDenied: 'ಅನುಮತಿ ನಿರಾಕರಿಸಲಾಗಿದೆ. ಮೊದಲು ಬ್ರೌಸರ್ ಸೆಟ್ಟಿಂಗ್‌ಗಳಲ್ಲಿ ಅಧಿಸೂಚನೆಗಳಿಗೆ ಅನುಮತಿ ನೀಡಿ.',
+      pushError: 'ಪುಶ್ ಅಧಿಸೂಚನೆಗಳನ್ನು ಸಕ್ರಿಯಗೊಳಿಸುವಲ್ಲಿ ದೋಷ ಸಂಭವಿಸಿದೆ. ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.',
 
       duration: 'ಪ್ರದರ್ಶನದ ಅವಧಿ',
       durationHint: 'ಪ್ರತಿ ಬ್ಯಾನರ್ ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಮರೆಯಾಗುವ ಮೊದಲು ಪರದೆಯ ಮೇಲೆ ಎಷ್ಟು ಕಾಲ ಇರುತ್ತದೆ. \'ಎಂದಿಗೂ ಇಲ್ಲ\' ಅದನ್ನು ನೀವು ಮುಚ್ಚುವವರೆಗೆ ಇಡುತ್ತದೆ.',
@@ -13668,6 +14089,15 @@ export const ml: Dict = {
       deleteChat: 'ചാറ്റ് ഇല്ലാതാക്കി',
       deleteChatHint: 'ആരെങ്കിലും നിങ്ങളുടെ ചാറ്റ് ഇല്ലാതാക്കുമ്പോൾ അലേർട്ട്.',
 
+      showBanner: 'ബാനർ പോപ്പ്-അപ്പ്',
+      showBannerHint: 'അറിയിപ്പ് എത്തുമ്പോൾ പോപ്പ്-അപ്പ് ബാനർ കാണിക്കുക. ഓഫാക്കിയാലും ശബ്ദവും മണിയും മുഴങ്ങും.',
+      pushEnabled: 'മൊബൈൽ പുഷ് അറിയിപ്പുകൾ',
+      pushEnabledHint: 'ShahZap അടച്ചാലും ഫോണിൽ അറിയിപ്പുകൾ സ്വീകരിക്കുക (ബ്രൗസർ വഴി).',
+
+      pushUnsupported: 'ഈ ബ്രൗസർ പുഷ് അറിയിപ്പുകളെ പിന്തുണയ്ക്കുന്നില്ല.',
+      pushDenied: 'അനുമതി നിരസിച്ചു. ആദ്യം ബ്രൗസർ ക്രമീകരണങ്ങളിൽ അറിയിപ്പുകൾ അനുവദിക്കുക.',
+      pushError: 'പുഷ് അറിയിപ്പുകൾ പ്രവർത്തനക്ഷമമാക്കുന്നതിൽ പിശക് സംഭവിച്ചു. വീണ്ടും ശ്രമിക്കുക.',
+
       duration: 'പ്രദർശന ദൈർഘ്യം',
       durationHint: 'ഓരോ ബാനറും യാന്ത്രികമായി മറയുന്നതിന് മുമ്പ് എത്രനേരം സ്ക്രീനിൽ നിൽക്കുന്നു. \'ഒരിക്കലും\' അതിനെ നിങ്ങൾ അടയ്ക്കുന്നത് വരെ നിലനിർത്തുന്നു.',
       never: 'ഒരിക്കലും',
@@ -13956,6 +14386,15 @@ export const si: Dict = {
       unfriendHint: 'යමෙක් ඔබව මිතුරු ලැයිස්තුවෙන් ඉවත් කළ විට ඇඟවීම.',
       deleteChat: 'කතාබහ මකා දැමීම',
       deleteChatHint: 'යමෙක් ඔබේ කතාබහ මකා දැමූ විට ඇඟවීම.',
+
+      showBanner: 'බැනර් පොප්-අප්',
+      showBannerHint: 'දැනුම්දීමක් එන විට පොප්-අප් බැනරයක් පෙන්වන්න. අක්‍රිය කළත් ශබ්දය සහ සීනුව වාදනය වේ.',
+      pushEnabled: 'ජංගම පුෂ් දැනුම්දීම්',
+      pushEnabledHint: 'ShahZap වසා ඇති විටද පවා ඔබගේ දුරකථනයට දැනුම්දීම් ලබාගන්න (බ්‍රව්සරය හරහා).',
+
+      pushUnsupported: 'මෙම බ්‍රව්සරය push දැනුම්දීම් සඳහා සහාය නොදක්වයි.',
+      pushDenied: 'අවසරය ප්‍රතික්ෂේප විය. පළමුව බ්‍රව්සර සැකසුම්වල දැනුම්දීම් සඳහා ඉඩ දෙන්න.',
+      pushError: 'push දැනුම්දීම් සක්‍රීය කිරීමේදී දෝෂයක් ඇති විය. නැවත උත්සාහ කරන්න.',
 
       duration: 'දර්ශන කාලය',
       durationHint: 'සෑම බැනරයක්ම ස්වයංක්‍රීයව සැඟවීමට පෙර තිරයේ කොපමණ වේලාවක් රැඳී සිටිනවාද. \'කවදාවත්\' එය ඔබ වසන තෙක් තබාගනී.',
@@ -14246,6 +14685,15 @@ export const sd: Dict = {
       deleteChat: 'چيٽ حذف',
       deleteChatHint: 'جڏهن ڪو توهان جي چيٽ حذف ڪري ته اطلاع.',
 
+      showBanner: 'بينر پاپ اپ',
+      showBannerHint: 'نوٽيفڪيشن اچڻ تي پاپ اپ بينر ڏيکاريو. ان کي بند ڪرڻ سان به آواز ۽ گھنٽي وڄندي آهي.',
+      pushEnabled: 'موبائل پش نوٽيفڪيشن',
+      pushEnabledHint: 'شاه زپ بند هوندي به پنهنجي فون تي نوٽيفڪيشن حاصل ڪريو (برائوزر ذريعي).',
+
+      pushUnsupported: 'هي برائوزر پش نوٽيفڪيشن جي حمايت نٿو ڪري.',
+      pushDenied: 'اجازت مسترد ڪئي وئي. پهريان برائوزر سيٽنگن ۾ نوٽيفڪيشن جي اجازت ڏيو.',
+      pushError: 'پش نوٽيفڪيشن کي فعال ڪرڻ ۾ مسئلو پيش آيو. ٻيهر ڪوشش ڪريو.',
+
       duration: 'ڏيکارڻ جو وقت',
       durationHint: 'هر بينر پاڻمرادو لڪڻ کان اڳ ڪيترو وقت اسڪرين تي رهي ٿو. "ڪڏهن نه" ان کي توهان جي بند ڪرڻ تائين رکي ٿو.',
       never: 'ڪڏهن نه',
@@ -14534,6 +14982,15 @@ export const ps: Dict = {
       unfriendHint: 'کله چې څوک له تاسو سره ملګرتیا پای ته ورسوي خبرتیا.',
       deleteChat: 'چت ړنګ شو',
       deleteChatHint: 'کله چې څوک ستاسو چت ړنګ کړي خبرتیا.',
+
+      showBanner: 'د بینر پاپ اپ',
+      showBannerHint: 'کله چې خبرتیا راشي نو پاپ اپ بینر وښایئ. بندول بیا هم غږ او زنګ غږوي.',
+      pushEnabled: 'د ګرځنده پش خبرتیاوې',
+      pushEnabledHint: 'شاه زپ تړلی وي نو هم په خپل تلیفون کې خبرتیاوې ترلاسه کړئ (د براوزر له لارې).',
+
+      pushUnsupported: 'دا براوزر د پش خبرتیاوو ملاتړ نه کوي.',
+      pushDenied: 'اجازه رد شوه. لومړی د براوزر په تنظیماتو کې خبرتیاوې اجازه ورکړئ.',
+      pushError: 'د پش خبرتیاوو په فعالولو کې ستونزه راغله. بیا هڅه وکړئ.',
 
       duration: 'د ښودلو موده',
       durationHint: 'هر بنر له اتوماتیک پټېدو مخکې څومره وخت پر پرده پاتې کیږي. "هیڅکله" تر هغه چې تاسو یې وتړئ ساتي.',
@@ -14824,6 +15281,15 @@ export const kk: Dict = {
       deleteChat: 'Чат өшірілді',
       deleteChatHint: 'Біреу сіздің чатыңызды өшіргенде ескерту.',
 
+      showBanner: 'Қалқымалы баннерлер',
+      showBannerHint: 'Хабарландыру келгенде қалқымалы баннерді көрсетіңіз. Өшірсе де дыбыс пен қоңырау шығады.',
+      pushEnabled: 'Мобильді push хабарландырулар',
+      pushEnabledHint: 'ShahZap жабық болса да телефонға хабарландыру алыңыз (браузер арқылы).',
+
+      pushUnsupported: 'Бұл браузер push хабарландыруларды қолдамайды.',
+      pushDenied: 'Рұқсат қабылданбады. Алдымен браузер баптауларында хабарландыруға рұқсат беріңіз.',
+      pushError: 'Push хабарландыруларды қосу кезінде қате пайда болды. Қайталап көріңіз.',
+
       duration: 'Көрсету ұзақтығы',
       durationHint: 'Әр баннер автоматты түрде жасырылғанға дейін экранда қанша уақыт тұрады. \'Ешқашан\' оны сіз жапқанша ұстап тұрады.',
       never: 'Ешқашан',
@@ -15112,6 +15578,15 @@ export const uz: Dict = {
       unfriendHint: 'Kimdir siz bilan do‘stlikni tugatganda ogohlantirish.',
       deleteChat: 'Chat o‘chirildi',
       deleteChatHint: 'Kimdir chattingizni o‘chirganda ogohlantirish.',
+
+      showBanner: 'Qalqib chiquvchi bannerlar',
+      showBannerHint: 'Bildirishnoma kelganda qalqib chiquvchi banner ko\'rsating. O\'chirish ham ovoz va qo\'ng\'iroqni chaladi.',
+      pushEnabled: 'Mobil push bildirishnomalar',
+      pushEnabledHint: 'ShahZap yopiq bo\'lsa ham telefoningizga bildirishnoma oling (brauzer orqali).',
+
+      pushUnsupported: 'Bu brauzer push bildirishnomalarini qo\'llab-quvvatlamaydi.',
+      pushDenied: 'Ruxsat rad etildi. Avval brauzer sozlamalarida bildirishnomalarga ruxsat bering.',
+      pushError: 'Push bildirishnomalarni yoqishda xatolik yuz berdi. Qayta urinib ko\'ring.',
 
       duration: 'Ko\'rsatish davomiyligi',
       durationHint: 'Har bir banner avtomatik yashirilguncha ekranda qancha vaqt turadi. \'Hech qachon\' uni siz yopmaguningizcha ushlab turadi.',
@@ -15402,6 +15877,15 @@ export const mn: Dict = {
       deleteChat: 'Чат устгагдсан',
       deleteChatHint: 'Хэн нэгэн таны чатыг устгахад анхааруулга.',
 
+      showBanner: 'Жагсаалт поп-ап',
+      showBannerHint: 'Мэдэгдэл ирэхэд поп-ап баннер харуулах. Унтраасан ч дуу болон хонх дуугарна.',
+      pushEnabled: 'Гар утасны push мэдэгдэл',
+      pushEnabledHint: 'ShahZap хаалттай байсан ч утсандаа мэдэгдэл аваарай (хөтөчөөр).',
+
+      pushUnsupported: 'Энэ хөтөч push мэдэгдлийг дэмжихгүй.',
+      pushDenied: 'Зөвшөөрөл татгалзсан. Эхлээд хөтчийн тохиргоонд мэдэгдлийг зөвшөөрнө үү.',
+      pushError: 'Push мэдэгдлийг идэвхжүүлэхэд алдаа гарлаа. Дахин оролдоно уу.',
+
       duration: 'Харах хугацаа',
       durationHint: 'Баннер бүр автоматаар нуугдахаас өмнө дэлгэц дээр хэр удаан байх вэ. \'Хэзээ ч үгүй\' та үүнийг хаах хүртэл хадгална.',
       never: 'Хэзээ ч үгүй',
@@ -15690,6 +16174,15 @@ export const km: Dict = {
       unfriendHint: 'ការជូនដំណឹងនៅពេលនរណាម្នាក់ឈប់ជាមិត្តនឹងអ្នក។',
       deleteChat: 'ការលុបការសន្ទនា',
       deleteChatHint: 'ការជូនដំណឹងនៅពេលនរណាម្នាក់លុបការសន្ទនារបស់អ្នក។',
+
+      showBanner: 'បដាលេចឡើង',
+      showBannerHint: 'បង្ហាញបដាលេចឡើង ពេលមានការជូនដំណឹង។ ការបិទនៅតែលេងសំឡេង និងកណ្ដឹង។',
+      pushEnabled: 'ការជូនដំណឹង push លើទូរស័ព្ទ',
+      pushEnabledHint: 'ទទួលការជូនដំណឹងនៅលើទូរស័ព្ទ សូម្បីតែ ShahZap ត្រូវបានបិទ (តាមរយៈកម្មវិធីរុករក)។',
+
+      pushUnsupported: 'កម្មវិធីរុករកនេះមិនគាំទ្រការជូនដំណឹង push ទេ។',
+      pushDenied: 'ការអនុញ្ញាតត្រូវបានបដិសេធ។ សូមអនុញ្ញាតការជូនដំណឹងនៅក្នុងការកំណត់កម្មវិធីរុករកជាមុនសិន។',
+      pushError: 'មានកំហុសក្នុងការបើកការជូនដំណឹង push។ សូមព្យាយាមម្ដងទៀត។',
 
       duration: 'រយៈពេលបង្ហាញ',
       durationHint: 'បដានីមួយៗនៅលើអេក្រង់រយៈពេលប៉ុន្មាន មុនពេលលាក់ដោយស្វ័យប្រវត្តិ។ \'មិនដែល\' រក្សាទុកវា រហូតដល់អ្នកបិទវា។',
@@ -15980,6 +16473,15 @@ export const sw: Dict = {
       deleteChat: 'Mazungumzo yamefutwa',
       deleteChatHint: 'Tahadhari mtu anapofuta mazungumzo yako.',
 
+      showBanner: 'Bango ibuka juu',
+      showBannerHint: 'Onyesha bango ibuka juu arifa inapofika. Kuzima bado hutoa sauti na kengele.',
+      pushEnabled: 'Arifa za push za simu',
+      pushEnabledHint: 'Pokea arifa kwenye simu yako hata ShahZap ikiwa imefungwa (kupitia kivinjari).',
+
+      pushUnsupported: 'Kivinjari hiki hakitumiki arifa za push.',
+      pushDenied: 'Ruhusa imekataliwa. Ruhusu arifa katika mipangilio ya kivinjari kwanza.',
+      pushError: 'Kulikotokea hitilafu wakati wa kuwezesha arifa za push. Jaribu tena.',
+
       duration: 'Muda wa kuonyesha',
       durationHint: 'Kila bango linakaa skrin kwa muda gani kabla halijafichika kiotomatiki. "Kamwe" haliondoki hadi uifunge.',
       never: 'Kamwe',
@@ -16268,6 +16770,15 @@ export const ig: Dict = {
       unfriendHint: 'Ịdọ aka ná ntị mgbe mmadụ wepụrụ gị dịka enyi.',
       deleteChat: 'Nkparịta ụka ehichapụrụ',
       deleteChatHint: 'Ịdọ aka ná ntị mgbe mmadụ hichapụrụ nkparịta ụka gị.',
+
+      showBanner: 'Mpịakọta ihe ngosi',
+      showBannerHint: 'Gosi mpịakọta ihe ngosi mgbe ngosi bịara. Ịgbanwu ka na-akpọ ụda na mgbịrịgba.',
+      pushEnabled: 'Ngosi push na ekwentị',
+      pushEnabledHint: 'Nata ngosi na ekwentị gị ọbụlagodi mgbe ShahZap mechiri (site na ihe nchọgharị).',
+
+      pushUnsupported: 'Ihe nchọgharị a anaghị akwado ngosi push.',
+      pushDenied: 'Ajụrụ ikike. Kwe ka ngosi na ntọala ihe nchọgharị tupu.',
+      pushError: 'Enwere mperi mgbe ị na-agbanye ngosi push. Nwaa ọzọ.',
 
       duration: 'Ogologo oge ngosipụta',
       durationHint: 'Ogologo oge bener ọ bụla na-anọ na ihuenyo tupu ezochiri ya na akpaaka. \'Ọ dịghị mgbe\' na-echekwa ya ruo mgbe ị mechiri ya.',
@@ -16558,6 +17069,15 @@ export const yo: Dict = {
       deleteChat: 'Ifọrọwerọ ti paarẹ',
       deleteChatHint: 'Itaniji nigbati ẹnikan pa ifọrọwerọ rẹ rẹ.',
 
+      showBanner: 'Awọn banner afẹni',
+      showBannerHint: 'Fi awọn banner afẹni han nigba ti iwifunni ba de. Pipa si tun dun ohun ati agogo.',
+      pushEnabled: 'Awọn ifitonileti push alagbeka',
+      pushEnabledHint: 'Gba ifitonileti lori foonu rẹ paapaa nigba ti ShahZap ba ti pare (nipasẹ ẹrọ aṣawakiri).',
+
+      pushUnsupported: 'Ẹrọ aṣawakiri yii ko ṣe atilẹyin ifitonileti push.',
+      pushDenied: 'Wọn kọ igbanilaaye. Gba ifitonileti laaye ninu eto ẹrọ aṣawakiri kọkọ.',
+      pushError: 'Aṣiṣe kan waye lakoko titan ifitonileti push. Gbiyanju lẹẹkansi.',
+
       duration: 'Iye asiko ifihan',
       durationHint: 'Baana kọọkan yoo fi asiko melo si ori iboju, ki o to farapamọ laifọwọyi. \'Rara\' mu u wa titi o fi pa a.',
       never: 'Rara',
@@ -16846,6 +17366,15 @@ export const sq: Dict = {
       unfriendHint: 'Njoftim kur dikush ju heq nga miqtë.',
       deleteChat: 'Biseda e fshirë',
       deleteChatHint: 'Njoftim kur dikush fshin bisedën tuaj.',
+
+      showBanner: 'Panele kërcyese',
+      showBannerHint: 'Shfaq një panel kërcyes kur vjen një njoftim. Fikja ende luan tingull dhe zile.',
+      pushEnabled: 'Njoftime push celulari',
+      pushEnabledHint: 'Merrni njoftime në telefon edhe kur ShahZap është i mbyllur (përmes shfletuesit).',
+
+      pushUnsupported: 'Ky shfletues nuk mbështet njoftimet push.',
+      pushDenied: 'Leja u refuzua. Së pari lejoni njoftimet në cilësimet e shfletuesit.',
+      pushError: 'Ndodhi një gabim gjatë aktivizimit të njoftimeve push. Provo përsëri.',
 
       duration: 'Kohëzgjatja e shfaqjes',
       durationHint: 'Sa kohë qëndron secili bander në ekran përpara se të fshihet automatikisht. \'Kurrë\' e mban derisa ta mbyllni.',

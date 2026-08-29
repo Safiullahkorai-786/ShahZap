@@ -8,6 +8,7 @@ import { ACCENTS, getSelection, applySelection, type Selection, type Base } from
 import { getSoundPrefs, setSoundBundle, setSoundMode, notify, type SoundPrefs, type SoundMode, type SoundBundle } from '@/lib/notification-sound'
 import { getNotifPrefs, setNotifPrefs, type NotifPrefs, type NotifCategory } from '@/lib/notification-prefs'
 import { getNotifDisplayPrefs, setNotifDisplayPrefs, BANNER_DURATIONS, type NotifDisplayPrefs, type BannerDuration, type BannerStackMode } from '@/lib/notification-display'
+import { pushSupported, isPushEnabled, enablePush, disablePush } from '@/lib/push'
 import { AppHeader } from '@/components/app-header'
 import { Shimmer } from '@/components/shimmer'
 import { useI18n } from '@/lib/i18n/provider'
@@ -52,10 +53,10 @@ type Prefs = {
   country_targeting_enabled: boolean
 }
 
-function Toggle({ checked, onChange, label, hint }: { checked: boolean; onChange: (v: boolean) => void; label: string; hint: string }) {
+function Toggle({ checked, onChange, label, hint, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; hint: string; disabled?: boolean }) {
   return (
-    <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)}
-      className={`flex w-full items-center justify-between gap-4 rounded-2xl border p-4 text-left transition ${checked ? 'border-cyan-500/40 bg-cyan-950/20' : 'border-slate-800 bg-slate-950 hover:border-slate-600'}`}>
+    <button type="button" role="switch" aria-checked={checked} disabled={disabled} onClick={() => onChange(!checked)}
+      className={`flex w-full items-center justify-between gap-4 rounded-2xl border p-4 text-left transition ${disabled ? 'cursor-not-allowed opacity-60' : ''} ${checked ? 'border-cyan-500/40 bg-cyan-950/20' : 'border-slate-800 bg-slate-950 hover:border-slate-600'}`}>
       <span>
         <span className="block text-sm font-semibold text-white">{label}</span>
         <span className="mt-0.5 block text-xs leading-relaxed text-slate-400">{hint}</span>
@@ -181,6 +182,9 @@ export default function SettingsPage() {
   const [sound, setSound] = useState<SoundPrefs>({ mode: 'sound', bundle: 'classic' })
   const [notifPrefs, setNotifPrefsState] = useState<NotifPrefs>(getNotifPrefs())
   const [notifDisplay, setNotifDisplay] = useState<NotifDisplayPrefs>(getNotifDisplayPrefs())
+  const [pushOn, setPushOn] = useState<boolean>(false)
+  const [pushBusy, setPushBusy] = useState(false)
+  const [pushError, setPushError] = useState<string | null>(null)
   const [interfaceLanguage, setInterfaceLanguage] = useState('en')
   const [chatLanguage, setChatLanguage] = useState('en')
 
@@ -248,6 +252,7 @@ export default function SettingsPage() {
       if (!user) { router.replace('/'); return }
       setSel(getSelection())
       setSound(getSoundPrefs())
+      setPushOn(isPushEnabled())
       const { data: p } = await supabase.from('match_preferences').select('preferred_age_bands,preferred_genders,preferred_orientations,preferred_generations,preferred_languages,preferred_continents,preferred_interests,language_filter_enabled,interest_wait_seconds,country_targeting_enabled').eq('profile_id', user.id).maybeSingle()
       const { data: profile } = await supabase.from('profiles').select('interface_language,chat_language').eq('id', user.id).maybeSingle()
       if (!active) return
@@ -264,6 +269,21 @@ export default function SettingsPage() {
 
   function toggleIn(list: string[], v: string): string[] {
     return list.includes(v) ? list.filter((x) => x !== v) : [...list, v]
+  }
+
+  async function togglePush(next: boolean) {
+    setPushBusy(true); setPushError(null)
+    const res = next ? await enablePush() : await disablePush()
+    setPushBusy(false)
+    if (res === true) {
+      setPushOn(next)
+    } else if (res === 'unsupported') {
+      setPushError(t('settings.notifications.pushUnsupported'))
+    } else if (res === 'denied') {
+      setPushError(t('settings.notifications.pushDenied'))
+    } else {
+      setPushError(t('settings.notifications.pushError'))
+    }
   }
 
   async function save() {
@@ -380,6 +400,13 @@ export default function SettingsPage() {
                   return next
                 })} />
             ))}
+
+            <Toggle checked={notifDisplay.showBanner} label={t('settings.notifications.showBanner')} hint={t('settings.notifications.showBannerHint')}
+              onChange={(v) => setNotifDisplay(setNotifDisplayPrefs({ ...notifDisplay, showBanner: v }))} />
+
+            <Toggle checked={pushOn} disabled={!pushSupported() || pushBusy} label={t('settings.notifications.pushEnabled')} hint={t('settings.notifications.pushEnabledHint')}
+              onChange={(v) => void togglePush(v)} />
+            {pushError ? <p className="text-xs font-semibold text-red-400">{pushError}</p> : null}
 
             <div>
               <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">{t('settings.notifications.duration')}</p>

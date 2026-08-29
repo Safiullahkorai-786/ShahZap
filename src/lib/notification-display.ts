@@ -21,6 +21,8 @@ export type BannerStackMode = 'single' | 'stack-new-top' | 'stack-new-bottom'
 export type NotifDisplayPrefs = {
   duration: BannerDuration
   stack: BannerStackMode
+  /** Master switch for the in-app toast banners (sound/bell unaffected). */
+  showBanner: boolean
 }
 
 export const BANNER_DURATIONS: BannerDuration[] = [3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 'never']
@@ -30,7 +32,7 @@ export const BANNER_STACK_MODES: BannerStackMode[] = ['single', 'stack-new-top',
 const KEY = 'shahzap:notif-display'
 
 export function defaultNotifDisplayPrefs(): NotifDisplayPrefs {
-  return { duration: 6, stack: 'single' }
+  return { duration: 6, stack: 'single', showBanner: true }
 }
 
 export function getNotifDisplayPrefs(): NotifDisplayPrefs {
@@ -50,6 +52,7 @@ export function getNotifDisplayPrefs(): NotifDisplayPrefs {
     if (BANNER_STACK_MODES.includes(p.stack as BannerStackMode)) {
       next.stack = p.stack as BannerStackMode
     }
+    if (typeof p.showBanner === 'boolean') next.showBanner = p.showBanner
     return next
   } catch {
     return defaultNotifDisplayPrefs()

@@ -221,6 +221,7 @@ export function NotificationBanner() {
   const pathname = usePathname()
   const [queue, setQueue] = useState<BannerItem[]>([])
   const [prefs, setPrefs] = useState<BannerStackMode | null>(null)
+  const [showBanner, setShowBanner] = useState<boolean>(true)
   const [actingOn, setActingOn] = useState<string | null>(null)
   const userIdRef = useRef<string | null>(null)
   const activeConversationRef = useRef<string | null>(null)
@@ -232,12 +233,12 @@ export function NotificationBanner() {
     activeConversationRef.current = m ? decodeURIComponent(m[1]) : null
   }, [pathname])
 
-
   // Reflect display-preference changes (Settings) live.
   useEffect(() => {
     function sync() {
       const p = getNotifDisplayPrefs()
       setPrefs(p.stack)
+      setShowBanner(p.showBanner)
     }
     sync()
     window.addEventListener('shahzap:notif-display-change', sync)
@@ -367,8 +368,9 @@ export function NotificationBanner() {
   const autoHideMs = durationToMs(display.duration)
   const stack = prefs ?? display.stack
 
-  // Never show a message banner for the conversation the user is currently
-  // viewing (it's already visible inline in that chat).
+  // User turned off the toast banners entirely (sound + bell unaffected).
+  if (!showBanner) return null
+
   // Never show a message banner for the conversation the user is currently
   // viewing (it's already visible inline in that chat). pathname is reactive
   // so this stays up to date as the user navigates between chats.
