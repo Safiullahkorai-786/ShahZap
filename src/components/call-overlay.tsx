@@ -463,11 +463,11 @@ export function CallOverlay(props: {
                 <div className="flex flex-col items-center">
                   {/* Active call ring + mic status, themed with the accent */}
                   <div className="relative">
-                    <span aria-hidden className={`absolute -inset-2 rounded-full opacity-70 ${!mainIsSelf && remoteMuted ? 'bg-red-500/20' : ''}`} style={{ boxShadow: `0 0 0 3px var(--a1, #22d3ee), 0 0 35px var(--a1, #22d3ee)` }} />
+                    <span aria-hidden className={`absolute -inset-2 rounded-full opacity-70 ${(mainIsSelf ? muted : remoteMuted) ? 'bg-red-500/20' : ''}`} style={{ boxShadow: `0 0 0 3px var(--a1, #22d3ee), 0 0 35px var(--a1, #22d3ee)` }} />
                     <div className="flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-violet-500 text-5xl font-bold">
                       {mainIsSelf ? <User size={44} /> : (otherName?.[0]?.toUpperCase() ?? '?')}
                     </div>
-                    {!mainIsSelf && remoteMuted && (
+                    {(mainIsSelf ? muted : remoteMuted) && (
                       <span className="absolute -bottom-1 -right-1 flex h-9 w-9 items-center justify-center rounded-full bg-red-500 text-white shadow-lg">
                         <MicOff size={18} />
                       </span>
@@ -476,7 +476,7 @@ export function CallOverlay(props: {
                   <p className="mt-5 text-lg font-semibold">{mainIsSelf ? 'You' : otherName}</p>
                   <p className="flex items-center gap-2 text-sm text-slate-400">
                     <span className="h-2 w-2 animate-pulse rounded-full" style={{ background: 'var(--a1, #22d3ee)' }} />
-                    {!mainIsSelf && remoteMuted ? 'Mic muted' : 'On a ' + (videoCall ? 'video' : 'voice') + ' call'}
+                    {(mainIsSelf ? muted : remoteMuted) ? 'Mic muted' : 'On a ' + (videoCall ? 'video' : 'voice') + ' call'}
                   </p>
                 </div>
               </div>
