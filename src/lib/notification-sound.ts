@@ -82,28 +82,31 @@ function ensureCtx(): AudioContext | undefined {
   }
 }
 
-// Resolves once the shared context is actually 'running', so tones are never
-// scheduled against a suspended (silent) context. iOS Safari in particular can
-// drop oscillator events scheduled before the context starts, so we ALWAYS wait
-// for a running context before queueing audio.
-let resumePromise: Promise<AudioContext | undefined> | null = null
-
-function audio(): Promise<AudioContext | undefined> {
-  const start = () => {
-    const c = ensureCtx()
-    if (!c) return Promise.resolve<AudioContext | undefined>(undefined)
-    if (c.state === 'running') return Promise.resolve(c)
-    // resume() only succeeds while the tab has user activation. The gesture
-    // handler below keeps a fresh resume going, so by call time this resolves
-    // to a live context. External calls (realtime) rely on that prior gesture.
-    try {
-      return Promise.resolve(c.resume()).then(() => c, () => c)
-    } catch {
-      return Promise.resolve(c)
+// Resolves with a context that is actually 'running' (or undefined), so tones
+// are never scheduled against a suspended (silent) context. resume() only fully
+// takes effect while the tab has user activation, so we retry it briefly until
+// the context reports running; if it still can't start we resolve anyway rather
+// than hang the (async) play calls.
+function ctxOrRunning(): Promise<AudioContext | undefined> {
+  const c = ensureCtx()
+  if (!c) return Promise.resolve<AudioContext | undefined>(undefined)
+  if (c.state === 'running') return Promise.resolve(c)
+  return new Promise<AudioContext | undefined>((resolve) => {
+    const deadline = performance.now() + 150
+    const attempt = () => {
+      if (c.state === 'running') return resolve(c)
+      if (performance.now() > deadline) return resolve(c)
+      try { void c.resume().catch(() => {}) } catch {}
+      setTimeout(attempt, 20)
     }
-  }
-  resumePromise ??= start().finally(() => { resumePromise = null })
-  return resumePromise
+    attempt()
+  })
+}
+
+let audioPromise: Promise<AudioContext | undefined> | null = null
+function audio(): Promise<AudioContext | undefined> {
+  audioPromise ??= ctxOrRunning().finally(() => { audioPromise = null })
+  return audioPromise
 }
 
 // Creating/resuming an AudioContext outside a user gesture leaves it suspended
@@ -114,7 +117,7 @@ function audio(): Promise<AudioContext | undefined> {
 // can be resumed for later realtime-triggered rings.
 function unlockAudio() { void audio() }
 if (typeof window !== 'undefined') {
-  const evts = ['pointerdown', 'touchstart', 'keydown'] as const
+  const evts = ['pointerdown', 'touchstart', 'keydown', 'pointerup', 'click'] as const
   const onGesture = () => unlockAudio()
   for (const e of evts) window.addEventListener(e, onGesture, { passive: true })
 }
