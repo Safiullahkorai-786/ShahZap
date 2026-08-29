@@ -35,11 +35,9 @@ export default function OnlineTabs({ members }: { members: OnlineMember[] }) {
         <TabButton label="Messages" active={tab === 'messages'} onClick={() => setTab('messages')} badge={messagesUnread} />
       </div>
 
-      {tab === 'online' && (
-        <div className="mt-2">
-          <OnlineMembers members={members} />
-        </div>
-      )}
+      <div className={tab === 'online' ? 'mt-2' : 'hidden'}>
+        <OnlineMembers members={members} />
+      </div>
 
       <div className={tab === 'messages' ? 'mt-2' : 'hidden'}>
         <p className="px-1 pt-2 text-xs text-slate-500">Chats with people you are not friends with yet.</p>
