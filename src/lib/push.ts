@@ -1,13 +1,13 @@
 /*
  * Client-side Web Push (PWA / Chrome) management.
  *
- * Enabling push: requests browser permission, gets (or creates) a push
+ * Enabling push: ensures browser permission, gets (or creates) a push
  * subscription authorized with the app's VAPID public key, and stores it in
  * the `push_subscriptions` table via the `save_push_subscription` RPC.
- * Disabling removes the local flag, deletes the row, and unsubscribes.
+ * Disabling removes the row and unsubscribes the browser.
  *
- * The actual delivery happens server-side (a DB trigger → the `notify-push`
- * Supabase Edge Function), so pushes arrive even when ShahZap is closed.
+ * Delivery happens server-side (DB trigger → `notify-push` Supabase Edge
+ * Function), so pushes arrive even when ShahZap is closed.
  */
 
 import { createClient } from '@/lib/supabase/client'
@@ -20,6 +20,10 @@ const VAPID_PUBLIC_KEY =
 
 const PUSH_KEY = 'shahzap:push'
 
+export type PushResult =
+  | { ok: true }
+  | { ok: false; reason: 'unsupported' | 'denied' | 'off' | 'error'; message: string }
+
 /** True when the browser can do push at all (secure context + SW + push). */
 export function pushSupported(): boolean {
   if (typeof window === 'undefined') return false
@@ -30,12 +34,13 @@ export function pushSupported(): boolean {
   )
 }
 
-/** Whether push is actively enabled from the browser's real point of view. */
+/** True if low-level push machinery + permission are both in place. */
 export function isPushGranted(): boolean {
   if (typeof window === 'undefined') return false
-  return Notification.permission === 'granted'
+  return pushSupported() && Notification.permission === 'granted'
 }
 
+/** Local flag mirror (used to render a quick, synchronous toggle state). */
 export function isPushEnabled(): boolean {
   if (!pushSupported()) return false
   try { return window.localStorage.getItem(PUSH_KEY) === '1' } catch { return false }
@@ -55,26 +60,66 @@ function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
 }
 
 /**
- * Turn web push on. Always (re-)requests permission so enabling again after a
- * revoke re-prompts; reuses an existing subscription if the browser already
- * has one. Returns true on success or a short error code on any failure.
+ * Ask the browser to show the native "Allow notifications?" prompt. Browsers
+ * only show it when permission is not already decided (`default`); once a
+ * user has granted or denied from site settings, no prompt appears — the
+ * result just reflects the stored permission.
  */
-export async function enablePush(): Promise<true | ErrorCode> {
-  if (!pushSupported()) return 'unsupported'
+function requestPermission(): Promise<NotificationPermission> {
   try {
-    // Always request so a revoked permission re-prompts (sticky 'granted' just
-    // resolves instantly without a dialog).
-    const perm = await Notification.requestPermission()
-    if (perm !== 'granted') return 'denied'
+    return Notification.requestPermission()
+  } catch {
+    return Promise.resolve(Notification.permission)
+  }
+}
 
-    const reg = await navigator.serviceWorker.ready
-    let sub = await reg.pushManager.getSubscription()
-    if (!sub) {
-      sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-      })
+/**
+ * Turn web push on. Idempotent: if a subscription already exists it is reused
+ * and its DB row is refreshed rather than erroring.
+ */
+export async function enablePush(): Promise<PushResult> {
+  if (!pushSupported()) {
+    return { ok: false, reason: 'unsupported', message: 'Push is not supported in this browser.' }
+  }
+
+  // Permission gates the whole feature. If the user has denied it (or removed
+  // it from site settings), no prompt can appear — surface that clearly.
+  if (Notification.permission === 'denied') {
+    return {
+      ok: false,
+      reason: 'denied',
+      message:
+        'Notifications are turned off for this site in your browser. Enable them in your browser/site settings, then try again.',
     }
+  }
+
+  // Only ask if we haven't got permission yet (avoids dead prompts).
+  if (Notification.permission !== 'granted') {
+    const perm = await requestPermission()
+    if (perm !== 'granted') {
+      return {
+        ok: false,
+        reason: 'denied',
+        message:
+          'You declined notifications. Allow them to receive push notifications, then try again.',
+      }
+    }
+  }
+
+  try {
+    const reg = await navigator.serviceWorker.ready
+
+    // Get or create the subscription. Retry once on a transient failure
+    // (e.g. racing the permission grant).
+    let sub = await getOrSubscribe(reg)
+    if (!sub) {
+      try {
+        sub = await getOrSubscribe(reg, true)
+      } catch (e) {
+        return { ok: false, reason: 'error', message: describe(e) }
+      }
+    }
+    if (!sub) return { ok: false, reason: 'error', message: 'Could not create a push subscription.' }
 
     const endpoint = sub.endpoint
     const keys = sub.toJSON() as { keys?: { p256dh?: string; auth?: string } }
@@ -88,44 +133,70 @@ export async function enablePush(): Promise<true | ErrorCode> {
       p_auth: auth,
       p_user_agent: navigator.userAgent,
     })
-    if (error) return 'db'
+    if (error) {
+      console.error('save_push_subscription rpc failed:', error)
+      return { ok: false, reason: 'error', message: `Push could not be saved (${describe(error)}).` }
+    }
 
     setPushEnabled(true)
-    return true
-  } catch {
-    return 'failed'
+    return { ok: true }
+  } catch (e) {
+    console.error('enablePush failed:', e)
+    return { ok: false, reason: 'error', message: describe(e) }
   }
 }
 
-/**
- * Turn web push off: remove the row and unsubscribe the browser. Returns true
- * on success or a short error code on failure.
- */
-export async function disablePush(): Promise<true | ErrorCode> {
-  if (!pushSupported()) return true
+async function getOrSubscribe(
+  reg: ServiceWorkerRegistration,
+  force = false,
+): Promise<PushSubscription | null> {
+  if (!force) {
+    const existing = await reg.pushManager.getSubscription()
+    if (existing) return existing
+  }
+  return reg.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+  })
+}
+
+/** Turn web push off: unsubscribe the browser and remove the DB row. */
+export async function disablePush(): Promise<PushResult> {
+  if (!pushSupported()) return { ok: true }
   try {
     const supabase = createClient()
-
     let endpoint: string | null = null
+
+    let reg: ServiceWorkerRegistration | null = null
+    try { reg = await navigator.serviceWorker.ready } catch {}
     try {
-      const reg = await navigator.serviceWorker.ready
-      const sub = await reg.pushManager.getSubscription()
+      const sub = reg ? await reg.pushManager.getSubscription() : null
       if (sub) {
         endpoint = sub.endpoint
         await sub.unsubscribe()
       }
-    } catch {}
+    } catch (e) {
+      console.error('unsubscribe failed:', e)
+    }
 
     if (endpoint) {
       const { error } = await supabase.rpc('delete_push_subscription', { p_endpoint: endpoint })
-      if (error) return 'db'
+      if (error) {
+        console.error('delete_push_subscription rpc failed:', error)
+        return { ok: false, reason: 'error', message: `Push could not be disabled (${describe(error)}).` }
+      }
     }
 
     setPushEnabled(false)
-    return true
-  } catch {
-    return 'failed'
+    return { ok: true }
+  } catch (e) {
+    console.error('disablePush failed:', e)
+    return { ok: false, reason: 'error', message: describe(e) }
   }
 }
 
-export type ErrorCode = 'unsupported' | 'denied' | 'db' | 'failed'
+function describe(e: unknown): string {
+  if (e instanceof Error) return e.message
+  if (typeof e === 'string') return e
+  try { return JSON.stringify(e) } catch { return 'Unknown error' }
+}

@@ -252,7 +252,7 @@ export default function SettingsPage() {
       if (!user) { router.replace('/'); return }
       setSel(getSelection())
       setSound(getSoundPrefs())
-      setPushOn(isPushEnabled())
+      setPushOn(await reflectPushState())
       const { data: p } = await supabase.from('match_preferences').select('preferred_age_bands,preferred_genders,preferred_orientations,preferred_generations,preferred_languages,preferred_continents,preferred_interests,language_filter_enabled,interest_wait_seconds,country_targeting_enabled').eq('profile_id', user.id).maybeSingle()
       const { data: profile } = await supabase.from('profiles').select('interface_language,chat_language').eq('id', user.id).maybeSingle()
       if (!active) return
@@ -271,23 +271,32 @@ export default function SettingsPage() {
     return list.includes(v) ? list.filter((x) => x !== v) : [...list, v]
   }
 
+  // True only when the browser genuinely has push on: permission granted AND
+  // an active push subscription. This is what the toggle should reflect.
+  async function reflectPushState(): Promise<boolean> {
+    if (!pushSupported()) return false
+    if (Notification.permission !== 'granted') return false
+    try {
+      const reg = await navigator.serviceWorker.ready
+      const sub = await reg.pushManager.getSubscription()
+      return !!sub && isPushEnabled()
+    } catch {
+      return isPushEnabled()
+    }
+  }
+
   async function togglePush(next: boolean) {
     setPushBusy(true); setPushError(null)
     try {
       const res = next ? await enablePush() : await disablePush()
-      if (res === true) {
-        setPushOn(next)
-      } else if (res === 'unsupported') {
-        setPushError(t('settings.notifications.pushUnsupported'))
-      } else if (res === 'denied') {
-        setPushError(t('settings.notifications.pushDenied'))
-      } else if (res === 'db') {
-        setPushError(t('settings.notifications.pushError'))
-      } else {
-        setPushError(t('settings.notifications.pushError'))
+      if (!res.ok) {
+        setPushError(res.message)
       }
-    } catch {
-      setPushError(t('settings.notifications.pushError'))
+      // Refresh from the real browser state so the toggle always matches
+      // whether a subscription actually exists.
+      setPushOn(await reflectPushState())
+    } catch (e) {
+      setPushError(e instanceof Error ? e.message : t('settings.notifications.pushError'))
     } finally {
       setPushBusy(false)
     }
