@@ -82,36 +82,41 @@ function ensureCtx(): AudioContext | undefined {
   }
 }
 
-function audio(): AudioContext | undefined {
-  const c = ensureCtx()
-  // A suspended context can only be resumed inside a user gesture; resume() here
-  // may fail if there hasn't been a recent gesture. unlockAudio() (below) makes
-  // sure the context is created + running as soon as the user first interacts,
-  // so realtime-triggered rings (incoming calls) can actually be heard.
-  if (c && c.state === 'suspended') {
-    try { void c.resume().catch(() => {}) } catch {}
+// Resolves once the shared context is actually 'running', so tones are never
+// scheduled against a suspended (silent) context. iOS Safari in particular can
+// drop oscillator events scheduled before the context starts, so we ALWAYS wait
+// for a running context before queueing audio.
+let resumePromise: Promise<AudioContext | undefined> | null = null
+
+function audio(): Promise<AudioContext | undefined> {
+  const start = () => {
+    const c = ensureCtx()
+    if (!c) return Promise.resolve<AudioContext | undefined>(undefined)
+    if (c.state === 'running') return Promise.resolve(c)
+    // resume() only succeeds while the tab has user activation. The gesture
+    // handler below keeps a fresh resume going, so by call time this resolves
+    // to a live context. External calls (realtime) rely on that prior gesture.
+    try {
+      return Promise.resolve(c.resume()).then(() => c, () => c)
+    } catch {
+      return Promise.resolve(c)
+    }
   }
-  return c
+  resumePromise ??= start().finally(() => { resumePromise = null })
+  return resumePromise
 }
 
 // Creating/resuming an AudioContext outside a user gesture leaves it suspended
 // and it produces no sound (autoplay policy). We therefore create + resume it on
-// the very first tap/key anywhere on the page, so that by the time a call rings
-// (incoming arrives via a realtime event, not a gesture) the context is already
-// running and unlocked. Outgoing rings likewise start from a gesture and are
-// guaranteed to have a live context.
-let unlockBound = false
-function unlockAudio() {
-  const c = ensureCtx()
-  if (c && c.state === 'suspended') {
-    try { void c.resume().catch(() => {}) } catch {}
-  }
-}
-if (typeof window !== 'undefined' && !unlockBound) {
-  unlockBound = true
+// EVERY tap/key anywhere on the page, so that by the time a call rings (incoming
+// arrives via a realtime event, not a gesture) the context is already running and
+// unlocked. Re-running on each gesture also re-grants activation so the context
+// can be resumed for later realtime-triggered rings.
+function unlockAudio() { void audio() }
+if (typeof window !== 'undefined') {
   const evts = ['pointerdown', 'touchstart', 'keydown'] as const
   const onGesture = () => unlockAudio()
-  for (const e of evts) window.addEventListener(e, onGesture, { once: false, passive: true })
+  for (const e of evts) window.addEventListener(e, onGesture, { passive: true })
 }
 
 
@@ -143,8 +148,8 @@ function tone(c: AudioContext, { freq, at = 0, dur = 0.25, peak = 0.16, type = '
 
 // ── The three bundles ───────────────────────────────────────────────────────
 
-function playClassic(kind: SoundKind) {
-  const c = audio(); if (!c) return
+async function playClassic(kind: SoundKind) {
+  const c = await audio(); if (!c) return
   if (kind === 'message') {
     tone(c, { freq: 880, dur: 0.28, peak: 0.2 })
     tone(c, { freq: 1318.51, at: 0.12, dur: 0.34, peak: 0.18 })
@@ -161,8 +166,8 @@ function playClassic(kind: SoundKind) {
   }
 }
 
-function playPop(kind: SoundKind) {
-  const c = audio(); if (!c) return
+async function playPop(kind: SoundKind) {
+  const c = await audio(); if (!c) return
   if (kind === 'message') {
     tone(c, { freq: 420, glideTo: 980, dur: 0.16, peak: 0.22, type: 'square' })
     tone(c, { freq: 990, at: 0.1, glideTo: 640, dur: 0.12, peak: 0.12, type: 'square' })
@@ -177,8 +182,8 @@ function playPop(kind: SoundKind) {
   }
 }
 
-function playZen(kind: SoundKind) {
-  const c = audio(); if (!c) return
+async function playZen(kind: SoundKind) {
+  const c = await audio(); if (!c) return
   if (kind === 'message') {
     tone(c, { freq: 783.99, dur: 0.5, peak: 0.14 })
     tone(c, { freq: 1174.66, at: 0.06, dur: 0.55, peak: 0.09 })
@@ -196,9 +201,9 @@ function playZen(kind: SoundKind) {
 }
 
 const PLAYERS: Record<SoundBundle, (k: SoundKind) => void> = {
-  classic: playClassic,
-  pop: playPop,
-  zen: playZen,
+  classic: (k) => void playClassic(k),
+  pop: (k) => void playPop(k),
+  zen: (k) => void playZen(k),
 }
 
 /*
@@ -206,8 +211,8 @@ const PLAYERS: Record<SoundBundle, (k: SoundKind) => void> = {
  * iOS Safari & PWA, which expose no navigator.vibrate at all. A short
  * low-frequency motor-like pulse pattern stands in for the haptic.
  */
-function playBuzzTone(kind: SoundKind) {
-  const c = audio(); if (!c) return
+async function playBuzzTone(kind: SoundKind) {
+  const c = await audio(); if (!c) return
   const pulse = (at: number, dur: number) => {
     tone(c, { freq: 105, at, dur, peak: 0.3, type: 'sawtooth' })
     tone(c, { freq: 210, at, dur: dur * 0.8, peak: 0.08, type: 'sine' })
@@ -228,7 +233,7 @@ export function notify(kind: SoundKind) {
     // low buzz-tone so the mode always gives tangible feedback.
     let vibrated = false
     try { vibrated = navigator.vibrate?.(VIBRATION[kind]) === true } catch {}
-    if (!vibrated) playBuzzTone(kind)
+    if (!vibrated) void playBuzzTone(kind)
     return
   }
   ;(PLAYERS[bundle] ?? playClassic)(kind)
@@ -332,8 +337,8 @@ function ringBuzz(c: AudioContext, vol: number, kind: RingKind) {
   else { pulse(0, 0.12); pulse(0.2, 0.12) }
 }
 
-function playRingCadence(bundle: SoundBundle, kind: RingKind, mode: SoundMode, vol: number) {
-  const c = audio(); if (!c) return
+async function playRingCadence(bundle: SoundBundle, kind: RingKind, mode: SoundMode, vol: number) {
+  const c = await audio(); if (!c) return
   if (mode === 'sound') {
     if (bundle === 'classic') ringClassic(c, vol, kind)
     else if (bundle === 'pop') ringPop(c, vol, kind)
@@ -353,14 +358,14 @@ export function playRing(kind: RingKind) {
   const { mode, bundle } = getSoundPrefs()
   const vol = getRingVolume()
   if (mode === 'mute') return
-  playRingCadence(bundle, kind, mode, vol)
+  void playRingCadence(bundle, kind, mode, vol)
   if (mode === 'buzz') {
     // Let the OS haptics carry the loop; no audio cadence needs to repeat.
     try { navigator.vibrate?.(kind === 'incoming' ? [250, 120, 250, 120, 250] : [140, 90, 140]) } catch {}
     return
   }
   const rhythm = RING_RHYTHM[bundle] ?? 2300
-  ringTimer = setInterval(() => playRingCadence(bundle, kind, mode, vol), rhythm)
+  ringTimer = setInterval(() => void playRingCadence(bundle, kind, mode, vol), rhythm)
 }
 
 /** Stop the looping call ring immediately. Safe to call anytime. */
