@@ -127,6 +127,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         videoEnabled={engine.videoEnabled}
         error={engine.error}
         otherName={otherName}
+        conversationId={engine.target?.conversationId}
         localStream={engine.localStream}
         remoteStream={engine.remoteStream}
         onAccept={() => {
@@ -139,10 +140,6 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         onEnd={() => { resolveCallNotif(); api.endCall() }}
         onToggleMute={() => api.toggleMute()}
         onToggleVideo={() => api.toggleVideo()}
-        onOpenChat={() => {
-          const conv = engine.target?.conversationId
-          if (conv) router.push(`/chat/${conv}`)
-        }}
       />
     </CallContext.Provider>
   )

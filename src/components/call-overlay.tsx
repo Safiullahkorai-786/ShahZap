@@ -4,8 +4,9 @@
 // call with local preview + remote feed. All streams are attached device to
 // device via WebRTC — nothing routes through our servers.
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, MessageCircle } from 'lucide-react'
+import { CallChatPanel } from '@/components/call-chat-panel'
 
 type Status = 'idle' | 'outgoing' | 'incoming' | 'active' | 'ended'
 
@@ -17,6 +18,7 @@ export function CallOverlay(props: {
   videoEnabled: boolean
   error: string
   otherName: string
+  conversationId?: string
   localStream: MediaStream | null
   remoteStream: MediaStream | null
   onAccept: () => void
@@ -24,12 +26,14 @@ export function CallOverlay(props: {
   onEnd: () => void
   onToggleMute: () => void
   onToggleVideo: () => void
-  onOpenChat: () => void
 }) {
   const {
     open, status, mode, muted, videoEnabled, error, otherName,
-    localStream, remoteStream, onAccept, onReject, onEnd, onToggleMute, onToggleVideo, onOpenChat,
+    localStream, remoteStream, onAccept, onReject, onEnd, onToggleMute, onToggleVideo,
+    conversationId,
   } = props
+
+  const [chatOpen, setChatOpen] = useState(false)
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null)
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null)
@@ -122,61 +126,76 @@ export function CallOverlay(props: {
 
   // ── Active call ───────────────────────────────────────────────────────
   if (status === 'active') {
+    const showChat = chatOpen && !!conversationId
     return (
-      <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-slate-950 text-white">
-        {/* Remote video (full screen) or avatar for audio */}
-        {isVideo && videoEnabled ? (
-          <video ref={remoteVideoRef} autoPlay playsInline muted={false} className="h-full w-full flex-1 object-cover" />
-        ) : (
-          <div className="flex flex-1 items-center justify-center bg-slate-950">
-            <div className="flex flex-col items-center">
-              <div className="flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-violet-500 text-5xl font-bold">
-                {otherName?.[0]?.toUpperCase() ?? '?'}
+      <div className="fixed inset-0 z-50 flex overflow-hidden bg-slate-950 text-white">
+        {/* Call area (shrinks when the chat panel is open on desktop) */}
+        <div className={`relative flex h-full flex-col overflow-hidden ${showChat ? 'flex-1' : 'w-full'}`}>
+          {/* Remote video (full screen) or avatar for audio */}
+          {isVideo && videoEnabled ? (
+            <video ref={remoteVideoRef} autoPlay playsInline muted={false} className="h-full w-full flex-1 object-cover" />
+          ) : (
+            <div className="flex flex-1 items-center justify-center bg-slate-950">
+              <div className="flex flex-col items-center">
+                <div className="flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-violet-500 text-5xl font-bold">
+                  {otherName?.[0]?.toUpperCase() ?? '?'}
+                </div>
+                <p className="mt-4 text-lg font-semibold">{otherName}</p>
+                <p className="text-sm text-slate-400">On a {isVideo ? 'video' : 'voice'} call</p>
               </div>
-              <p className="mt-4 text-lg font-semibold">{otherName}</p>
-              <p className="text-sm text-slate-400">On a {isVideo ? 'video' : 'voice'} call</p>
             </div>
-          </div>
-        )}
-        <audio ref={remoteAudioRef} autoPlay playsInline hidden />
-
-        {/* Local preview (PiP) for video */}
-        {isVideo && videoEnabled && (
-          <div className="absolute right-3 top-3 h-36 w-24 overflow-hidden rounded-2xl border-2 border-white/20 shadow-lg sm:h-44 sm:w-32">
-            <video ref={localVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
-          </div>
-        )}
-
-        {error && (
-          <p className="absolute inset-x-0 top-20 z-10 mx-4 rounded-xl bg-red-950/70 px-4 py-2 text-center text-sm text-red-200">{error}</p>
-        )}
-
-        {/* Controls */}
-        <div className="z-10 flex items-center justify-center gap-6 border-t border-white/10 bg-slate-950/80 px-4 py-6 backdrop-blur">
-          <ControlButton label={muted ? 'Unmute' : 'Mute'} active={muted} onClick={onToggleMute}>
-            {muted ? <MicOff size={24} /> : <Mic size={24} />}
-          </ControlButton>
-          {isVideo && (
-            <ControlButton label={videoEnabled ? 'Turn off camera' : 'Turn on camera'} active={!videoEnabled} onClick={onToggleVideo}>
-              {videoEnabled ? <Video size={24} /> : <VideoOff size={24} />}
-            </ControlButton>
           )}
-          <button
-            onClick={onOpenChat}
-            aria-label="Open chat"
-            title={`Chat with ${otherName}`}
-            className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-700/70 text-white shadow-lg transition hover:bg-slate-600"
-          >
-            <MessageCircle size={26} />
-          </button>
-          <button
-            onClick={onEnd}
-            aria-label="End call"
-            className="flex h-16 w-16 items-center justify-center rounded-full bg-red-500 text-white shadow-lg transition hover:bg-red-400"
-          >
-            <PhoneOff size={26} />
-          </button>
+          <audio ref={remoteAudioRef} autoPlay playsInline hidden />
+
+          {/* Local preview (PiP) for video */}
+          {isVideo && videoEnabled && (
+            <div className="absolute right-3 top-3 h-36 w-24 overflow-hidden rounded-2xl border-2 border-white/20 shadow-lg sm:h-44 sm:w-32">
+              <video ref={localVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+            </div>
+          )}
+
+          {error && (
+            <p className="absolute inset-x-0 top-20 z-10 mx-4 rounded-xl bg-red-950/70 px-4 py-2 text-center text-sm text-red-200">{error}</p>
+          )}
+
+          {/* Controls */}
+          <div className="z-10 flex items-center justify-center gap-6 border-t border-white/10 bg-slate-950/80 px-4 py-6 backdrop-blur">
+            <ControlButton label={muted ? 'Unmute' : 'Mute'} active={muted} onClick={onToggleMute}>
+              {muted ? <MicOff size={24} /> : <Mic size={24} />}
+            </ControlButton>
+            {isVideo && (
+              <ControlButton label={videoEnabled ? 'Turn off camera' : 'Turn on camera'} active={!videoEnabled} onClick={onToggleVideo}>
+                {videoEnabled ? <Video size={24} /> : <VideoOff size={24} />}
+              </ControlButton>
+            )}
+            {conversationId && (
+              <button
+                onClick={() => setChatOpen((open) => !open)}
+                aria-label="Open chat"
+                title={`Chat with ${otherName}`}
+                className={`hidden h-16 w-16 items-center justify-center rounded-full shadow-lg transition lg:flex ${
+                  showChat ? 'bg-cyan-500 text-slate-950 hover:bg-cyan-400' : 'bg-slate-700/70 text-white hover:bg-slate-600'
+                }`}
+              >
+                <MessageCircle size={26} />
+              </button>
+            )}
+            <button
+              onClick={onEnd}
+              aria-label="End call"
+              className="flex h-16 w-16 items-center justify-center rounded-full bg-red-500 text-white shadow-lg transition hover:bg-red-400"
+            >
+              <PhoneOff size={26} />
+            </button>
+          </div>
         </div>
+
+        {/* Chat panel — WhatsApp Web style, right-hand side, desktop only */}
+        {showChat && conversationId && (
+          <div className="hidden h-full w-[26rem] shrink-0 lg:block">
+            <CallChatPanel conversationId={conversationId} otherName={otherName} onClose={() => setChatOpen(false)} />
+          </div>
+        )}
       </div>
     )
   }
