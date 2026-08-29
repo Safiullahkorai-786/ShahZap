@@ -20,6 +20,8 @@ type MsgThread = {
   lastMessage: string | null
   lastMessageTime: string | null
   lastSenderId: string | null
+  lastMessageDeliveredAt: string | null
+  lastMessageReadAt: string | null
   unreadCount: number
   isOnline: boolean
   countryCode: string | null
@@ -157,7 +159,7 @@ export default function OnlineMessages({ onUnreadChange }: { onUnreadChange?: (c
 
       // Last message per conversation
       const { data: lastMsgs } = await supabase.from('messages')
-        .select('id,original_message,created_at,sender_id,conversation_id,read_at')
+        .select('id,original_message,created_at,sender_id,conversation_id,read_at,delivered_at')
         .in('conversation_id', kept.map((t) => t.convId))
         .order('created_at', { ascending: false })
 
@@ -200,6 +202,8 @@ export default function OnlineMessages({ onUnreadChange }: { onUnreadChange?: (c
           lastMessage: lastMsg ? (lastMsg.sender_id === uid ? `You: ${lastMsg.original_message}` : lastMsg.original_message) : null,
           lastMessageTime: lastMsg?.created_at ?? null,
           lastSenderId: lastMsg?.sender_id ?? null,
+          lastMessageDeliveredAt: lastMsg?.delivered_at ?? null,
+          lastMessageReadAt: lastMsg?.read_at ?? null,
           unreadCount: unreadMap[convId] ?? 0,
           isOnline,
           countryCode: p.country_code,
@@ -215,23 +219,83 @@ export default function OnlineMessages({ onUnreadChange }: { onUnreadChange?: (c
 
     void fetchThreads()
 
-    // Realtime helpers
-    async function refresh() {
-      // Re-run the full fetch so friend/offline/hidden logic stays consistent
-      await fetchThreads()
+    // Fast incremental updates. New incoming messages update the matching
+    // thread in-place straight from the realtime payload (like the Friends
+    // page) so they appear immediately — no full re-query on every message.
+    function applyMessageInserts(msg: {
+      id: string; conversation_id: string; sender_id: string;
+      original_message: string | null; created_at: string;
+      read_at: string | null; delivered_at: string | null;
+    }) {
+      const uid = userIdRef.current
+      if (!uid) return
+      let found = false
+      setThreads((prev) => {
+        const idx = prev.findIndex((t) => t.conversationId === msg.conversation_id)
+        if (idx === -1) return prev
+        found = true
+        const updated = [...prev]
+        const t = { ...updated[idx] }
+        t.lastMessage = msg.sender_id === uid ? `You: ${msg.original_message}` : msg.original_message
+        t.lastMessageTime = msg.created_at
+        t.lastSenderId = msg.sender_id
+        t.lastMessageDeliveredAt = msg.delivered_at
+        t.lastMessageReadAt = msg.read_at
+        if (msg.sender_id !== uid) t.unreadCount = (t.unreadCount || 0) + 1
+        updated[idx] = t
+        // Move to the top (most recent first).
+        return [t, ...updated.filter((x) => x.conversationId !== t.conversationId)]
+      })
+      // A message arrived for a conversation we don't have loaded yet (a brand
+      // new non-friend DM) — do one full fetch to surface the new thread.
+      if (!found && active) void fetchThreads()
+    }
+
+    function applyMessageUpdates(msg: {
+      id: string; conversation_id: string; sender_id: string;
+      read_at: string | null; delivered_at: string | null;
+    }) {
+      const uid = userIdRef.current
+      if (!uid) return
+      setThreads((prev) => {
+        const idx = prev.findIndex((t) => t.conversationId === msg.conversation_id)
+        if (idx === -1) return prev
+        const t = prev[idx]
+        // Only react to ticks on the thread's current last message.
+        if (t.lastSenderId !== msg.sender_id) return prev
+        // The other person read the conversation → nothing left unread here
+        // if it was their own last message that got read.
+        const updated = [...prev]
+        updated[idx] = {
+          ...t,
+          lastMessageDeliveredAt: msg.delivered_at ?? t.lastMessageDeliveredAt,
+          lastMessageReadAt: msg.read_at ?? t.lastMessageReadAt,
+          unreadCount: msg.sender_id !== uid && msg.read_at ? 0 : t.unreadCount,
+        }
+        return updated
+      })
     }
 
     const channel = supabase.channel('online-msg-tab')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => { void refresh() })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, () => { void refresh() })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'friend_requests' }, () => { void refresh() })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'friend_requests' }, () => { void refresh() })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'friend_requests' }, () => { void refresh() })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, () => { void refresh() })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'conversation_participants' }, () => { void refresh() })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+        const msg = payload.new as { id: string; conversation_id: string; sender_id: string; original_message: string | null; created_at: string; read_at: string | null; delivered_at: string | null }
+        applyMessageInserts(msg)
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, (payload) => {
+        const msg = payload.new as { id: string; conversation_id: string; sender_id: string; read_at: string | null; delivered_at: string | null }
+        applyMessageUpdates(msg)
+      })
+      // Structural changes (friend added, blocked, profile change, new
+      // conversation) need the full re-query to keep the list consistent.
+      // These are rare compared to incoming messages.
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'friend_requests' }, () => { void fetchThreads() })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'friend_requests' }, () => { void fetchThreads() })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'friend_requests' }, () => { void fetchThreads() })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, () => { void fetchThreads() })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'conversation_participants' }, () => { void fetchThreads() })
       .subscribe()
 
-    const poll = window.setInterval(() => void refresh(), 30_000)
+    const poll = window.setInterval(() => void fetchThreads(), 30_000)
 
     return () => { active = false; window.clearInterval(poll); void supabase.removeChannel(channel) }
   }, [hiddenReady])
@@ -283,14 +347,21 @@ export default function OnlineMessages({ onUnreadChange }: { onUnreadChange?: (c
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <span className={`truncate text-sm font-semibold ${identity.colorClass}`}>{identity.label}</span>
+                <span className={`truncate text-sm ${t.unreadCount > 0 ? 'font-bold text-white' : `font-semibold ${identity.colorClass}`}`}>{identity.label}</span>
                 <span className="flex-none text-[10px] text-slate-500">
                   {t.isOnline ? 'online' : 'offline'}
                 </span>
               </div>
-              <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500">
-                <span className="truncate">{t.lastMessage ?? 'Start a conversation'}</span>
-                {t.lastMessageTime && <span className="flex-none">· {formatTime(t.lastMessageTime)}</span>}
+              <div className="mt-0.5 flex items-center gap-1.5 text-xs">
+                <span className={`truncate ${t.unreadCount > 0 ? 'font-semibold text-slate-200' : 'text-slate-500'}`}>
+                  {t.lastMessage ?? 'Start a conversation'}
+                </span>
+                {t.lastSenderId && t.lastSenderId === userIdRef.current && (
+                  <span className={`flex-none text-[11px] ${t.lastMessageReadAt ? 'text-cyan-300' : t.lastMessageDeliveredAt ? 'text-slate-400' : 'text-slate-600'}`}>
+                    {t.lastMessageReadAt ? '✓✓' : t.lastMessageDeliveredAt ? '✓✓' : '✓'}
+                  </span>
+                )}
+                {t.lastMessageTime && <span className="flex-none text-slate-500">· {formatTime(t.lastMessageTime)}</span>}
               </div>
             </div>
             {t.unreadCount > 0 && (
