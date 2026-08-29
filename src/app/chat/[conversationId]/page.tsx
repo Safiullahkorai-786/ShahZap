@@ -727,6 +727,18 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
     return () => window.clearTimeout(id)
   }, [loading, blockedAny, userId, persona])
 
+  // While the chat is embedded in the call panel, keep the composer focused
+  // if focus falls back to a blank area (e.g. after clicking the call video).
+  // This matches WhatsApp Desktop: you can just start typing at any time.
+  useEffect(() => {
+    if (!suppressCalls || blockedAny) return
+    const id = window.setInterval(() => {
+      const ae = document.activeElement
+      if (!ae || ae === document.body) inputRef.current?.focus({ preventScroll: true })
+    }, 900)
+    return () => window.clearInterval(id)
+  }, [suppressCalls, blockedAny])
+
   // Laptop convenience: start typing anywhere on the page and the composer
   // wakes up and receives your keystrokes — no click into the field needed.
   useEffect(() => {
