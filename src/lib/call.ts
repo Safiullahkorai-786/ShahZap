@@ -10,7 +10,7 @@ export type CallMode = 'audio' | 'video'
 export type CallStatus = 'idle' | 'outgoing' | 'incoming' | 'active' | 'ended'
 
 export type SignalMessage =
-  | { type: 'call'; mode: CallMode; token: string }
+  | { type: 'call'; mode: CallMode; token: string; conversationId?: string }
   | { type: 'accept'; token: string }
   | { type: 'reject'; token: string }
   | { type: 'cancel'; token: string }

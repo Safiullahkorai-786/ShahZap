@@ -4,6 +4,7 @@ import { PwaRegister } from "@/components/PwaRegister";
 import { PresenceHeartbeat } from "@/components/presence-heartbeat";
 import { GlobalNotificationListener } from "@/components/global-notification-listener";
 import { NotificationBanner } from "@/components/notification-banner";
+import { CallProvider } from "@/components/call-provider";
 import { BottomNav } from "@/components/bottom-nav";
 import { ClientProviders } from "@/lib/i18n/provider";
 
@@ -50,9 +51,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <PwaRegister />
             <PresenceHeartbeat />
             <GlobalNotificationListener />
-            <NotificationBanner />
-            {children}
-            <BottomNav />
+            <CallProvider>
+              <NotificationBanner />
+              {children}
+              <BottomNav />
+            </CallProvider>
           </ClientProviders>
         </div>
       </body>

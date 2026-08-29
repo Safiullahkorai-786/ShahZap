@@ -19,10 +19,12 @@ const HEADLINES: Record<string, string> = {
   unfriend: 'Unfriended',
   blocked: 'Blocked you',
   delete_chat: 'Chat deleted',
+  call: 'Incoming call',
 }
 
 function urlFor(kind: string, conversationId?: string | null): string {
   if (kind === 'message' && conversationId) return `/chat/${conversationId}`
+  if (kind === 'call' && conversationId) return `/chat/${conversationId}?from=call&answer=1`
   if (kind === 'friend_request' || kind === 'accept') return '/friends?tab=pending'
   return '/friends'
 }
@@ -83,10 +85,15 @@ serve(async (req: Request) => {
 
   const title = HEADLINES[kind]
   const clickPath = urlFor(kind, payload.conversation_id)
+  const body =
+    kind === 'call'
+      ? (payload.text === 'video' ? 'Incoming video call' : 'Incoming audio call')
+      : (payload.text ?? '')
   const notificationPayload = JSON.stringify({
     title,
     kind,
     clickPath,
+    body,
     conversationId: payload.conversation_id ?? null,
     fromUserId: payload.from_user_id ?? null,
     text: payload.text ?? '',

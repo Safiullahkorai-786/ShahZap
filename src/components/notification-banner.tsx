@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { MessageCircle, UserPlus, UserMinus, Ban, Trash2, X, Check } from 'lucide-react'
+import { MessageCircle, Phone, UserPlus, UserMinus, Ban, Trash2, X, Check } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { resolveIdentity, type Identity } from '@/lib/identity'
 import { isBotProfile } from '@/lib/bot'
@@ -10,6 +10,7 @@ import { getNotifPrefs, type NotifCategory } from '@/lib/notification-prefs'
 import { notify } from '@/lib/notification-sound'
 import { getNotifDisplayPrefs, durationToMs, type BannerStackMode } from '@/lib/notification-display'
 import { isTabVisible } from '@/lib/tab'
+import { useCall } from '@/components/call-provider'
 
 const SWIPE_THRESHOLD = 70
 const LEAVE_MS = 240
@@ -24,7 +25,7 @@ type BannerItem = {
   sub: string
   identity: Identity
   kindCategory: NotifCategory
-  icon: 'message' | 'request' | 'unfriend' | 'block' | 'chat_deleted'
+  icon: 'message' | 'request' | 'unfriend' | 'block' | 'chat_deleted' | 'call'
   href: string
   fromUserId: string | null
 }
@@ -39,6 +40,7 @@ const KIND_HEADLINE: Record<string, string> = {
   blocked: 'Blocked you',
   unblocked: 'Unblocked you',
   delete_chat: 'Chat deleted',
+  call: 'Incoming call',
 }
 
 const KIND_SUB: Record<string, string> = {
@@ -50,6 +52,7 @@ const KIND_SUB: Record<string, string> = {
   blocked: 'blocked you',
   unblocked: 'unblocked you',
   delete_chat: 'deleted your chat',
+  call: 'is calling you',
 }
 
 const FRIEND_LIFECYCLE = new Set(['friend_request', 'accept', 'reject', 'withdraw'])
@@ -61,6 +64,7 @@ function kindToCategory(kind: string): NotifCategory | null {
     accept: 'friend_request',
     reject: 'friend_request',
     withdraw: 'friend_request',
+    call: 'friend_request',
     blocked: 'block',
     unblocked: 'block',
     unfriend: 'unfriend',
@@ -71,6 +75,7 @@ function kindToCategory(kind: string): NotifCategory | null {
 
 function kindIcon(kind: string): BannerItem['icon'] {
   if (kind === 'message' || kind === 'unblocked') return 'message'
+  if (kind === 'call') return 'call'
   if (FRIEND_LIFECYCLE.has(kind)) return 'request'
   if (kind === 'unfriend') return 'unfriend'
   if (kind === 'blocked') return 'block'
@@ -83,6 +88,7 @@ function Icon({ icon }: { icon: BannerItem['icon'] }) {
   switch (icon) {
     case 'message': return <MessageCircle className={`${cls} text-cyan-300`} />
     case 'request': return <UserPlus className={`${cls} text-cyan-300`} />
+    case 'call': return <Phone className={`${cls} text-[var(--a2,#38bdf8)]`} />
     case 'unfriend': return <UserMinus className={`${cls} text-red-300`} />
     case 'block': return <Ban className={`${cls} text-red-300`} />
     case 'chat_deleted': return <Trash2 className={`${cls} text-red-300`} />
@@ -148,7 +154,8 @@ function BannerCard({ item, autoHideMs, acting, onOpen, onAct, onDismiss, compac
     setDragX(0)
   }
 
-  const showActions = item.kind === 'friend_request'
+  const isCall = item.kind === 'call'
+  const showActions = item.kind === 'friend_request' || isCall
 
   return (
     <div
@@ -190,7 +197,7 @@ function BannerCard({ item, autoHideMs, acting, onOpen, onAct, onDismiss, compac
             className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-cyan-400 px-3 py-2 text-xs font-bold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-50"
           >
             <Check size={14} />
-            {acting ? 'Accepting…' : 'Accept'}
+            {acting ? 'Connecting…' : isCall ? 'Answer' : 'Accept'}
           </button>
           <button
             type="button"
@@ -220,6 +227,7 @@ function BannerCard({ item, autoHideMs, acting, onOpen, onAct, onDismiss, compac
 export function NotificationBanner() {
   const router = useRouter()
   const pathname = usePathname()
+  const call = useCall()
   const [queue, setQueue] = useState<BannerItem[]>([])
   const [prefs, setPrefs] = useState<BannerStackMode | null>(null)
   const [showBanner, setShowBanner] = useState<boolean>(true)
@@ -273,7 +281,7 @@ export function NotificationBanner() {
 
   function handleOpen(item: BannerItem) {
     removeItem(item.id)
-    if (item.kind === 'message') {
+    if (item.kind === 'message' || item.kind === 'call') {
       router.push(item.href)
       return
     }
@@ -319,6 +327,37 @@ export function NotificationBanner() {
     }
   }
 
+  // Answer or decline an incoming call from the notification banner. The
+  // event loop already shows a full-screen overlay for an active ring; this
+  // banner is the secondary path (e.g. it was dismissed / app just reopened),
+  // so Accept routes into the conversation where the chat auto-answers the
+  // still-ringing call, and Decline best-effort rejects + clears the invite.
+  async function actOnCall(item: BannerItem, status: 'accepted' | 'declined') {
+    if (item.kind !== 'call') return
+    setActingOn(item.id)
+    const m = /^\/chat\/([^?]+)/.exec(item.href)
+    const conv = m ? decodeURIComponent(m[1]) : ''
+    if (status === 'declined') {
+      try { call.rejectCall() } catch {}
+      if (conv) {
+        const supabase = createClient()
+        try { await supabase.rpc('resolve_call_notification', { p_conversation_id: conv }) } catch {}
+      }
+      setActingOn(null)
+      removeItem(item.id)
+      return
+    }
+    setActingOn(null)
+    removeItem(item.id)
+    router.push(conv ? `/chat/${conv}?from=call&answer=1` : item.href)
+  }
+
+  // Route the accept/decline action to the right handler by kind.
+  function handleAct(item: BannerItem, status: 'accepted' | 'declined') {
+    if (item.kind === 'call') void actOnCall(item, status)
+    else void actOnFriendRequest(item, status)
+  }
+
   // Realtime listener: enqueue incoming notification banners.
   useEffect(() => {
     const supabase = createClient()
@@ -352,6 +391,10 @@ export function NotificationBanner() {
               row.conversation_id === activeConversationRef.current
             ) return
 
+            // Incoming calls already render a full-screen accept/decline
+            // overlay via the global call engine — don't duplicate it here.
+            if (row.kind === 'call' && call.status !== 'idle') return
+
             let identity: Identity = { label: 'Someone', colorClass: 'text-slate-300' }
             if (row.from_user_id) {
               const { data: p } = await supabase.from('profiles')
@@ -370,7 +413,7 @@ export function NotificationBanner() {
               kindCategory: cat,
               icon: kindIcon(row.kind),
               fromUserId: row.from_user_id,
-              href: row.kind === 'message' && row.conversation_id
+              href: (row.kind === 'message' || row.kind === 'call') && row.conversation_id
                 ? `/chat/${row.conversation_id}`
                 : '/friends',
             }
@@ -434,7 +477,7 @@ export function NotificationBanner() {
             autoHideMs={autoHideMs}
             acting={actingOn === item.id}
             onOpen={handleOpen}
-            onAct={actOnFriendRequest}
+            onAct={handleAct}
             onDismiss={removeItem}
             compact={stacked}
           />

@@ -31,6 +31,7 @@ const KIND_TO_CATEGORY: Record<string, NotifCategory> = {
   accept: 'friend_request',
   reject: 'friend_request',
   withdraw: 'friend_request',
+  call: 'friend_request',
   blocked: 'block',
   unblocked: 'block',
   unfriend: 'unfriend',

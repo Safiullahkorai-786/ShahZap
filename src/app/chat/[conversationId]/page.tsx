@@ -17,8 +17,7 @@ import { RichText } from '@/components/rich-text'
 import { EmojiPicker } from '@/components/emoji-picker'
 import { getRegionForCountry, REGION_LABELS, getCountryName } from '@/lib/regions'
 import { ACCENTS, getSelection, applySelection, type Selection } from '@/lib/theme'
-import { useCall } from '@/hooks/use-call'
-import { CallOverlay } from '@/components/call-overlay'
+import { useCall } from '@/components/call-provider'
 
 type Reactions = Record<string, string[]> | null
 type Message = {
@@ -260,13 +259,19 @@ export default function ChatPage() {
 
   const isFriend = friendState === 'friends'
 
-  const call = useCall({
-    myId: userId,
-    otherId,
-    conversationId,
-    enabled: isFriend && !!userId && !!otherId,
-    ringSound: () => notify('request'),
-  })
+  const call = useCall()
+
+  // Arriving via a call notification's Answer/Decline action (?answer=1 /
+  // ?decline=1) — auto-answer or auto-decline the still-ringing call in the
+  // global call engine, matching the user's chosen action.
+  useEffect(() => {
+    try {
+      const q = new URLSearchParams(window.location.search)
+      if (q.get('answer') === '1') call.acceptCall()
+      else if (q.get('decline') === '1') call.rejectCall()
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     const supabase = createClient()
@@ -1308,15 +1313,15 @@ export default function ChatPage() {
               <button
                 type="button"
                 aria-label="Start voice call"
-                onClick={() => void call.startCall('audio')}
-                className="flex h-10 w-10 items-center justify-center rounded-full text-emerald-300 transition hover:bg-emerald-400/10 hover:text-emerald-200"
+                onClick={() => otherId && void call.startCall('audio', { conversationId, otherId })}
+                className="flex h-11 w-11 items-center justify-center rounded-full text-[var(--a1,#7dd3fc)] transition hover:bg-cyan-400/10 hover:text-[var(--a2,#38bdf8)]"
               >
-                <Phone size={19} />
+                <Phone size={24} />
               </button>
               <button
                 type="button"
                 aria-label="Start video call"
-                onClick={() => void call.startCall('video')}
+                onClick={() => otherId && void call.startCall('video', { conversationId, otherId })}
                 className="flex h-11 w-11 items-center justify-center rounded-full text-[var(--a2,#38bdf8)] transition hover:bg-cyan-400/10 hover:text-[var(--a1,#7dd3fc)]"
               >
                 <Video size={24} />
@@ -1995,25 +2000,6 @@ export default function ChatPage() {
             </div>
           </div>
         </div>
-      )}
-
-      {!persona && (
-        <CallOverlay
-          open={call.status !== 'idle' || !!call.error}
-          status={call.status}
-          mode={call.mode}
-          muted={call.muted}
-          videoEnabled={call.videoEnabled}
-          error={call.error}
-          otherName={otherName}
-          localStream={call.localStream}
-          remoteStream={call.remoteStream}
-          onAccept={() => void call.acceptCall()}
-          onReject={() => call.rejectCall()}
-          onEnd={() => call.endCall()}
-          onToggleMute={() => call.toggleMute()}
-          onToggleVideo={() => call.toggleVideo()}
-        />
       )}
     </main>
   )

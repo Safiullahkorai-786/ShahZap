@@ -46,15 +46,23 @@ self.addEventListener('push', (event) => {
   const title = data.title || 'ShahZap';
   const clickPath = data.clickPath || '/';
   const body = data.text || data.body || '';
+  const kind = data.kind || 'notification';
+  const isCall = kind === 'call';
 
   const options = {
     body,
     icon: ICON,
     badge: BADGE,
-    tag: data.kind || 'notification',
+    tag: isCall ? 'shahzap-call' : (kind || 'notification'),
     renotify: true,
-    vibrate: data.kind === 'friend_request' ? [60, 60, 60] : [70, 140, 70],
-    data: { clickPath, conversationId: data.conversationId || null },
+    vibrate: isCall ? [180, 90, 180, 90, 180] : (kind === 'friend_request' ? [60, 60, 60] : [70, 140, 70]),
+    data: { clickPath, conversationId: data.conversationId || null, kind },
+    actions: isCall
+      ? [
+          { action: 'accept', title: 'Answer' },
+          { action: 'decline', title: 'Decline' },
+        ]
+      : undefined,
   };
 
   event.waitUntil(self.registration.showNotification(title, options));
@@ -62,7 +70,21 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const target = (event.notification.data && event.notification.data.clickPath) || '/';
+  const nd = (event.notification.data || {});
+  const base = nd.clickPath || '/';
+  const convId = nd.conversationId || null;
+  const kind = nd.kind || 'notification';
+
+  // For calls, the Answer/Decline actions route the user into the app where
+  // the global call engine either accepts or rejects the still-ringing call.
+  let target = base;
+  if (kind === 'call') {
+    if (event.action === 'accept') {
+      target = convId ? `/chat/${convId}?from=call&answer=1` : base;
+    } else if (event.action === 'decline') {
+      target = convId ? `/chat/${convId}?from=call&decline=1` : base;
+    }
+  }
 
   const open = () => self.clients.matchAll({ type: 'window', includeUncontrolled: true })
     .then((clientList) => {

@@ -1,16 +1,21 @@
 'use client'
 
-// WebRTC P2P call engine using Supabase Realtime broadcast purely as the
-// signaling bus (SDP offer/answer + ICE candidates). Once connected, all
-// audio/video streams go device-to-device over an encrypted (DTLS-SRTP)
-// peer connection, so our servers carry ~zero media traffic and cost.
+// Global WebRTC P2P call engine.
 //
-// Media correctness notes:
-//  - Remote/local streams are surfaced via React STATE, not refs. Each new
-//    inbound track replaces the stream object reference (copying existing
-//    tracks), so the media <video>/<audio> elements re-attach their
-//    `srcObject` and never show a stale "black" feed even when the peer's
-//    camera/audio arrives a moment after the call UI appears.
+// Unlike a per-conversation hook, this engine always listens on the current
+// user's OWN signaling channel (`call:user:<myId>`) so an inbound call is
+// received on ANY page — not just inside the DM. Once a target (peer) is set,
+// the engine also subscribes to the peer's channel (`call:user:<otherId>`),
+// and all signaling for that call is exchanged on the peer's channel. This
+// lets a caller (who is in the chat) and a callee (who may be anywhere on the
+// app, or an OS push that routed them back) rendezvous even when the callee
+// was never on the DM page.
+//
+// Media correctness: remote/local streams are surfaced via React STATE, not
+// refs. Each new inbound track replaces the stream object reference (copying
+// prior tracks) so the media <video>/<audio> elements re-attach `srcObject`
+// and never show a stale "black" feed even when the peer's camera/audio
+// arrives a moment after the call overlay appears.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -19,18 +24,20 @@ import { ICE_SERVERS, RING_MS, CALL_TIMEOUT_MS } from '@/lib/call'
 
 export type { CallMode }
 
+export type CallTarget = { conversationId: string; otherId: string }
+
 const SESSION_TOKEN = () =>
   `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 
-export function useCall(opts: {
+type ChannelLike = ReturnType<ReturnType<typeof createClient>['channel']>
+
+export function useCallEngine(opts: {
   myId: string | null
-  otherId: string | null
-  conversationId: string
-  enabled: boolean
   ringSound?: () => void
   stopRingingSound?: () => void
+  onIncoming?: (target: CallTarget, mode: CallMode) => void
 }) {
-  const { myId, otherId, conversationId, enabled, ringSound, stopRingingSound } = opts
+  const { myId, ringSound, stopRingingSound, onIncoming } = opts
 
   const [status, setStatus] = useState<CallStatus>('idle')
   const [mode, setMode] = useState<CallMode>('audio')
@@ -39,29 +46,30 @@ export function useCall(opts: {
   const [error, setError] = useState('')
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null)
+  const [target, setTarget] = useState<CallTarget | null>(null)
 
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
-  const chRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null)
+  const inChRef = useRef<ChannelLike | null>(null)
+  const outChRef = useRef<ChannelLike | null>(null)
   const tokenRef = useRef<string | null>(null)
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([])
   const pendingOfferRef = useRef<RTCSessionDescriptionInit | null>(null)
   const statusRef = useRef<CallStatus>('idle')
   const ringTimerRef = useRef<number | undefined>(undefined)
-  const stateRef = useRef({ myId, otherId, conversationId, enabled })
-
-  useEffect(() => {
-    stateRef.current = { myId, otherId, conversationId, enabled }
-  }, [myId, otherId, conversationId, enabled])
+  const myIdRef = useRef<string | null>(null)
+  useEffect(() => { myIdRef.current = myId }, [myId])
+  const targetRef = useRef<CallTarget | null>(null)
 
   function updateStatus(s: CallStatus) { statusRef.current = s; setStatus(s) }
   function playRing() { try { ringSound?.() } catch {} }
   function stopRing() { try { stopRingingSound?.() } catch {} }
 
   function send(signal: SignalMessage) {
-    const ch = chRef.current
-    if (!ch || !stateRef.current.myId) return
-    void ch.send({ type: 'broadcast', event: 'call', payload: { ...signal, from: stateRef.current.myId } })
+    const ch = outChRef.current
+    const me = myIdRef.current
+    if (!ch || !me) return
+    void ch.send({ type: 'broadcast', event: 'call', payload: { ...signal, from: me } })
   }
 
   function teardownPeer() {
@@ -73,13 +81,12 @@ export function useCall(opts: {
       pc.onicecandidate = null
       pc.ontrack = null
       pc.onconnectionstatechange = null
-      pc.ontrack = null
       pc.close()
       pcRef.current = null
     }
     if (localStreamRef.current) { localStreamRef.current.getTracks().forEach((tk) => tk.stop()); localStreamRef.current = null }
-    setLocalStream(null)
-    setRemoteStream(null)
+    setLocalStream((prev) => { if (prev) prev.getTracks().forEach((tk) => tk.stop()); return null })
+    setRemoteStream((prev) => { if (prev) prev.getTracks().forEach((tk) => tk.stop()); return null })
     pendingIceRef.current = []
     pendingOfferRef.current = null
     tokenRef.current = null
@@ -98,8 +105,8 @@ export function useCall(opts: {
       const s = pc.connectionState
       if (s === 'connected') { stopRing(); updateStatus('active') }
       if (s === 'failed' || s === 'disconnected' || s === 'closed') {
-        updateStatus('ended')
         teardownPeer()
+        updateStatus('ended')
       }
     }
     pc.ontrack = (ev) => {
@@ -145,8 +152,10 @@ export function useCall(opts: {
   }
 
   // ── Public actions ────────────────────────────────────────────────────
-  const startCall = useCallback(async (mediaMode: CallMode) => {
-    if (!stateRef.current.myId || !stateRef.current.otherId) return
+  const startCall = useCallback(async (mediaMode: CallMode, t?: CallTarget) => {
+    const me = myIdRef.current
+    const peer = t || targetRef.current
+    if (!me || !peer) return
     if (statusRef.current !== 'idle') return
     setError('')
     let stream: MediaStream
@@ -158,13 +167,21 @@ export function useCall(opts: {
         : 'Could not access the microphone. Please allow access in site settings.')
       return
     }
+    targetRef.current = peer
+    setTarget(peer)
     setMode(mediaMode)
     const token = SESSION_TOKEN()
     tokenRef.current = token
     const pc = createPeer()
     attachLocal(pc, stream)
     updateStatus('outgoing')
-    send({ type: 'call', mode: mediaMode, token })
+    send({ type: 'call', mode: mediaMode, token, conversationId: peer.conversationId })
+    // Create an incoming-call notification for the callee so they get an
+    // in-app accept/decline banner (visible tab) and an OS push (away tab).
+    try {
+      const supa = createClient()
+      void supa.rpc('create_call_notification', { p_conversation_id: peer.conversationId, p_mode: mediaMode })
+    } catch {}
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
     send({ type: 'offer', sdp: offer, token })
@@ -214,7 +231,7 @@ export function useCall(opts: {
     updateStatus('idle')
   }, [])
 
-  const endCallNow = useCallback(() => {
+  const endCall = useCallback(() => {
     send({ type: 'hangup', token: tokenRef.current ?? '' })
     teardownPeer()
     updateStatus('idle')
@@ -238,16 +255,16 @@ export function useCall(opts: {
     })
   }, [])
 
-  // ── Realtime signaling channel ────────────────────────────────────────
+  // ── Signaling channel(s) ──────────────────────────────────────────────
+  // Always listen on our own channel for inbound calls. When a target is set
+  // we also listen on the peer's channel so a call we initiated (or accepted)
+  // can rendezvous over the peer's channel.
   useEffect(() => {
-    if (!enabled || !myId || !otherId) return
+    if (!myId) return
     const supabase = createClient()
-    const ch = supabase.channel(`call:${conversationId}`, { config: { broadcast: { self: false } } })
-    chRef.current = ch
-
-    ch.on('broadcast', { event: 'call' }, ({ payload }) => {
+    const handler = ({ payload }: { payload: unknown }) => {
       const sig = payload as SignalMessage & { from?: string }
-      if (sig.from === stateRef.current.myId) return
+      if (!sig.from || sig.from === myIdRef.current) return
 
       switch (sig.type) {
         case 'call': {
@@ -255,7 +272,16 @@ export function useCall(opts: {
           if (statusRef.current !== 'idle') { send({ type: 'reject', token: sig.token }); return }
           tokenRef.current = sig.token
           setMode(sig.mode)
+          // inbound call arrives on our own channel; peer is the sender
+          const peer: CallTarget = {
+            conversationId: sig.conversationId ?? targetRef.current?.conversationId ?? '',
+            otherId: sig.from,
+          }
+          if (!peer.conversationId) return
+          targetRef.current = peer
+          setTarget(peer)
           updateStatus('incoming')
+          onIncoming?.(peer, sig.mode)
           playRing()
           ringTimerRef.current = window.setTimeout(() => {
             if (statusRef.current === 'incoming') rejectCall()
@@ -309,17 +335,32 @@ export function useCall(opts: {
         default:
           break
       }
-    }).subscribe()
+    }
+
+    const inCh = supabase.channel(`call:user:${myId}`, { config: { broadcast: { self: false } } })
+    inChRef.current = inCh
+    inCh.on('broadcast', { event: 'call' }, handler).subscribe()
+
+    let outCh: ChannelLike | null = null
+    const peer = targetRef.current
+    if (peer && peer.otherId !== myId) {
+      outCh = supabase.channel(`call:user:${peer.otherId}`, { config: { broadcast: { self: false } } })
+      outChRef.current = outCh
+      outCh.on('broadcast', { event: 'call' }, handler).subscribe()
+    }
 
     return () => {
       window.clearTimeout(ringTimerRef.current)
       ringTimerRef.current = undefined
       teardownPeer()
       updateStatus('idle')
-      void supabase.removeChannel(ch)
-      chRef.current = null
+      if (outChRef.current) void supabase.removeChannel(outChRef.current)
+      outChRef.current = null
+      if (inChRef.current) void supabase.removeChannel(inChRef.current)
+      inChRef.current = null
     }
-  }, [enabled, myId, otherId, conversationId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myId, target])
 
   return {
     status,
@@ -329,10 +370,11 @@ export function useCall(opts: {
     error,
     localStream,
     remoteStream,
+    target,
     startCall,
     acceptCall,
     rejectCall,
-    endCall: endCallNow,
+    endCall,
     toggleMute,
     toggleVideo,
     clearError: () => setError(''),
