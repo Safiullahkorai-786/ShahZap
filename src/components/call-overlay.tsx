@@ -100,7 +100,9 @@ export function CallOverlay(props: {
   }
 
   // Live unread-message badge for the chat button, so you can see when the
-  // person on the call is texting you. Count = inbound messages without read_at.
+  // person on the call is texting you. Mirrors the friends-page logic: count
+  // inbound messages without read_at, increment on each new inbound message,
+  // and reset once those messages are actually read.
   const uidRef = useRef<string | null>(null)
   const convRef = useRef<string | undefined>(conversationId)
   convRef.current = conversationId
@@ -108,6 +110,7 @@ export function CallOverlay(props: {
     const supabase = createClient()
     let alive = true
     let channel: { unsubscribe: () => void } | null = null
+
     async function load() {
       let uid = uidRef.current
       if (!uid) {
@@ -115,9 +118,9 @@ export function CallOverlay(props: {
         uid = us?.user?.id ?? null
         uidRef.current = uid
       }
-      if (!alive) return
+      if (!alive || !uid) return
       const conv = convRef.current
-      if (!conv || !uid) { setUnread(0); return }
+      if (!conv) { setUnread(0); return }
       const { count } = await supabase.from('messages')
         .select('id', { count: 'exact', head: true })
         .eq('conversation_id', conv)
@@ -125,21 +128,40 @@ export function CallOverlay(props: {
         .is('read_at', null)
       if (alive) setUnread(count ?? 0)
     }
-    function refresh() {
+
+    // Re-sync the badge to the true unread count (e.g. after messages are read).
+    function recompute() {
+      const uid = uidRef.current
+      if (!uid) return
       const conv = convRef.current
       if (!conv) return
       void supabase.from('messages')
         .select('id', { count: 'exact', head: true })
         .eq('conversation_id', conv)
-        .neq('sender_id', uidRef.current ?? '')
+        .neq('sender_id', uid)
         .is('read_at', null)
         .then(({ count }) => { if (alive) setUnread(count ?? 0) })
     }
+
     void load()
     channel = supabase
       .channel('call-chat-unread')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, refresh)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, refresh)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+        const msg = payload.new as { conversation_id: string; sender_id: string; read_at: string | null }
+        if (!alive || msg.conversation_id !== convRef.current) return
+        if (msg.sender_id === uidRef.current) return
+        // New inbound message → accumulate (1, 2, 3…). Explicitly skip resetting
+        // on INSERT so the badge grows instead of flashing back to 1.
+        if (msg.read_at) { recompute(); return }
+        setUnread((c) => Math.min(c + 1, 99))
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, (payload) => {
+        const msg = payload.new as { conversation_id: string; sender_id: string; read_at: string | null }
+        if (!alive || msg.conversation_id !== convRef.current) return
+        if (msg.sender_id === uidRef.current) return
+        // A message became read (or a delivery timestamp changed) — reconcile.
+        recompute()
+      })
       .subscribe()
     return () => { alive = false; channel?.unsubscribe() }
   }, [conversationId])
@@ -382,6 +404,18 @@ export function CallOverlay(props: {
               <p className="absolute inset-x-0 top-20 z-10 mx-4 rounded-xl bg-red-950/70 px-4 py-2 text-center text-sm text-red-200">{error}</p>
             )}
 
+            {/* Minimize call — top-left corner, always visible */}
+            <div className="absolute left-3 top-3 z-20 flex items-center gap-2">
+              <button
+                onClick={() => setMinimized(true)}
+                aria-label="Minimize call"
+                title="Minimize"
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-800/80 text-white shadow-lg backdrop-blur transition hover:bg-slate-700"
+              >
+                <Minimize2 size={20} />
+              </button>
+            </div>
+
             {/* Controls overlay — fades out after inactivity, like WhatsApp */}
             <div
               onClick={(e) => e.stopPropagation()}
@@ -417,14 +451,6 @@ export function CallOverlay(props: {
                   )}
                 </button>
               )}
-              <button
-                onClick={() => setMinimized(true)}
-                aria-label="Minimize call"
-                title="Minimize"
-                className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-700/70 text-white shadow-lg transition hover:bg-slate-600"
-              >
-                <Minimize2 size={26} />
-              </button>
               <button
                 onClick={onEnd}
                 aria-label="End call"
