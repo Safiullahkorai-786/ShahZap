@@ -5,8 +5,8 @@
 // device via WebRTC — nothing routes through our servers.
 
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { usePathname } from 'next/navigation'
-import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, MessageCircle, ChevronDown, Maximize2 } from 'lucide-react'
+import { usePathname, useRouter } from 'next/navigation'
+import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, MessageCircle, Minimize2, Maximize2 } from 'lucide-react'
 import { CallChatPanel } from '@/components/call-chat-panel'
 
 type Status = 'idle' | 'outgoing' | 'incoming' | 'active' | 'ended'
@@ -39,6 +39,7 @@ export function CallOverlay(props: {
   const [minimized, setMinimized] = useState(false)
   const hideTimer = useRef<number | undefined>(undefined)
   const pathname = usePathname()
+  const router = useRouter()
 
   // Auto-hide controls after ~8s of inactivity, like WhatsApp. Reset when a
   // new call becomes active so the controls always start visible.
@@ -67,10 +68,23 @@ export function CallOverlay(props: {
   const pipW = Math.round(PIP_BASE.w * pipScale)
   const pipH = Math.round(PIP_BASE.h * pipScale)
 
-  // Double-click cycles the size: small -> double -> double again -> back to
-  // small (loops). The scale list above makes each step a doubling.
-  function stepPipSize() { setPipSizeLevel((l) => (l + 1) % PIP_SCALES.length) }
+  // Double-click cycles the size: small -> double -> (desktop only) again ->
+  // back to small (loops). On mobile the third (quadruple) step makes the PiP
+  // too big, so it only cycles between small and double there.
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 640
+  function stepPipSize() {
+    const max = isMobile ? 2 : PIP_SCALES.length
+    setPipSizeLevel((l) => (l + 1) % max)
+  }
   function expandPip() { setMinimized(false) }
+
+  // Open the full DM page with the person we're calling. The active call stays
+  // alive and auto-minimizes to the floating window (pushed through the router).
+  function goToDm() {
+    if (!conversationId) return
+    setChatOpen(false)
+    router.push(`/chat/${conversationId}`)
+  }
 
   function onPipPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
     const left = pipPos ? pipPos.x : e.currentTarget.getBoundingClientRect().left
@@ -303,6 +317,28 @@ export function CallOverlay(props: {
               <p className="absolute inset-x-0 top-20 z-10 mx-4 rounded-xl bg-red-950/70 px-4 py-2 text-center text-sm text-red-200">{error}</p>
             )}
 
+            {/* Corner shortcuts — mobile: minimize + open DM, always visible */}
+            <div className="absolute left-3 top-3 z-20 flex items-center gap-2 lg:hidden">
+              <button
+                onClick={() => setMinimized(true)}
+                aria-label="Minimize call"
+                title="Minimize"
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-800/80 text-white shadow-lg backdrop-blur transition hover:bg-slate-700"
+              >
+                <Minimize2 size={20} />
+              </button>
+              {conversationId && (
+                <button
+                  onClick={goToDm}
+                  aria-label="Open chat"
+                  title={`Chat with ${otherName}`}
+                  className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-800/80 text-white shadow-lg backdrop-blur transition hover:bg-slate-700"
+                >
+                  <MessageCircle size={20} />
+                </button>
+              )}
+            </div>
+
             {/* Controls overlay — fades out after inactivity, like WhatsApp */}
             <div
               onClick={(e) => e.stopPropagation()}
@@ -339,7 +375,7 @@ export function CallOverlay(props: {
                 title="Minimize"
                 className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-700/70 text-white shadow-lg transition hover:bg-slate-600"
               >
-                <ChevronDown size={26} />
+                <Minimize2 size={26} />
               </button>
               <button
                 onClick={onEnd}
