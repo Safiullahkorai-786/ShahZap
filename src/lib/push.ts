@@ -12,11 +12,12 @@
 
 import { createClient } from '@/lib/supabase/client'
 
-// Public VAPID key — safe to ship to the browser. Must match the private key
-// used by the notify-push Edge Function.
+// Public VAPID key — safe to ship to the browser. This is the RAW 65-byte
+// P-256 point (not ASN.1/SPKI) that pushManager.subscribe() requires, and it
+// matches the private key used by the notify-push Edge Function.
 const VAPID_PUBLIC_KEY =
   process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ??
-  'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAESAAMqqsQo0vJSbubVnpo-TLCeq3zNTtifd7KMH_pmObOPY52eO4Uh98O84gRXyAvOjIusinKovwJQ12wTzcljQ'
+  'BEgADKqrEKNLyUm7m1Z6aPkywnqt8zU7Yn3eyjB_6Zjmzj2OdnjuFIffDvOIEV8gLzoyLrIpyqL8CUNdsE83JY0'
 
 const PUSH_KEY = 'shahzap:push'
 
