@@ -74,6 +74,9 @@ const LANG_LABELS: Record<string, string> = {
   es: 'Spanish', pt: 'Portuguese', fr: 'French', de: 'German', ru: 'Russian', ar: 'Arabic',
   tr: 'Turkish', id: 'Indonesian', vi: 'Vietnamese', tl: 'Tagalog', th: 'Thai',
   ja: 'Japanese', ko: 'Korean', zh_cn: 'Chinese (Simplified)',
+  fa: 'Persian', it: 'Italian', sw: 'Swahili', uk: 'Ukrainian', ro: 'Romanian', nl: 'Dutch',
+  pl: 'Polish', ps: 'Pashto', ms: 'Malay', el: 'Greek', sv: 'Swedish', cs: 'Czech',
+  mr: 'Marathi', kk: 'Kazakh', gu: 'Gujarati', he: 'Hebrew', hu: 'Hungarian', da: 'Danish', uz: 'Uzbek',
 }
 const REPORT_REASONS = ['harassment','spam','hate_speech','sexual_content','scam','impersonation','underage_concern','threatening_behavior','other']
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '😘', '💦', '🤡', '🌚', '🌝']

@@ -14,6 +14,10 @@ const LANGUAGES = [
   ['bn', 'Bengali'], ['es', 'Spanish'], ['pt', 'Portuguese'], ['fr', 'French'], ['de', 'German'],
   ['ru', 'Russian'], ['ar', 'Arabic'], ['tr', 'Turkish'], ['id', 'Indonesian'], ['vi', 'Vietnamese'],
   ['tl', 'Tagalog'], ['th', 'Thai'], ['ja', 'Japanese'], ['ko', 'Korean'], ['zh_cn', 'Chinese (Simplified)'],
+  ['fa', 'Persian'], ['it', 'Italian'], ['sw', 'Swahili'], ['uk', 'Ukrainian'], ['ro', 'Romanian'],
+  ['nl', 'Dutch'], ['pl', 'Polish'], ['ps', 'Pashto'], ['ms', 'Malay'], ['el', 'Greek'],
+  ['sv', 'Swedish'], ['cs', 'Czech'], ['mr', 'Marathi'], ['kk', 'Kazakh'], ['gu', 'Gujarati'],
+  ['he', 'Hebrew'], ['hu', 'Hungarian'], ['da', 'Danish'], ['uz', 'Uzbek'],
 ] as const
 const GENDER_OPTIONS = [['woman', 'Women'], ['man', 'Men'], ['non_binary', 'Non-binary'], ['prefer_not_to_say', 'Prefer not to say']] as const
 const GENERATION_OPTIONS = [['gen_alpha', 'Gen Alpha'], ['gen_z', 'Gen Z'], ['millennial', 'Millennial'], ['gen_x', 'Gen X'], ['boomer', 'Boomer']] as const

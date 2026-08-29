@@ -35,10 +35,14 @@ const CONTINENTS = [
 const LANGUAGES_CORE = [
   ['en', 'English'], ['ur', 'Urdu'], ['sd', 'Sindhi'], ['hi', 'Hindi'], ['pa', 'Punjabi'],
   ['ar', 'Arabic'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German'], ['tr', 'Turkish'],
+  ['fa', 'Persian'], ['ps', 'Pashto'], ['mr', 'Marathi'], ['gu', 'Gujarati'], ['kk', 'Kazakh'], ['uz', 'Uzbek'],
 ] as const
 const LANGUAGES_EXTRA = [
   ['bn', 'Bengali'], ['pt', 'Portuguese'], ['ru', 'Russian'], ['id', 'Indonesian'], ['vi', 'Vietnamese'],
   ['tl', 'Tagalog'], ['th', 'Thai'], ['ja', 'Japanese'], ['ko', 'Korean'], ['zh_cn', 'Chinese (Simplified)'],
+  ['it', 'Italian'], ['sw', 'Swahili'], ['uk', 'Ukrainian'], ['ro', 'Romanian'], ['nl', 'Dutch'],
+  ['pl', 'Polish'], ['ms', 'Malay'], ['el', 'Greek'], ['sv', 'Swedish'], ['cs', 'Czech'],
+  ['he', 'Hebrew'], ['hu', 'Hungarian'], ['da', 'Danish'],
 ] as const
 
 const RELAX_ORDER: (keyof MatchFilterOverrides)[] = [
