@@ -5,7 +5,7 @@
 // device via WebRTC — nothing routes through our servers.
 
 import { useEffect, useRef, useState } from 'react'
-import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, MessageCircle } from 'lucide-react'
+import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, MessageCircle, ChevronDown, Maximize2 } from 'lucide-react'
 import { CallChatPanel } from '@/components/call-chat-panel'
 
 type Status = 'idle' | 'outgoing' | 'incoming' | 'active' | 'ended'
@@ -35,12 +35,13 @@ export function CallOverlay(props: {
 
   const [chatOpen, setChatOpen] = useState(false)
   const [controlsVisible, setControlsVisible] = useState(true)
+  const [minimized, setMinimized] = useState(false)
   const hideTimer = useRef<number | undefined>(undefined)
 
   // Auto-hide controls after ~8s of inactivity, like WhatsApp. Reset when a
   // new call becomes active so the controls always start visible.
   useEffect(() => {
-    if (status === 'active') showControls()
+    if (status === 'active') { showControls(); resetMinimized() }
   }, [status])
 
   useEffect(() => () => window.clearTimeout(hideTimer.current), [])
@@ -50,6 +51,8 @@ export function CallOverlay(props: {
     window.clearTimeout(hideTimer.current)
     hideTimer.current = window.setTimeout(() => setControlsVisible(false), 8000)
   }
+
+  function resetMinimized() { setMinimized(false) }
 
   // Moving the mouse or touching the screen reveals the controls.
   function wake() {
@@ -81,7 +84,7 @@ export function CallOverlay(props: {
     // Clear srcObject on unmount so mobile browsers release the capture
     // device even if the call ends by closing/tearing down the overlay.
     return () => { if (v) { v.pause(); v.srcObject = null } }
-  }, [status, mode, localStream])
+  }, [status, mode, localStream, minimized])
 
   // Attach remote video/audio whenever the remote stream (re)appears, so a
   // track arriving a beat after the UI is shown still lights up the feed.
@@ -100,7 +103,7 @@ export function CallOverlay(props: {
       if (rv) { rv.pause(); rv.srcObject = null }
       if (ra) { ra.pause(); ra.srcObject = null }
     }
-  }, [status, mode, remoteStream])
+  }, [status, mode, remoteStream, minimized])
 
   if (!open) return null
 
@@ -163,6 +166,42 @@ export function CallOverlay(props: {
     const remoteHasVideo = (remoteStream?.getVideoTracks() ?? []).length > 0
     const localHasVideo = (localStream?.getVideoTracks() ?? []).length > 0
     const videoCall = remoteHasVideo || (videoEnabled && localHasVideo)
+
+    // WhatsApp-style minimized floating call window. The call keeps running
+    // (audio element stays mounted) while the user browses/does other things.
+    if (minimized) {
+      return (
+        <div className="fixed bottom-4 right-4 z-[60] flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/95 p-2 shadow-2xl">
+          <button
+            onClick={() => setMinimized(false)}
+            aria-label="Maximize call"
+            title="Maximize"
+            className={`relative h-20 w-32 shrink-0 overflow-hidden rounded-xl ${remoteHasVideo ? '' : 'flex items-center justify-center bg-slate-800'}`}
+          >
+            {remoteHasVideo ? (
+              <video ref={remoteVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+            ) : (
+              <span className="text-2xl font-bold text-slate-200">{otherName?.[0]?.toUpperCase() ?? '?'}</span>
+            )}
+            <span className="pointer-events-none absolute bottom-1 left-1 flex items-center rounded bg-black/60 px-1.5 py-0.5 text-white">
+              {muted ? <MicOff size={11} /> : <Mic size={11} />}
+            </span>
+          </button>
+          <div className="flex flex-col items-center gap-2">
+            <button onClick={() => setMinimized(false)} aria-label="Maximize" title="Maximize"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-700 text-white transition hover:bg-slate-600">
+              <Maximize2 size={16} />
+            </button>
+            <button onClick={onEnd} aria-label="End call" title="End call"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-red-500 text-white transition hover:bg-red-400">
+              <PhoneOff size={16} />
+            </button>
+          </div>
+          <audio ref={remoteAudioRef} autoPlay playsInline hidden />
+        </div>
+      )
+    }
+
     return (
       <div className="fixed inset-0 z-50 flex overflow-hidden bg-slate-950 text-white">
         {/* Call area (shrinks when the chat panel is open on desktop) */}
@@ -228,6 +267,14 @@ export function CallOverlay(props: {
                   <MessageCircle size={26} />
                 </button>
               )}
+              <button
+                onClick={() => setMinimized(true)}
+                aria-label="Minimize call"
+                title="Minimize"
+                className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-700/70 text-white shadow-lg transition hover:bg-slate-600"
+              >
+                <ChevronDown size={26} />
+              </button>
               <button
                 onClick={onEnd}
                 aria-label="End call"

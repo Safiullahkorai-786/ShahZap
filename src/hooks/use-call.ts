@@ -248,12 +248,36 @@ export function useCallEngine(opts: {
         ? (ev.streams[0].getTracks() ?? [])
         : ev.track ? [ev.track] : []
       if (!incoming.length) return
+      // If the peer removes a media track mid-call (e.g. turns video off),
+      // drop it from the remote stream so the UI switches back to audio.
+      const first = incoming[0]
+      if (first.readyState === 'ended') {
+        setRemoteStream((prev) => {
+          if (!prev) return prev
+          const has = prev.getTracks().some((tk) => tk.id === first.id)
+          if (!has) return prev
+          return new MediaStream(prev.getTracks().filter((tk) => tk.id !== first.id))
+        })
+        return
+      }
       setRemoteStream((prev) => {
         const next = new MediaStream()
         if (prev) prev.getTracks().forEach((tk) => next.addTrack(tk))
         incoming.forEach((tk) => next.addTrack(tk))
         return next
       })
+      // If any remote track is removed later (e.g. the peer turns video off),
+      // drop it from the remote stream so the UI switches back to audio.
+      if (ev.track) {
+        ev.track.onended = () => {
+          setRemoteStream((prev) => {
+            if (!prev) return prev
+            const has = prev.getTracks().some((tk) => tk.id === ev.track.id)
+            if (!has) return prev
+            return new MediaStream(prev.getTracks().filter((tk) => tk.id !== ev.track.id))
+          })
+        }
+      }
       updateStatus('active')
     }
     pcRef.current = pc
@@ -395,32 +419,52 @@ export function useCallEngine(opts: {
   const toggleVideo = useCallback(async () => {
     const stream = localStreamRef.current
     if (!stream) return
-    const vids = stream.getVideoTracks()
     const pc = pcRef.current
+    const vids = stream.getVideoTracks()
 
-    if (vids.length > 0) {
-      // Already have a camera track — just toggle it on/off (no renegotiation).
-      const next = !(vids[0].enabled ?? true)
-      vids.forEach((tk) => { tk.enabled = next })
-      setVideoEnabled(next)
+    // No camera yet (audio call) — acquire one and attach it so the call
+    // becomes a video call for both sides.
+    if (vids.length === 0) {
+      try {
+        const v = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+        const vt = v.getVideoTracks()[0]
+        if (!vt) return
+        stream.addTrack(vt)
+        setVideoEnabled(true)
+        setLocalStream(new MediaStream(stream.getTracks()))
+        if (pc) { pc.addTrack(vt, stream); await renegotiate() }
+      } catch {
+        setError('Could not access the camera. Please allow access in site settings.')
+      }
       return
     }
 
-    // Audio call with no camera yet — acquire one and attach it to the peer so
-    // the call becomes a video call for both sides (WhatsApp-style upgrade).
-    try {
-      const v = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
-      const vt = v.getVideoTracks()[0]
-      if (!vt) return
-      stream.addTrack(vt)
-      setVideoEnabled(true)
+    const currentlyOn = vids[0].enabled
+    if (currentlyOn) {
+      // Turn the camera OFF: release the track and remove it from the peer so
+      // the other side drops back to audio mode (no frozen video frame).
+      vids.forEach((tk) => tk.stop())
+      vids.forEach((tk) => stream.removeTrack(tk))
+      setVideoEnabled(false)
       setLocalStream(new MediaStream(stream.getTracks()))
       if (pc) {
-        pc.addTrack(vt, stream)
+        pc.getSenders().forEach((s) => { if (s.track && vids.includes(s.track)) pc.removeTrack(s) })
         await renegotiate()
       }
-    } catch {
-      setError('Could not access the camera. Please allow access in site settings.')
+    } else {
+      // Camera was off but the track was retained — acquire a fresh one and
+      // re-attach it.
+      try {
+        const v = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+        const vt = v.getVideoTracks()[0]
+        if (!vt) return
+        stream.addTrack(vt)
+        setVideoEnabled(true)
+        setLocalStream(new MediaStream(stream.getTracks()))
+        if (pc) { pc.addTrack(vt, stream); await renegotiate() }
+      } catch {
+        setError('Could not access the camera. Please allow access in site settings.')
+      }
     }
   }, [])
 
