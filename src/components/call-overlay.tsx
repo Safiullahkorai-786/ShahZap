@@ -160,6 +160,9 @@ export function CallOverlay(props: {
   // ── Active call ───────────────────────────────────────────────────────
   if (status === 'active') {
     const showChat = chatOpen && !!conversationId
+    const remoteHasVideo = (remoteStream?.getVideoTracks() ?? []).length > 0
+    const localHasVideo = (localStream?.getVideoTracks() ?? []).length > 0
+    const videoCall = remoteHasVideo || (videoEnabled && localHasVideo)
     return (
       <div className="fixed inset-0 z-50 flex overflow-hidden bg-slate-950 text-white">
         {/* Call area (shrinks when the chat panel is open on desktop) */}
@@ -170,7 +173,7 @@ export function CallOverlay(props: {
         >
           {/* Remote video (full screen) or avatar for audio; tap toggles controls */}
           <div className="relative min-h-0 flex-1 cursor-default" onClick={toggleOnTap}>
-            {isVideo && videoEnabled ? (
+            {remoteHasVideo ? (
               <video ref={remoteVideoRef} autoPlay playsInline muted={false} className="h-full w-full object-cover" />
             ) : (
               <div className="flex h-full items-center justify-center bg-slate-950">
@@ -179,13 +182,13 @@ export function CallOverlay(props: {
                     {otherName?.[0]?.toUpperCase() ?? '?'}
                   </div>
                   <p className="mt-4 text-lg font-semibold">{otherName}</p>
-                  <p className="text-sm text-slate-400">On a {isVideo ? 'video' : 'voice'} call</p>
+                  <p className="text-sm text-slate-400">On a {videoCall ? 'video' : 'voice'} call</p>
                 </div>
               </div>
             )}
 
             {/* Local preview (PiP) for video */}
-            {isVideo && videoEnabled && (
+            {videoEnabled && localHasVideo && (
               <div className="absolute right-3 top-3 z-10 h-36 w-24 overflow-hidden rounded-2xl border-2 border-white/20 shadow-lg sm:h-44 sm:w-32">
                 <video ref={localVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
               </div>
@@ -206,11 +209,13 @@ export function CallOverlay(props: {
               <ControlButton label={muted ? 'Unmute' : 'Mute'} active={muted} onClick={onToggleMute}>
                 {muted ? <MicOff size={24} /> : <Mic size={24} />}
               </ControlButton>
-              {isVideo && (
-                <ControlButton label={videoEnabled ? 'Turn off camera' : 'Turn on camera'} active={!videoEnabled} onClick={onToggleVideo}>
-                  {videoEnabled ? <Video size={24} /> : <VideoOff size={24} />}
-                </ControlButton>
-              )}
+              <ControlButton
+                label={localHasVideo && videoEnabled ? 'Turn off camera' : 'Turn on camera'}
+                active={localHasVideo && !videoEnabled}
+                onClick={onToggleVideo}
+              >
+                {localHasVideo && videoEnabled ? <Video size={24} /> : <VideoOff size={24} />}
+              </ControlButton>
               {conversationId && (
                 <button
                   onClick={() => setChatOpen((open) => !open)}

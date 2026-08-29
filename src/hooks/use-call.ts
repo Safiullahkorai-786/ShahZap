@@ -124,7 +124,22 @@ export function useCallEngine(opts: {
       }
       case 'offer': {
         if (sig.token !== tokenRef.current) return
-        pendingOfferRef.current = sig.sdp
+        if (statusRef.current === 'active') {
+          // Mid-call renegotiation (e.g. the peer turned their camera on):
+          // apply it and send back an answer right away.
+          const pc = pcRef.current
+          if (pc) {
+            void pc.setRemoteDescription(new RTCSessionDescription(sig.sdp))
+              .then(async () => {
+                await flushPendingIce(pc)
+                const answer = await pc.createAnswer()
+                await pc.setLocalDescription(answer)
+                send({ type: 'answer', sdp: answer, token: tokenRef.current ?? '' })
+              }).catch(() => {})
+          }
+        } else {
+          pendingOfferRef.current = sig.sdp
+        }
         break
       }
       case 'answer': {
@@ -264,6 +279,15 @@ export function useCallEngine(opts: {
     stream.getTracks().forEach((tk) => pc.addTrack(tk, stream))
   }
 
+  // Offer a mid-call renegotiation (used when turning the camera on mid-call).
+  async function renegotiate() {
+    const pc = pcRef.current
+    if (!pc) return
+    const offer = await pc.createOffer()
+    await pc.setLocalDescription(offer)
+    send({ type: 'offer', sdp: offer, token: tokenRef.current ?? '' })
+  }
+
   async function flushPendingIce(pc: RTCPeerConnection) {
     for (const c of pendingIceRef.current.splice(0)) {
       try { await pc.addIceCandidate(new RTCIceCandidate(c)) } catch {}
@@ -368,13 +392,36 @@ export function useCallEngine(opts: {
     })
   }, [])
 
-  const toggleVideo = useCallback(() => {
-    if (!localStreamRef.current) return
-    setVideoEnabled((v) => {
-      const next = !v
-      localStreamRef.current!.getVideoTracks().forEach((tk) => { tk.enabled = next })
-      return next
-    })
+  const toggleVideo = useCallback(async () => {
+    const stream = localStreamRef.current
+    if (!stream) return
+    const vids = stream.getVideoTracks()
+    const pc = pcRef.current
+
+    if (vids.length > 0) {
+      // Already have a camera track — just toggle it on/off (no renegotiation).
+      const next = !(vids[0].enabled ?? true)
+      vids.forEach((tk) => { tk.enabled = next })
+      setVideoEnabled(next)
+      return
+    }
+
+    // Audio call with no camera yet — acquire one and attach it to the peer so
+    // the call becomes a video call for both sides (WhatsApp-style upgrade).
+    try {
+      const v = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+      const vt = v.getVideoTracks()[0]
+      if (!vt) return
+      stream.addTrack(vt)
+      setVideoEnabled(true)
+      setLocalStream(new MediaStream(stream.getTracks()))
+      if (pc) {
+        pc.addTrack(vt, stream)
+        await renegotiate()
+      }
+    } catch {
+      setError('Could not access the camera. Please allow access in site settings.')
+    }
   }, [])
 
   // ── Inbound signaling channel ─────────────────────────────────────────
