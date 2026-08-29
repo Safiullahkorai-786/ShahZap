@@ -139,6 +139,10 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         onEnd={() => { resolveCallNotif(); api.endCall() }}
         onToggleMute={() => api.toggleMute()}
         onToggleVideo={() => api.toggleVideo()}
+        onOpenChat={() => {
+          const conv = engine.target?.conversationId
+          if (conv) router.push(`/chat/${conv}`)
+        }}
       />
     </CallContext.Provider>
   )

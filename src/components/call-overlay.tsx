@@ -5,7 +5,7 @@
 // device via WebRTC — nothing routes through our servers.
 
 import { useEffect, useRef } from 'react'
-import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff } from 'lucide-react'
+import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, MessageCircle } from 'lucide-react'
 
 type Status = 'idle' | 'outgoing' | 'incoming' | 'active' | 'ended'
 
@@ -24,10 +24,11 @@ export function CallOverlay(props: {
   onEnd: () => void
   onToggleMute: () => void
   onToggleVideo: () => void
+  onOpenChat: () => void
 }) {
   const {
     open, status, mode, muted, videoEnabled, error, otherName,
-    localStream, remoteStream, onAccept, onReject, onEnd, onToggleMute, onToggleVideo,
+    localStream, remoteStream, onAccept, onReject, onEnd, onToggleMute, onToggleVideo, onOpenChat,
   } = props
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null)
@@ -160,6 +161,14 @@ export function CallOverlay(props: {
               {videoEnabled ? <Video size={24} /> : <VideoOff size={24} />}
             </ControlButton>
           )}
+          <button
+            onClick={onOpenChat}
+            aria-label="Open chat"
+            title={`Chat with ${otherName}`}
+            className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-700/70 text-white shadow-lg transition hover:bg-slate-600"
+          >
+            <MessageCircle size={26} />
+          </button>
           <button
             onClick={onEnd}
             aria-label="End call"
