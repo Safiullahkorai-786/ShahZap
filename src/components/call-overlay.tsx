@@ -10,6 +10,7 @@ import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, MessageCircle, Minimize2
 import { CallChatPanel } from '@/components/call-chat-panel'
 import { createClient } from '@/lib/supabase/client'
 import { focusChatComposerNow } from '@/lib/chat-composer-focus'
+import { getNotifDisplayPrefs, type CallNotifyStyle } from '@/lib/notification-display'
 
 type Status = 'idle' | 'outgoing' | 'incoming' | 'active' | 'ended'
 
@@ -32,11 +33,12 @@ export function CallOverlay(props: {
   onToggleMute: () => void
   onToggleVideo: () => void
   onMinimizedChange: (minimized: boolean) => void
+  clearError: () => void
 }) {
   const {
     open, status, mode, muted, remoteMuted, remoteVideoOn, videoEnabled, error, otherName,
     localStream, remoteStream, onAccept, onReject, onEnd, onToggleMute, onToggleVideo,
-    conversationId, onMinimizedChange,
+    conversationId, onMinimizedChange, clearError,
   } = props
 
   const [chatOpen, setChatOpen] = useState(false)
@@ -47,6 +49,23 @@ export function CallOverlay(props: {
   const hideTimer = useRef<number | undefined>(undefined)
   const pathname = usePathname()
   const router = useRouter()
+
+  // Live copy of how incoming calls should be surfaced (full-screen ring vs the
+  // notification banner), kept in sync when the user changes it in Settings.
+  const [callNotify, setCallNotify] = useState<CallNotifyStyle>(() => getNotifDisplayPrefs().callNotify)
+  useEffect(() => {
+    const onPrefs = () => setCallNotify(getNotifDisplayPrefs().callNotify)
+    window.addEventListener('shahzap:notif-display-change', onPrefs)
+    return () => window.removeEventListener('shahzap:notif-display-change', onPrefs)
+  }, [])
+
+  // Auto-dismiss transient call errors (e.g. "The call was declined.") rather
+  // than leaving a red banner stuck on screen until the next call.
+  useEffect(() => {
+    if (!error) return
+    const id = window.setTimeout(clearError, 5000)
+    return () => window.clearTimeout(id)
+  }, [error, clearError])
 
   // Call timer: count up while the call is active, reset when it ends. Use a
   // start timestamp so the displayed duration stays accurate across re-renders.
@@ -326,6 +345,10 @@ export function CallOverlay(props: {
 
   // ── Incoming / outgoing ring screens ──────────────────────────────────
   if (status === 'incoming') {
+    // When the user chose the "banner" call-notification style, the incoming
+    // ring is surfaced through the notification banner (Answer / Decline)
+    // instead of this full-screen overlay — so don't render it here.
+    if (callNotify === 'banner') return null
     return (
       <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/90 px-6 text-center backdrop-blur">
         <div className="mb-8 flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-violet-500 text-4xl font-bold">

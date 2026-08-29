@@ -7,7 +7,7 @@ import { friendlyError } from '@/lib/errors'
 import { ACCENTS, getSelection, applySelection, type Selection, type Base } from '@/lib/theme'
 import { getSoundPrefs, setSoundBundle, setSoundMode, notify, getRingVolume, setRingVolume, playRing, stopRing, type SoundPrefs, type SoundMode, type SoundBundle, type RingKind } from '@/lib/notification-sound'
 import { getNotifPrefs, setNotifPrefs, type NotifPrefs, type NotifCategory } from '@/lib/notification-prefs'
-import { getNotifDisplayPrefs, setNotifDisplayPrefs, BANNER_DURATIONS, type NotifDisplayPrefs, type BannerDuration, type BannerStackMode } from '@/lib/notification-display'
+import { getNotifDisplayPrefs, setNotifDisplayPrefs, BANNER_DURATIONS, type NotifDisplayPrefs, type BannerDuration, type BannerStackMode, type CallNotifyStyle } from '@/lib/notification-display'
 import { pushSupported, isPushEnabled, enablePush, disablePush } from '@/lib/push'
 import { AppHeader } from '@/components/app-header'
 import { Shimmer } from '@/components/shimmer'
@@ -455,6 +455,22 @@ export default function SettingsPage() {
                   ))}
                 </div>
                 <p className="mt-2 text-[11px] text-slate-500">Press and hold to preview the ring for the selected sound pack.</p>
+              </div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                <span className="text-sm font-medium text-slate-200">Incoming call style</span>
+                <p className="mt-1 text-xs leading-relaxed text-slate-400">Choose how you see an incoming call. The full-screen ring shows large Accept / Decline buttons; the banner shows a compact Answer / Decline at the top of the screen.</p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {([
+                    ['overlay', 'Full-screen ring', 'Big accept / decline buttons, like WhatsApp.'],
+                    ['banner', 'Notification banner', 'Compact Answer / Decline at the top.'],
+                  ] as [CallNotifyStyle, string, string][]).map(([id, label, hint]) => (
+                    <button key={id} onClick={() => setNotifDisplay(setNotifDisplayPrefs({ ...notifDisplay, callNotify: id }))}
+                      className={`rounded-2xl border p-4 text-left transition ${notifDisplay.callNotify === id ? 'border-cyan-400 bg-cyan-400/10 ring-1 ring-cyan-400/40' : 'border-slate-800 bg-slate-950 hover:border-slate-600'}`}>
+                      <span className="block text-sm font-bold">{label}</span>
+                      <span className="mt-1 block text-xs leading-relaxed text-slate-400">{hint}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
             <div className="space-y-4">

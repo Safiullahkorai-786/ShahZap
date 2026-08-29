@@ -18,21 +18,32 @@
 export type BannerDuration = number | 'never'
 export type BannerStackMode = 'single' | 'stack-new-top' | 'stack-new-bottom'
 
+/**
+ * How incoming calls are surfaced to the user:
+ *   'overlay' — the full-screen ring (accept / decline big buttons), default.
+ *   'banner'  — an in-app notification banner with Answer / Decline instead of
+ *               the full-screen ring (the active call UI still uses the overlay).
+ */
+export type CallNotifyStyle = 'overlay' | 'banner'
+
 export type NotifDisplayPrefs = {
   duration: BannerDuration
   stack: BannerStackMode
   /** Master switch for the in-app toast banners (sound/bell unaffected). */
   showBanner: boolean
+  callNotify: CallNotifyStyle
 }
 
 export const BANNER_DURATIONS: BannerDuration[] = [3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 'never']
 
 export const BANNER_STACK_MODES: BannerStackMode[] = ['single', 'stack-new-top', 'stack-new-bottom']
 
+export const CALL_NOTIFY_STYLES: CallNotifyStyle[] = ['overlay', 'banner']
+
 const KEY = 'shahzap:notif-display'
 
 export function defaultNotifDisplayPrefs(): NotifDisplayPrefs {
-  return { duration: 6, stack: 'single', showBanner: true }
+  return { duration: 6, stack: 'single', showBanner: true, callNotify: 'overlay' }
 }
 
 export function getNotifDisplayPrefs(): NotifDisplayPrefs {
@@ -53,6 +64,9 @@ export function getNotifDisplayPrefs(): NotifDisplayPrefs {
       next.stack = p.stack as BannerStackMode
     }
     if (typeof p.showBanner === 'boolean') next.showBanner = p.showBanner
+    if (CALL_NOTIFY_STYLES.includes(p.callNotify as CallNotifyStyle)) {
+      next.callNotify = p.callNotify as CallNotifyStyle
+    }
     return next
   } catch {
     return defaultNotifDisplayPrefs()

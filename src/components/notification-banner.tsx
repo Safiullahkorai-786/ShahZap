@@ -391,9 +391,10 @@ export function NotificationBanner() {
               row.conversation_id === activeConversationRef.current
             ) return
 
-            // Incoming calls already render a full-screen accept/decline
-            // overlay via the global call engine — don't duplicate it here.
-            if (row.kind === 'call' && call.status !== 'idle') return
+            // Only avoid duplicating an incoming call when the user chose the
+            // full-screen ring style. If they prefer the banner style, show the
+            // banner's Answer / Decline instead of the full-screen ring.
+            if (row.kind === 'call' && call.status !== 'idle' && getNotifDisplayPrefs().callNotify === 'overlay') return
 
             let identity: Identity = { label: 'Someone', colorClass: 'text-slate-300' }
             if (row.from_user_id) {

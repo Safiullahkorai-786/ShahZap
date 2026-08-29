@@ -165,6 +165,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         onEnd={() => { resolveCallNotif(); api.endCall() }}
         onToggleMute={() => api.toggleMute()}
         onToggleVideo={() => api.toggleVideo()}
+        clearError={() => api.clearError()}
       />
     </CallContext.Provider>
   )
