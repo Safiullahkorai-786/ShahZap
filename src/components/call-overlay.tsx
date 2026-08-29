@@ -329,7 +329,7 @@ export function CallOverlay(props: {
       return (
         <div
           style={pipPos ? { left: pipPos.x, top: pipPos.y, width: pipW, height: pipH } : { width: pipW, height: pipH }}
-          className={`fixed z-[60] flex overflow-hidden rounded-2xl border border-white/10 bg-slate-900/95 shadow-2xl ${pipPos ? '' : 'bottom-4 right-4'}`}
+          className={`fixed z-[60] flex overflow-hidden rounded-2xl border border-white/10 bg-slate-900/95 shadow-2xl ${pipPos ? '' : 'right-4 top-16'}`}
         >
           <div
             className="relative h-full flex-1 cursor-move touch-none"

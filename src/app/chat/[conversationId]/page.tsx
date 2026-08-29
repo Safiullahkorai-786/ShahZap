@@ -1917,7 +1917,7 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
                   className={`flex h-11 w-11 flex-none items-center justify-center rounded-full transition active:scale-95 ${emojiOpen ? 'bg-cyan-400/20 text-cyan-300' : 'text-slate-400 hover:bg-cyan-400/10 hover:text-cyan-200'}`}>
                   <Smile size={22} />
                 </button>
-                <textarea ref={inputRef} value={text} onChange={(e) => onTextChange(e.target.value)} maxLength={2000} autoFocus rows={1}
+                <textarea ref={inputRef} value={text} onChange={(e) => onTextChange(e.target.value)} maxLength={2000} rows={1}
                   onTouchStart={() => { kbTouchRef.current = true; setVirtualKb(true) }}
                   onKeyDown={(e) => {
                     // Enter sends on desktop · Shift+Enter adds a line.
