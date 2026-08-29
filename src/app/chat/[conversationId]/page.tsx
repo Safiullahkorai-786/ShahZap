@@ -1364,7 +1364,7 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
             <button
               type="button"
               aria-label="Back"
-              onClick={() => (entry === 'online' ? router.push('/online') : router.back())}
+              onClick={() => router.push(entry === 'online' ? '/online' : '/friends')}
               className="mr-1 flex flex-none items-center gap-1.5 rounded-full bg-slate-700/30 px-4 py-2 text-xs font-bold text-slate-200 transition hover:bg-slate-700/50 hover:text-white"
             >
               <ArrowLeft size={16} />
