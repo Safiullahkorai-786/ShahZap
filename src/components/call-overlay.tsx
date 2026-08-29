@@ -487,10 +487,10 @@ export function CallOverlay(props: {
               <span className="rounded-full bg-black/55 px-3 py-1 text-sm font-semibold tabular-nums text-white backdrop-blur">
                 {formatCallTime(callSeconds)}
               </span>
-              {!mainIsSelf && remoteMuted && videoCall && (
+              {videoCall && (mainIsSelf ? muted : remoteMuted) && (
                 <span className="flex items-center gap-1.5 rounded-full bg-red-500/90 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur">
                   <MicOff size={13} />
-                  Mic muted
+                  {mainIsSelf ? 'Your mic is muted' : 'Mic muted'}
                 </span>
               )}
             </div>
