@@ -808,9 +808,29 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
     if (!fromCallChat && isTouch) return
     if (fromCallChat) {
       try { sessionStorage.removeItem('shahzap_call_chat_focus') } catch {}
+      // Coming from the call's chat button: focus synchronously (no setTimeout)
+      // right after this page mounts. A programmatic focus() called this close
+      // to the original tap gesture is what reliably raises the mobile
+      // keyboard; the deferred path often gets ignored for keyboard purposes.
+      inputRef.current?.focus({ preventScroll: true })
+      return
     }
     const id = window.setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 120)
     return () => window.clearTimeout(id)
+  }, [loading, blockedAny, userId, persona])
+
+  // Register a synchronous composer-focus callback so the call's chat button
+  // (CallOverlay.goToDm) can focus the composer INSIDE the same tap gesture that
+  // opened this page — this is what makes iOS reliably pop the keyboard. Runs on
+  // every relevant change (and remount) so the shared module always points here.
+  useEffect(() => {
+    registerChatComposerFocus(() => {
+      const el = inputRef.current
+      if (el && typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        el.focus({ preventScroll: true })
+      }
+    })
+    return () => registerChatComposerFocus(null)
   }, [loading, blockedAny, userId, persona])
 
   // While the chat is embedded in the call panel, keep the composer focused
