@@ -11,7 +11,7 @@ import { Shimmer } from '@/components/shimmer'
 // offline (last_active_at older than this) — and it stays gone unless you
 // become friends (in which case they live on the Friends page instead).
 const OFFLINE_REMOVE_MS = 5 * 60 * 1000
-const ONLINE_WINDOW_MS = 90 * 1000
+const ONLINE_WINDOW_MS = 5 * 60 * 1000
 
 type MsgThread = {
   conversationId: string

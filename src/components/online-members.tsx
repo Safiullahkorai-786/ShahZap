@@ -7,9 +7,10 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 import { createClient } from '@/lib/supabase/client'
 import { friendlyError } from '@/lib/errors'
 import { resolveIdentity } from '@/lib/identity'
+import { ZAP_BOT_PROFILE_ID, ZAP_GUIDE_PROFILE_ID } from '@/lib/bot'
 import { Shimmer } from '@/components/shimmer'
 
-const ONLINE_WINDOW_MS = 90 * 1000
+const ONLINE_WINDOW_MS = 5 * 60 * 1000
 
 export type OnlineMember = {
   id: string
@@ -184,6 +185,7 @@ export default function OnlineMembers({ members: initialMembers, loading: server
         .select(MEMBER_COLS)
         .eq('online_visible', true)
         .neq('id', userIdRef.current ?? '')
+        .not('id', 'in', `(${ZAP_BOT_PROFILE_ID},${ZAP_GUIDE_PROFILE_ID})`)
         .gt('last_active_at', since)
         .order('last_active_at', { ascending: false })
         .limit(100)
@@ -195,18 +197,15 @@ export default function OnlineMembers({ members: initialMembers, loading: server
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload) => {
         if (!active) return
         const row = payload.new as Record<string, any>
-        const now = Date.now()
+        if (row.id === userIdRef.current) return
+        if (row.id === ZAP_BOT_PROFILE_ID || row.id === ZAP_GUIDE_PROFILE_ID) return
         const ts = row.last_active_at ?? null
-        const isOnline = row.online_visible !== false && !!ts && (now - new Date(ts).getTime()) < ONLINE_WINDOW_MS
+        const isOnline = row.online_visible !== false && !!ts && (Date.now() - new Date(ts).getTime()) < ONLINE_WINDOW_MS
         setMembers((prev) => {
           const exists = prev.some((m) => m.id === row.id)
-          if (!isOnline && exists) return prev.filter((m) => m.id !== row.id)
-          if (isOnline && !exists && ts) {
-            setMembers((cur) => cur.some((m) => m.id === row.id) ? cur : [...cur, row as unknown as OnlineMember])
-            return prev
-          }
-          if (isOnline && exists && ts) return prev.map((m) => m.id === row.id ? { ...m, ...row, last_active_at: ts } : m)
-          return prev
+          if (!isOnline) return exists ? prev.filter((m) => m.id !== row.id) : prev
+          if (!exists) return [...prev, row as unknown as OnlineMember]
+          return prev.map((m) => m.id === row.id ? { ...m, ...row } : m)
         })
       }).subscribe()
 

@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { friendlyError } from '@/lib/errors'
+import { ZAP_BOT_PROFILE_ID, ZAP_GUIDE_PROFILE_ID } from '@/lib/bot'
 import OnlineTabs from '@/components/online-tabs'
 import { AppHeader } from '@/components/app-header'
 
@@ -8,7 +9,7 @@ export const dynamic = 'force-dynamic'
 
 export const metadata = { title: 'Online now' }
 
-const ONLINE_WINDOW_MS = 90 * 1000
+const ONLINE_WINDOW_MS = 5 * 60 * 1000
 
 export default async function OnlinePage() {
   const supabase = await createSupabaseServerClient()
@@ -24,6 +25,7 @@ export default async function OnlinePage() {
     .select('id,display_name,level,country_code,country_visible,chat_language,gender,gender_visible,age_band,age_band_visible,generation,generation_visible,last_active_at,interests_visible,profile_interests(interest_id,interests(name))')
     .eq('online_visible', true)
     .neq('id', user.id)
+    .not('id', 'in', `(${ZAP_BOT_PROFILE_ID},${ZAP_GUIDE_PROFILE_ID})`)
     .gt('last_active_at', since)
     .order('last_active_at', { ascending: false })
     .limit(100)

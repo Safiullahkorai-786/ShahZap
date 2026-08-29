@@ -9,7 +9,7 @@ import { AppHeader } from '@/components/app-header'
 import { Shimmer } from '@/components/shimmer'
 import { FriendContextMenu } from '@/components/friend-context-menu'
 
-const ONLINE_WINDOW_MS = 90 * 1000
+const ONLINE_WINDOW_MS = 5 * 60 * 1000
 const TYPING_WINDOW_MS = 5000
 const POLL_MS = 30_000
 
