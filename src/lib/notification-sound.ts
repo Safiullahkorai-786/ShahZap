@@ -69,19 +69,51 @@ export function setSoundBundle(bundle: SoundBundle): SoundPrefs {
 
 let ctx: AudioContext | undefined
 
-function audio(): AudioContext | undefined {
+function ensureCtx(): AudioContext | undefined {
   try {
     const AudioCtor =
       window.AudioContext ??
       (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
     if (!AudioCtor) return undefined
     ctx ??= new AudioCtor()
-    if (ctx.state === 'suspended') void ctx.resume()
     return ctx
   } catch {
     return undefined
   }
 }
+
+function audio(): AudioContext | undefined {
+  const c = ensureCtx()
+  // A suspended context can only be resumed inside a user gesture; resume() here
+  // may fail if there hasn't been a recent gesture. unlockAudio() (below) makes
+  // sure the context is created + running as soon as the user first interacts,
+  // so realtime-triggered rings (incoming calls) can actually be heard.
+  if (c && c.state === 'suspended') {
+    try { void c.resume().catch(() => {}) } catch {}
+  }
+  return c
+}
+
+// Creating/resuming an AudioContext outside a user gesture leaves it suspended
+// and it produces no sound (autoplay policy). We therefore create + resume it on
+// the very first tap/key anywhere on the page, so that by the time a call rings
+// (incoming arrives via a realtime event, not a gesture) the context is already
+// running and unlocked. Outgoing rings likewise start from a gesture and are
+// guaranteed to have a live context.
+let unlockBound = false
+function unlockAudio() {
+  const c = ensureCtx()
+  if (c && c.state === 'suspended') {
+    try { void c.resume().catch(() => {}) } catch {}
+  }
+}
+if (typeof window !== 'undefined' && !unlockBound) {
+  unlockBound = true
+  const evts = ['pointerdown', 'touchstart', 'keydown'] as const
+  const onGesture = () => unlockAudio()
+  for (const e of evts) window.addEventListener(e, onGesture, { once: false, passive: true })
+}
+
 
 type ToneOpts = {
   freq: number
