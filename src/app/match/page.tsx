@@ -33,20 +33,20 @@ const CONTINENTS = [
   ['africa', 'Africa'], ['asia', 'Asia'], ['europe', 'Europe'], ['north_america', 'N. America'], ['south_america', 'S. America'], ['oceania', 'Oceania'],
 ] as const
 const LANGUAGES_CORE = [
-  ['en', 'English'], ['ur', 'Urdu'], ['sd', 'Sindhi'], ['hi', 'Hindi'], ['pa', 'Punjabi'],
-  ['ar', 'Arabic'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German'], ['tr', 'Turkish'],
-  ['fa', 'Persian'], ['ps', 'Pashto'], ['mr', 'Marathi'], ['gu', 'Gujarati'], ['kk', 'Kazakh'], ['uz', 'Uzbek'],
-  ['ml', 'Malayalam'], ['kn', 'Kannada'], ['si', 'Sinhala'], ['ne', 'Nepali'], ['km', 'Khmer'],
+  ['ar', 'Arabic'], ['en', 'English'], ['fr', 'French'], ['de', 'German'], ['gu', 'Gujarati'],
+  ['hi', 'Hindi'], ['kn', 'Kannada'], ['kk', 'Kazakh'], ['km', 'Khmer'], ['ml', 'Malayalam'],
+  ['mr', 'Marathi'], ['ne', 'Nepali'], ['ps', 'Pashto'], ['fa', 'Persian'], ['pa', 'Punjabi'],
+  ['sd', 'Sindhi'], ['si', 'Sinhala'], ['es', 'Spanish'], ['tr', 'Turkish'], ['ur', 'Urdu'], ['uz', 'Uzbek'],
 ] as const
 const LANGUAGES_EXTRA = [
-  ['bn', 'Bengali'], ['pt', 'Portuguese'], ['ru', 'Russian'], ['id', 'Indonesian'], ['vi', 'Vietnamese'],
-  ['tl', 'Tagalog'], ['th', 'Thai'], ['ja', 'Japanese'], ['ko', 'Korean'], ['zh_cn', 'Chinese (Simplified)'],
-  ['it', 'Italian'], ['sw', 'Swahili'], ['uk', 'Ukrainian'], ['ro', 'Romanian'], ['nl', 'Dutch'],
-  ['pl', 'Polish'], ['ms', 'Malay'], ['el', 'Greek'], ['sv', 'Swedish'], ['cs', 'Czech'],
-  ['he', 'Hebrew'], ['hu', 'Hungarian'], ['da', 'Danish'],
-  ['no', 'Norwegian'], ['fi', 'Finnish'], ['sk', 'Slovak'], ['bg', 'Bulgarian'], ['hr', 'Croatian'],
-  ['sr', 'Serbian'], ['yo', 'Yoruba'], ['ig', 'Igbo'], ['sl', 'Slovenian'], ['lt', 'Lithuanian'],
-  ['lv', 'Latvian'], ['et', 'Estonian'], ['sq', 'Albanian'], ['mk', 'Macedonian'], ['mn', 'Mongolian'],
+  ['sq', 'Albanian'], ['bn', 'Bengali'], ['bg', 'Bulgarian'], ['zh_cn', 'Chinese (Simplified)'],
+  ['hr', 'Croatian'], ['cs', 'Czech'], ['da', 'Danish'], ['nl', 'Dutch'], ['et', 'Estonian'],
+  ['fi', 'Finnish'], ['el', 'Greek'], ['he', 'Hebrew'], ['hu', 'Hungarian'], ['ig', 'Igbo'],
+  ['id', 'Indonesian'], ['it', 'Italian'], ['ja', 'Japanese'], ['ko', 'Korean'], ['lv', 'Latvian'],
+  ['lt', 'Lithuanian'], ['mk', 'Macedonian'], ['ms', 'Malay'], ['mn', 'Mongolian'], ['no', 'Norwegian'],
+  ['pl', 'Polish'], ['pt', 'Portuguese'], ['ro', 'Romanian'], ['ru', 'Russian'], ['sr', 'Serbian'],
+  ['sk', 'Slovak'], ['sl', 'Slovenian'], ['sw', 'Swahili'], ['sv', 'Swedish'], ['tl', 'Tagalog'],
+  ['th', 'Thai'], ['uk', 'Ukrainian'], ['vi', 'Vietnamese'], ['yo', 'Yoruba'],
 ] as const
 
 const RELAX_ORDER: (keyof MatchFilterOverrides)[] = [
