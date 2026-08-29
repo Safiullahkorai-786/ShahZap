@@ -2,13 +2,14 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { MessageCircle, UserPlus, UserMinus, Ban, Trash2, X } from 'lucide-react'
+import { MessageCircle, UserPlus, UserMinus, Ban, Trash2, X, Check } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { resolveIdentity, type Identity } from '@/lib/identity'
 import { isBotProfile } from '@/lib/bot'
 import { getNotifPrefs, type NotifCategory } from '@/lib/notification-prefs'
+import { notify } from '@/lib/notification-sound'
 
-const AUTO_DISMISS_MS = 4000
+const AUTO_DISMISS_MS = 6000
 const SWIPE_THRESHOLD = 70
 
 type BannerItem = {
@@ -20,6 +21,7 @@ type BannerItem = {
   kindCategory: NotifCategory
   icon: 'message' | 'request' | 'unfriend' | 'block' | 'chat_deleted'
   href: string
+  fromUserId: string | null
 }
 
 const KIND_HEADLINE: Record<string, string> = {
@@ -87,7 +89,9 @@ export function NotificationBanner() {
   const [queue, setQueue] = useState<BannerItem[]>([])
   const [leaving, setLeaving] = useState(false)
   const [dragX, setDragX] = useState(0)
+  const [actingOn, setActingOn] = useState<string | null>(null)
   const timerRef = useRef<number | null>(null)
+  const userIdRef = useRef<string | null>(null)
   const current = queue[0] ?? null
 
   const removeCurrent = useCallback((animate = true) => {
@@ -134,6 +138,41 @@ export function NotificationBanner() {
     router.push('/friends')
   }
 
+  // Accept or reject an incoming friend request directly from the banner.
+  async function actOnFriendRequest(status: 'accepted' | 'declined') {
+    if (!current || current.kind !== 'friend_request') return
+    const me = userIdRef.current
+    const senderId = current.fromUserId
+    if (!me || !senderId) return
+    setActingOn(current.id)
+    const supabase = createClient()
+    const { data: req, error: findErr } = await supabase
+      .from('friend_requests')
+      .select('id')
+      .eq('sender_id', senderId)
+      .eq('receiver_id', me)
+      .eq('status', 'pending')
+      .maybeSingle()
+    if (findErr || !req) {
+      setActingOn(null)
+      removeCurrent(true)
+      return
+    }
+    const { error: updErr } = await supabase.from('friend_requests').update({ status }).eq('id', req.id)
+    setActingOn(null)
+    if (updErr) return
+    notify('request')
+    removeCurrent(false)
+    if (status === 'accepted') {
+      // Jump straight into the chat with the new friend.
+      const { data: convId } = await supabase.rpc('start_direct_chat', { p_other_profile_id: senderId })
+      if (convId) {
+        window.dispatchEvent(new CustomEvent('shahzap:opened-chat', { detail: `/chat/${convId}` }))
+        router.push(`/chat/${convId}`)
+      }
+    }
+  }
+
   // Pointer handlers for horizontal swipe-to-dismiss
   const dragState = useRef<{ startX: number; startY: number; dx: number; on: boolean }>({ startX: 0, startY: 0, dx: 0, on: false })
   function onPointerDown(e: React.PointerEvent) {
@@ -174,6 +213,7 @@ export function NotificationBanner() {
     async function init() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
+      userIdRef.current = user.id
 
       channel = supabase
         .channel(`notif-banner:${user.id}`)
@@ -204,6 +244,7 @@ export function NotificationBanner() {
               identity,
               kindCategory: cat,
               icon: kindIcon(row.kind),
+              fromUserId: row.from_user_id,
               href: row.kind === 'message' && row.conversation_id
                 ? `/chat/${row.conversation_id}`
                 : '/friends',
@@ -226,12 +267,16 @@ export function NotificationBanner() {
   if (!current) return null
 
   const identityLabel = current.identity.label
+  const showActions = current.kind === 'friend_request'
+  const acting = actingOn === current.id
 
   return (
     <div className="pointer-events-none fixed inset-x-0 top-3 z-[60] flex justify-center px-3">
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={handleOpen}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleOpen() } }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -252,6 +297,33 @@ export function NotificationBanner() {
           </span>
         </div>
 
+        {showActions ? (
+          <div className="flex gap-2 px-3.5 pb-3.5"
+            onPointerDown={(e) => e.stopPropagation()}
+            onPointerMove={(e) => e.stopPropagation()}
+            onPointerUp={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              disabled={!!acting}
+              onClick={(e) => { e.stopPropagation(); actOnFriendRequest('accepted') }}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-cyan-400 px-3 py-2 text-xs font-bold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-50"
+            >
+              <Check size={14} />
+              {acting ? 'Accepting…' : 'Accept'}
+            </button>
+            <button
+              type="button"
+              disabled={!!acting}
+              onClick={(e) => { e.stopPropagation(); actOnFriendRequest('declined') }}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-white/10 disabled:opacity-50"
+            >
+              <X size={14} />
+              Decline
+            </button>
+          </div>
+        ) : null}
+
         <span
           role="button"
           aria-label="Dismiss"
@@ -261,7 +333,7 @@ export function NotificationBanner() {
         >
           <X size={15} />
         </span>
-      </button>
+      </div>
     </div>
   )
 }

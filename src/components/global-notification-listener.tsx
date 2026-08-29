@@ -45,6 +45,9 @@ export function GlobalNotificationListener() {
                 break
               case 'unfriend':
               case 'reject':
+              case 'blocked':
+              case 'unblocked':
+              case 'delete_chat':
                 playUnfriendSound()
                 break
             }
