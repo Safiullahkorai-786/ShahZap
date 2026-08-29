@@ -1321,21 +1321,14 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
       {/* ── Header ─────────────────────────────────────────── */}
       <header className="relative z-20 flex-none border-b border-slate-800 bg-slate-900 px-2 py-2.5 backdrop-blur">
         <div className={`mx-auto flex ${col} items-center gap-1.5`}>
-          {isFriend ? (
-            <button
-              type="button"
-              aria-label="Back to friends"
-              onClick={() => router.push('/friends')}
-              className="flex h-10 w-10 flex-none items-center justify-center rounded-full text-slate-300 transition hover:bg-slate-800 hover:text-white"
-            >
-              <ArrowLeft size={20} />
-            </button>
-          ) : (
-            <button aria-label="More options" onClick={() => setMenuOpen((v) => !v)}
-              className="flex h-10 w-10 flex-none items-center justify-center rounded-full text-slate-300 transition hover:bg-slate-800 hover:text-white">
-              <MoreVertical size={20} />
-            </button>
-          )}
+          <button
+            type="button"
+            aria-label="Back"
+            onClick={() => router.push(entry === 'online' ? '/online' : entry === 'match' ? '/match' : '/friends')}
+            className="flex h-10 w-10 flex-none items-center justify-center rounded-full text-slate-300 transition hover:bg-slate-800 hover:text-white"
+          >
+            <ArrowLeft size={20} />
+          </button>
 
           <button type="button" aria-label="View profile" onClick={() => persona ? undefined : setCardOpen(true)}
             className={`flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1 py-1 text-left transition ${persona ? '' : 'hover:bg-slate-800/60'}`}>
@@ -1374,16 +1367,17 @@ export function ChatRoom({ conversationId, suppressCalls = false }: { conversati
               </button>
             </div>
           ) : entry === 'match' ? (
-            <button onClick={() => router.push('/match')} className="mr-1 flex flex-none items-center gap-1.5 rounded-full bg-cyan-400/10 px-4 py-2 text-xs font-bold text-cyan-300 transition hover:bg-cyan-400/20">Next</button>
+            <div className="flex flex-none items-center gap-0.5">
+              <button onClick={() => router.push('/match')} className="flex flex-none items-center gap-1.5 rounded-full bg-cyan-400/10 px-4 py-2 text-xs font-bold text-cyan-300 transition hover:bg-cyan-400/20">Next</button>
+              <button aria-label="More options" onClick={() => setMenuOpen((v) => !v)}
+                className="flex h-10 w-10 flex-none items-center justify-center rounded-full text-slate-300 transition hover:bg-slate-800 hover:text-white">
+                <MoreVertical size={20} />
+              </button>
+            </div>
           ) : (
-            <button
-              type="button"
-              aria-label="Back"
-              onClick={() => router.push(entry === 'online' ? '/online' : '/friends')}
-              className="mr-1 flex flex-none items-center gap-1.5 rounded-full bg-slate-700/30 px-4 py-2 text-xs font-bold text-slate-200 transition hover:bg-slate-700/50 hover:text-white"
-            >
-              <ArrowLeft size={16} />
-              Back
+            <button aria-label="More options" onClick={() => setMenuOpen((v) => !v)}
+              className="flex h-10 w-10 flex-none items-center justify-center rounded-full text-slate-300 transition hover:bg-slate-800 hover:text-white">
+              <MoreVertical size={20} />
             </button>
           )}
         </div>
