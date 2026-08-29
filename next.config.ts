@@ -12,11 +12,27 @@ const nextConfig: NextConfig = {
       },
       // App icons / favicon — stable for a week.
       {
-        source: "/icon.svg",
+        source: "/favicon.ico",
         headers: [{ key: "Cache-Control", value: "public, max-age=604800" }],
       },
       {
-        source: "/favicon.ico",
+        source: "/favicon-16x16.png",
+        headers: [{ key: "Cache-Control", value: "public, max-age=604800" }],
+      },
+      {
+        source: "/favicon-32x32.png",
+        headers: [{ key: "Cache-Control", value: "public, max-age=604800" }],
+      },
+      {
+        source: "/android-chrome-192x192.png",
+        headers: [{ key: "Cache-Control", value: "public, max-age=604800" }],
+      },
+      {
+        source: "/android-chrome-512x512.png",
+        headers: [{ key: "Cache-Control", value: "public, max-age=604800" }],
+      },
+      {
+        source: "/apple-touch-icon.png",
         headers: [{ key: "Cache-Control", value: "public, max-age=604800" }],
       },
       // Dynamic APIs must never be cached by browsers or the edge.
