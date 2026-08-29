@@ -185,6 +185,7 @@ export default function SettingsPage() {
   const [pushOn, setPushOn] = useState<boolean>(false)
   const [pushBusy, setPushBusy] = useState(false)
   const [pushError, setPushError] = useState<string | null>(null)
+  const [pushPerm, setPushPerm] = useState<NotificationPermission>('default')
   const [interfaceLanguage, setInterfaceLanguage] = useState('en')
   const [chatLanguage, setChatLanguage] = useState('en')
 
@@ -267,6 +268,31 @@ export default function SettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Watch the browser's notification permission in real time so the toggle and
+  // hint stay true even if the user changes it in the browser's own settings
+  // while this page is open (Chrome/Android support this API; others are no-op).
+  useEffect(() => {
+    if (!pushSupported()) return
+    if (!('permissions' in navigator)) return
+    let active = true
+    let unregister: (() => void) | null = null
+    void navigator.permissions.query({ name: 'notifications' as PermissionName })
+      .then((status) => {
+        if (!active) return
+        setPushPerm(status.state === 'prompt' ? 'default' : status.state)
+        const onChange = () => {
+          if (!active) return
+          const perm = Notification.permission
+          setPushPerm(perm)
+          setPushOn(perm === 'granted' && isPushEnabled())
+        }
+        status.addEventListener('change', onChange)
+        unregister = () => status.removeEventListener('change', onChange)
+      })
+      .catch(() => {})
+    return () => { active = false; unregister?.() }
+  }, [])
+
   function toggleIn(list: string[], v: string): string[] {
     return list.includes(v) ? list.filter((x) => x !== v) : [...list, v]
   }
@@ -274,6 +300,7 @@ export default function SettingsPage() {
   // True only when the browser genuinely has push on: permission granted AND
   // an active push subscription. This is what the toggle should reflect.
   async function reflectPushState(): Promise<boolean> {
+    setPushPerm(pushSupported() ? Notification.permission : 'default')
     if (!pushSupported()) return false
     if (Notification.permission !== 'granted') return false
     try {
@@ -422,6 +449,9 @@ export default function SettingsPage() {
 
             <Toggle checked={pushOn} disabled={!pushSupported() || pushBusy} label={t('settings.notifications.pushEnabled')} hint={t('settings.notifications.pushEnabledHint')}
               onChange={(v) => void togglePush(v)} />
+            {pushPerm === 'denied' ? (
+              <p className="text-xs font-semibold text-amber-400">{t('settings.notifications.pushDenied')}</p>
+            ) : null}
             {pushError ? <p className="text-xs font-semibold text-red-400">{pushError}</p> : null}
 
             <div>
