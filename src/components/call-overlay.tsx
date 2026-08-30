@@ -679,7 +679,7 @@ export function CallOverlay(props: {
         {/* Chat panel — WhatsApp Web style, right-hand side, desktop only */}
         {showChat && conversationId && (
           <div className="hidden h-full w-[26rem] shrink-0 lg:block">
-            <ChatRoom conversationId={conversationId} suppressCalls markReadInCall />
+            <ChatRoom conversationId={conversationId} suppressCalls markReadInCall disableP2P />
           </div>
         )}
       </div>

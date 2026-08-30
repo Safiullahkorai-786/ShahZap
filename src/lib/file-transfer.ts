@@ -39,6 +39,40 @@ export type FileAck = {
 
 export type FileProtocolMessage = FileMeta | FileEnd | FileAck
 
+// ── Text message protocol (JSON over DataChannel) ──────────────────────
+
+export type TextMessage = {
+  kind: 'text'
+  id: string
+  conversationId: string
+  senderId: string
+  content: string
+  createdAt: string
+  senderSequence: number
+  replyToId?: string
+}
+
+export type TextAck = {
+  kind: 'text-ack'
+  id: string
+  senderId: string
+  senderSequence: number
+}
+
+export type SyncRequest = {
+  kind: 'sync-request'
+  senderId: string
+  lastKnownSequences: Record<string, number>
+}
+
+export type SyncResponse = {
+  kind: 'sync-response'
+  senderId: string
+  messages: TextMessage[]
+}
+
+export type TextProtocolMessage = TextMessage | TextAck | SyncRequest | SyncResponse
+
 // ── Broadcast message (base64 via Supabase Realtime) ──────────────────
 
 export type BroadcastFileMessage = {

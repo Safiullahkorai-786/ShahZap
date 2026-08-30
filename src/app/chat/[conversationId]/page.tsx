@@ -14,7 +14,11 @@ import { resolveIdentity, type Identity } from '@/lib/identity'
 import { registerChatComposerFocus } from '@/lib/chat-composer-focus'
 import { useSiteActive } from '@/hooks/use-site-active'
 import { useBackgroundP2P } from '@/hooks/use-background-p2p'
-import { validateFile, newFileId, chunkFile, BROADCAST_THRESHOLD, fileToDataUrl, dataUrlToBlob, type BroadcastFileMessage, type FileMeta } from '@/lib/file-transfer'
+import { validateFile, newFileId, chunkFile, BROADCAST_THRESHOLD, fileToDataUrl, dataUrlToBlob, type BroadcastFileMessage, type FileMeta, type TextMessage } from '@/lib/file-transfer'
+import { ingestMessage, ingestBatch, patchMessage, loadFromIndexedDB, supabaseToPipeline, getLatestSenderSequence, getNextSenderSequence, type PipelineMessage } from '@/lib/db/pipeline'
+import { deleteMessage as deleteIDBMessage } from '@/lib/db/messages'
+import type { SyncRequest, SyncResponse } from '@/lib/file-transfer'
+import type { MessageTransport } from '@/lib/db/schema'
 import { useCallCoveringChat } from '@/hooks/use-call-covering-chat'
 import { Shimmer } from '@/components/shimmer'
 import { RichText } from '@/components/rich-text'
@@ -168,7 +172,7 @@ async function areFriends(a: string, b: string): Promise<boolean> {
   }
 }
 
-export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall = false, hidden = false }: { conversationId: string; suppressCalls?: boolean; markReadInCall?: boolean; hidden?: boolean }) {
+export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall = false, hidden = false, disableP2P = false }: { conversationId: string; suppressCalls?: boolean; markReadInCall?: boolean; hidden?: boolean; disableP2P?: boolean }) {
   const router = useRouter()
   const { t } = useI18n()
   // In-call mode fills the side panel edge-to-edge instead of the centered
@@ -376,6 +380,8 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
       if (!active) return
       const { data: fresh } = await supabase.from('messages').select(MESSAGE_COLUMNS).eq('conversation_id', conversationId).order('created_at', { ascending: true })
       if (!fresh || !active) return
+      // Phase 3: Persist to IndexedDB (dedup is internal to ingestBatch)
+      void ingestBatch(fresh as never[], conversationId, 'supabase')
       const toggling = togglingMessages.current
       setMessages((prev) => {
         if (toggling.size > 0) {
@@ -479,9 +485,21 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
         }
       }
 
+      // ── Phase 3: Load from IndexedDB first for instant rendering ──────
+      const localMsgs = await loadFromIndexedDB(conversationId)
+      if (active && localMsgs.length > 0) {
+        setMessages(localMsgs as unknown as Message[])
+        setLoading(false)
+      }
+
+      // Then sync from Supabase (background, merges into IndexedDB)
       const { data, error: readError } = await supabase.from('messages').select(MESSAGE_COLUMNS).eq('conversation_id', conversationId).order('created_at', { ascending: true })
       if (readError) setError(friendlyError(readError, 'Could not load the messages. Please refresh.'))
-      if (active) { setMessages((data ?? []) as Message[]); setLoading(false) }
+      if (active && data) {
+        const merged = await ingestBatch(data as never[], conversationId, 'supabase')
+        setMessages(merged as unknown as Message[])
+        setLoading(false)
+      }
 
       // Immediately stamp read on inbound messages so the sender's blue ticks
       // appear. Direct client update fires the DB trigger; belt-and-suspenders
@@ -495,13 +513,20 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
         await supabase.rpc('mark_conversation_read', { p_conversation_id: conversationId }).then(() => {}, () => {})
         if (!active) return
         const { data: fresh } = await supabase.from('messages').select(MESSAGE_COLUMNS).eq('conversation_id', conversationId).order('created_at', { ascending: true })
-        if (active && fresh) setMessages(fresh as Message[])
+        if (active && fresh) {
+          const merged = await ingestBatch(fresh as never[], conversationId, 'supabase')
+          setMessages(merged as unknown as Message[])
+        }
       })()
 
       channel = supabase.channel(`conversation:${conversationId}`, { config: { broadcast: { self: false } } })
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload) => {
           lastRealtimeActivity = Date.now()
           const message = payload.new as Message
+          // Phase 3: Persist to IndexedDB via unified pipeline
+          const canonical = supabaseToPipeline(message as never, 'supabase')
+          canonical.conversationId = conversationId
+          void ingestMessage(canonical)
           setMessages((current) => (current.some((item) => item.id === message.id) ? current : [...current, message]))
           if (isBotProfile(message.sender_id)) setBotTyping(false)
           if (message.sender_id !== user.id) {
@@ -517,6 +542,17 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload) => {
           lastRealtimeActivity = Date.now()
           const updated = payload.new as Message
+          // Phase 3: Persist update to IndexedDB via unified pipeline
+          void patchMessage(updated.id, {
+            editedAt: updated.edited_at ?? null,
+            deletedAt: updated.deleted_at ?? null,
+            deletedByReceiverAt: updated.deleted_by_receiver_at ?? null,
+            deliveredAt: updated.delivered_at ?? null,
+            readAt: updated.read_at ?? null,
+            reactions: updated.reactions ?? null,
+            originalMessage: updated.original_message,
+            translatedMessage: updated.translated_message ?? null,
+          })
           setMessages((current) => current.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)))
         })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${otherProfileId}` }, (payload) => {
@@ -758,6 +794,8 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
         .eq('conversation_id', conversationId)
         .order('created_at', { ascending: true })
       if (data) {
+        // Phase 3: Persist read-receipt updates to IndexedDB
+        void ingestBatch(data as never[], conversationId, 'supabase')
         // Idempotent: only touch state when the fetched rows actually differ
         // from what we already have, so the periodic re-stamp doesn't rebuild
         // the message list (and jank scrolling in the call side panel) every
@@ -1033,10 +1071,74 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
     if (!value || !userId || blockedAny) return
     setText('')
     if (!persona) broadcastTyping(false)
+
+    // Phase 4: Generate message ID upfront for consistent identity
+    const messageId = crypto.randomUUID()
+    const now = new Date().toISOString()
+    const senderSequence = await getNextSenderSequence(conversationId, userId)
+
+    // Phase 4: WebRTC-first routing
+    if (p2pOpen()) {
+      // ── PRIMARY: WebRTC DataChannel ──────────────────────────────
+      const textMsg: TextMessage = {
+        kind: 'text',
+        id: messageId,
+        conversationId,
+        senderId: userId,
+        content: value,
+        createdAt: now,
+        senderSequence,
+        replyToId: replyTo?.id,
+      }
+      // Persist locally (optimistic) before sending
+      const canonical: PipelineMessage = {
+        id: messageId,
+        conversationId,
+        senderId: userId,
+        originalMessage: value,
+        translatedMessage: null,
+        createdAt: now,
+        transport: 'webrtc',
+        reactions: null,
+        editedAt: null,
+        deletedAt: null,
+        replyToMessageId: replyTo?.id ?? null,
+        deletedByReceiverAt: null,
+        deliveredAt: null,
+        readAt: null,
+        messageType: null,
+        callMode: null,
+        callStatus: null,
+        callDurationSeconds: null,
+        senderSequence,
+      }
+      void ingestMessage(canonical)
+      setMessages((current) => (current.some((item) => item.id === messageId) ? current : [...current, canonical as unknown as Message]))
+      // Send via DataChannel — if this fails, fall back to Supabase
+      const sent = p2pSend(JSON.stringify(textMsg))
+      if (sent) {
+        playSentSound()
+        setReplyTo(null)
+        inputRef.current?.focus()
+        setUnreadCount(0)
+        requestAnimationFrame(() => { const el = scrollRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }) })
+        if (persona) setBotTyping(true)
+        return
+      }
+      // WebRTC send failed — remove optimistic entry, fall through to Supabase
+      void deleteIDBMessage(messageId)
+      setMessages((current) => current.filter((item) => item.id !== messageId))
+    }
+
+    // ── FALLBACK: Supabase (also used when DataChannel is not open) ──
+    // Explicitly provide the client-generated messageId so the same logical
+    // message retains its identity across WebRTC and Supabase paths.
+    // PostgreSQL: id uuid primary key default gen_random_uuid()
+    // When a value is supplied, it is used instead of the DEFAULT.
     const supabase = createClient()
     const { data: inserted, error: sendError } = await supabase
       .from('messages')
-      .insert({ conversation_id: conversationId, sender_id: userId, original_message: value, reply_to_message_id: replyTo?.id ?? null })
+      .insert({ id: messageId, conversation_id: conversationId, sender_id: userId, original_message: value, reply_to_message_id: replyTo?.id ?? null })
       .select(MESSAGE_COLUMNS)
       .single()
     if (sendError || !inserted) {
@@ -1044,6 +1146,10 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
       setText(value)
       return
     }
+    // Phase 3: Persist sent message to IndexedDB via unified pipeline
+    const canonical = supabaseToPipeline(inserted as never, 'supabase')
+    canonical.conversationId = conversationId
+    void ingestMessage(canonical)
     setMessages((current) => (current.some((item) => item.id === inserted.id) ? current : [...current, inserted as Message]))
     playSentSound()
     setReplyTo(null)
@@ -1057,10 +1163,111 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
   const { send: p2pSend, isOpen: p2pOpen } = useBackgroundP2P({
     conversationId,
     myId: userId,
-    onData: useCallback((data: ArrayBuffer | string) => {
+    enabled: !disableP2P,
+    onData: useCallback(async (data: ArrayBuffer | string) => {
       if (typeof data === 'string') {
         try {
-          const msg = JSON.parse(data) as FileMeta | import('@/lib/file-transfer').FileEnd
+          const parsed = JSON.parse(data)
+          // Phase 4: Handle text messages from DataChannel
+          if (parsed.kind === 'text') {
+            const textMsg = parsed as TextMessage
+            // Ignore own messages (echo)
+            if (textMsg.senderId === userId) return
+            // Persist via unified pipeline (dedup is internal)
+            const canonical: PipelineMessage = {
+              id: textMsg.id,
+              conversationId: textMsg.conversationId,
+              senderId: textMsg.senderId,
+              originalMessage: textMsg.content,
+              translatedMessage: null,
+              createdAt: textMsg.createdAt,
+              transport: 'webrtc',
+              reactions: null,
+              editedAt: null,
+              deletedAt: null,
+              replyToMessageId: textMsg.replyToId ?? null,
+              deletedByReceiverAt: null,
+              deliveredAt: null,
+              readAt: null,
+              messageType: null,
+              callMode: null,
+              callStatus: null,
+              callDurationSeconds: null,
+              senderSequence: textMsg.senderSequence,
+            }
+            void ingestMessage(canonical).then((isNew) => {
+              if (isNew) {
+                setMessages((current) => (current.some((item) => item.id === textMsg.id) ? current : [...current, canonical as unknown as Message]))
+                playMessageSound()
+              }
+            })
+            return
+          }
+          // Phase 4: Reconnect reconciliation — peer requests our messages
+          if (parsed.kind === 'sync-request' && userId) {
+            const req = parsed as SyncRequest
+            if (req.senderId === userId) return
+            // Load our messages and filter to those the peer is missing
+            // using sender-scoped sequence comparison
+            const allMsgs = await loadFromIndexedDB(conversationId)
+            const missing = allMsgs
+              .filter((m) => {
+                if (m.senderId !== userId) return false
+                const peerLastKnown = req.lastKnownSequences[userId] ?? 0
+                return (m.senderSequence ?? 0) > peerLastKnown
+              })
+              .map((m) => ({
+                kind: 'text' as const,
+                id: m.id,
+                conversationId: m.conversationId,
+                senderId: m.senderId,
+                content: m.originalMessage,
+                createdAt: m.createdAt,
+                senderSequence: m.senderSequence ?? 0,
+                replyToId: m.replyToMessageId ?? undefined,
+              }))
+            if (missing.length > 0) {
+              const syncResp: SyncResponse = { kind: 'sync-response', senderId: userId, messages: missing }
+              p2pSend(JSON.stringify(syncResp))
+            }
+            return
+          }
+          // Phase 4: Reconnect reconciliation — receive missing messages
+          if (parsed.kind === 'sync-response' && userId) {
+            const resp = parsed as SyncResponse
+            if (resp.senderId === userId) return
+            for (const textMsg of resp.messages) {
+              const canonical: PipelineMessage = {
+                id: textMsg.id,
+                conversationId: textMsg.conversationId,
+                senderId: textMsg.senderId,
+                originalMessage: textMsg.content,
+                translatedMessage: null,
+                createdAt: textMsg.createdAt,
+                transport: 'webrtc',
+                reactions: null,
+                editedAt: null,
+                deletedAt: null,
+                replyToMessageId: textMsg.replyToId ?? null,
+                deletedByReceiverAt: null,
+                deliveredAt: null,
+                readAt: null,
+                messageType: null,
+                callMode: null,
+                callStatus: null,
+                callDurationSeconds: null,
+                senderSequence: textMsg.senderSequence,
+              }
+              void ingestMessage(canonical).then((isNew) => {
+                if (isNew) {
+                  setMessages((current) => (current.some((item) => item.id === textMsg.id) ? current : [...current, canonical as unknown as Message]))
+                }
+              })
+            }
+            return
+          }
+          // File transfer protocol messages
+          const msg = parsed as FileMeta | import('@/lib/file-transfer').FileEnd
           if (msg.kind === 'file-meta') {
             incomingChunksRef.current.set(msg.id, { meta: msg, chunks: new Array(msg.chunkCount), received: 0 })
           } else if (msg.kind === 'file-end') {
@@ -1148,6 +1355,12 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
       .select(MESSAGE_COLUMNS)
       .single()
     if (e || !data) { setStatusLine(friendlyError(e, 'Could not save your edit.')); return }
+    // Phase 3: Persist edit to IndexedDB
+    void patchMessage(data.id, {
+      originalMessage: data.original_message,
+      editedAt: data.edited_at ?? null,
+      translatedMessage: data.translated_message ?? null,
+    })
     setMessages((prev) => prev.map((m) => (m.id === data.id ? (data as Message) : m)))
     setEditing(null); setText('')
     inputRef.current?.focus()
@@ -1156,10 +1369,16 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
   async function deleteMessage(m: Message) {
     setActionsMsg(null)
     const optimistic = { ...m, deleted_at: new Date().toISOString() }
+    // Phase 3: Persist delete to IndexedDB (optimistic)
+    void patchMessage(m.id, { deletedAt: optimistic.deleted_at })
     setMessages((prev) => prev.map((x) => (x.id === m.id ? optimistic : x)))
     const supabase = createClient()
     const { error: e } = await supabase.from('messages').update({ deleted_at: optimistic.deleted_at }).eq('id', m.id)
-    if (e) { setStatusLine(friendlyError(e, 'Could not delete the message.')); setMessages((prev) => prev.map((x) => (x.id === m.id ? m : x))) }
+    if (e) {
+      setStatusLine(friendlyError(e, 'Could not delete the message.'))
+      void patchMessage(m.id, { deletedAt: null }) // rollback IndexedDB
+      setMessages((prev) => prev.map((x) => (x.id === m.id ? m : x)))
+    }
   }
 
   // Receiver-side delete: hides THEIR copy only. The sender keeps the message
@@ -1169,11 +1388,14 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
     setActionsMsg(null)
     if (!userId || m.sender_id === userId) return
     const optimistic = { ...m, deleted_by_receiver_at: new Date().toISOString() }
+    // Phase 3: Persist receiver-side delete to IndexedDB (optimistic)
+    void patchMessage(m.id, { deletedByReceiverAt: optimistic.deleted_by_receiver_at })
     setMessages((prev) => prev.map((x) => (x.id === m.id ? optimistic : x)))
     const supabase = createClient()
     const { error: e } = await supabase.from('messages').update({ deleted_by_receiver_at: optimistic.deleted_by_receiver_at }).eq('id', m.id).is('deleted_by_receiver_at', null)
     if (e) {
       setStatusLine(friendlyError(e, 'Could not delete this message from your side.'))
+      void patchMessage(m.id, { deletedByReceiverAt: null }) // rollback IndexedDB
       setMessages((prev) => prev.map((x) => (x.id === m.id ? m : x)))
     }
   }
@@ -1195,15 +1417,20 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
       nextAll[emoji] = [...(nextAll[emoji] ?? []), userId]
     }
     setMessages((prev) => prev.map((x) => (x.id === m.id ? { ...x, reactions: nextAll } : x)))
+    // Phase 3: Persist optimistic reaction to IndexedDB
+    void patchMessage(m.id, { reactions: nextAll })
     togglingMessages.current.add(m.id)
     try {
       const supabase = createClient()
       const { data, error: e } = await supabase.rpc('toggle_message_reaction', { p_message_id: m.id, p_emoji: emoji })
       if (e) {
         setStatusLine(friendlyError(e, 'Could not save the reaction.'))
+        void patchMessage(m.id, { reactions: before }) // rollback IndexedDB
         setMessages((prev) => prev.map((x) => (x.id === m.id ? { ...x, reactions: before } : x)))
         return
       }
+      // Phase 3: Persist server-confirmed reaction to IndexedDB
+      void patchMessage(m.id, { reactions: data as Record<string, string[]> })
       setMessages((prev) => prev.map((x) => (x.id === m.id ? { ...x, reactions: data as Record<string, string[]> } : x)))
     } finally {
       // Defer guard removal until AFTER React commits the setMessages update.
@@ -1312,6 +1539,8 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
       })
       const data = await res.json().catch(() => null)
       if (res.ok && data?.translatedText) {
+        // Phase 3: Persist translation to IndexedDB
+        void patchMessage(m.id, { translatedMessage: data.translatedText })
         setMessages((prev) => prev.map((x) => x.id === m.id ? { ...x, translated_message: data.translatedText } : x))
         translatedShownRef.current.set(m.id, true)
       } else {

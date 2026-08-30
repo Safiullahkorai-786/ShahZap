@@ -1,10 +1,14 @@
 'use client'
 
-// Persistent background P2P DataChannel for file transfer.
+// Persistent background P2P DataChannel for file transfer AND text messaging.
 // Establishes a dedicated RTCPeerConnection on page mount using Supabase
 // broadcast signaling. Stays open continuously — survives call start/end.
-// Files route through this pipe regardless of whether a voice/video call
-// is active.
+// Files and text route through this pipe regardless of whether a voice/video
+// call is active.
+//
+// Reconnect reconciliation: when the DataChannel opens, the non-initiator
+// (responder) sends a sync-request with its last known sender sequence.
+// The initiator replies with a sync-response containing any missing messages.
 
 import { useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -16,8 +20,9 @@ export function useBackgroundP2P(opts: {
   conversationId: string | null
   myId: string | null
   onData: (data: ArrayBuffer | string) => void
+  enabled?: boolean
 }) {
-  const { conversationId, myId, onData } = opts
+  const { conversationId, myId, onData, enabled = true } = opts
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const dcRef = useRef<RTCDataChannel | null>(null)
   const chRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null)
@@ -41,7 +46,7 @@ export function useBackgroundP2P(opts: {
   const isOpen = useCallback(() => dcRef.current?.readyState === 'open', [])
 
   useEffect(() => {
-    if (!conversationId || !myId) return
+    if (!conversationId || !myId || !enabled) return
     let active = true
     const supabase = createClient()
     const topic = `signal:${conversationId}`
@@ -76,7 +81,19 @@ export function useBackgroundP2P(opts: {
     function setupDC(dc: RTCDataChannel) {
       dc.binaryType = 'arraybuffer'
       dc.onmessage = (ev) => onDataRef.current(ev.data)
-      dc.onopen = () => { statusRef.current = 'open' }
+      dc.onopen = () => {
+        statusRef.current = 'open'
+        // Reconnect reconciliation: responder sends sync-request
+        // with sender-scoped last known sequences
+        if (!isInitiatorRef.current && myId) {
+          const syncReq = JSON.stringify({
+            kind: 'sync-request',
+            senderId: myId,
+            lastKnownSequences: {},
+          })
+          try { dc.send(syncReq) } catch {}
+        }
+      }
       dc.onclose = () => { statusRef.current = 'idle' }
       dcRef.current = dc
     }
@@ -156,7 +173,7 @@ export function useBackgroundP2P(opts: {
     void start()
 
     return () => { active = false; cleanup() }
-  }, [conversationId, myId])
+  }, [conversationId, myId, enabled])
 
   return { send, isOpen, status: statusRef }
 }

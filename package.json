@@ -8,11 +8,13 @@
     "build:cloudflare": "opennextjs-cloudflare build",
     "deploy": "opennextjs-cloudflare build && node scripts/cf-cache.mjs && opennextjs-cloudflare deploy",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "vitest run"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.4",
     "@supabase/supabase-js": "2.112.1",
+    "idb": "^8.0.3",
     "lucide-react": "0.468.0",
     "next": "16.2.11",
     "react": "19.2.8",
@@ -27,8 +29,11 @@
     "eslint": "^9.39.5",
     "eslint-config-next": "16.2.11",
     "eslint-plugin-react": "^7.37.5",
+    "fake-indexeddb": "^6.2.5",
+    "happy-dom": "^20.12.0",
     "tailwindcss": "^4.3.3",
     "typescript": "5.9.3",
+    "vitest": "^4.1.11",
     "wrangler": "4.86.0"
   }
 }
