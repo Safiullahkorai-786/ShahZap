@@ -940,7 +940,7 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
     }
     el.addEventListener('scroll', onScroll, { passive: true })
     return () => el.removeEventListener('scroll', onScroll)
-  }, [loading])
+  }, [loading, hidden])
 
   function scrollToLatest() {
     const el = scrollRef.current
