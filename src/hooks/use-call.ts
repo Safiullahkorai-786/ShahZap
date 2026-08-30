@@ -606,53 +606,55 @@ export function useCallEngine(opts: {
 
   // ── Audio output routing ───────────────────────────────────────────────
   // Detect external audio devices (Bluetooth / wired headset) and toggle
-  // between earpiece ↔ speaker.  Uses setSinkId() where supported.
+  // between earpiece ↔ speaker.  Listens for device changes so headsets
+  // plugged in mid-call are detected immediately.
+  function isExternalDevice(d: MediaDeviceInfo) {
+    if (d.kind !== 'audiooutput') return false
+    if (d.deviceId === 'default' || d.deviceId === 'communications') return false
+    const label = d.label.toLowerCase()
+    // Built-in devices are NOT external.
+    if (/speaker|earpiece|built-in|internal|receiver|bottom|top/.test(label)) return false
+    // Everything else (headphones, headset, bluetooth, USB, wired) is external.
+    return true
+  }
+
   async function detectAudioDevices() {
     try {
       const devices = await navigator.mediaDevices.enumerateDevices()
-      const external = devices.some(
-        (d) => d.kind === 'audiooutput' && d.deviceId !== 'default' && d.deviceId !== 'communications'
-          && !/speaker|earpiece|built-in|internal/i.test(d.label),
-      )
+      const external = devices.some(isExternalDevice)
       setHasExternalAudio(external)
       if (external) {
         setSpeakerMode('external')
-        const ext = devices.find(
-          (d) => d.kind === 'audiooutput' && d.deviceId !== 'default' && d.deviceId !== 'communications'
-            && !/speaker|earpiece|built-in|internal/i.test(d.label),
-        )
-        if (ext) await applySink(ext.deviceId)
       } else {
-        // Default: video calls go to speaker, audio calls to earpiece.
         const initial = mode === 'video' ? 'speaker' : 'earpiece'
         setSpeakerMode(initial)
-        await applySinkForMode(initial)
       }
-    } catch { /* device enumeration not supported — leave defaults */ }
-  }
-
-  async function applySink(deviceId: string) {
-    const el = audioElRef.current
-    if (!el) return
-    try {
-      if (typeof el.setSinkId === 'function') {
-        await el.setSinkId(deviceId)
-      }
-    } catch { /* sinkId not supported or permission denied */ }
+    } catch { /* device enumeration not supported */ }
   }
 
   async function applySinkForMode(m: 'earpiece' | 'speaker' | 'external') {
-    if (m === 'external') return // already applied via detectAudioDevices
+    const el = audioElRef.current
+    if (!el) return
+    // setSinkId is supported in Chrome/Edge but NOT Safari/iOS.
+    // On Safari the OS handles routing based on connected devices.
+    if (typeof el.setSinkId !== 'function') return
     try {
       const devices = await navigator.mediaDevices.enumerateDevices()
       const outputs = devices.filter((d) => d.kind === 'audiooutput')
-      if (m === 'speaker') {
-        const sp = outputs.find((d) => /speaker|loud|hands-free/i.test(d.label)) || outputs.find((d) => d.deviceId !== 'default')
-        if (sp) return await applySink(sp.deviceId)
+      let target: MediaDeviceInfo | undefined
+      if (m === 'external') {
+        target = outputs.find(isExternalDevice)
+      } else if (m === 'speaker') {
+        target = outputs.find((d) => /speaker|loud|hands-free/i.test(d.label))
+          || outputs.find((d) => d.deviceId !== 'default' && d.deviceId !== 'communications')
       } else {
-        // earpiece — use 'communications' or 'default' which routes to earpiece on mobile
-        const ep = outputs.find((d) => /earpiece|top|receiver|default|communications/i.test(d.label)) || outputs[0]
-        if (ep) return await applySink(ep.deviceId)
+        // earpiece — 'default' or 'communications' routes to earpiece on most devices
+        target = outputs.find((d) => d.deviceId === 'communications')
+          || outputs.find((d) => d.deviceId === 'default')
+          || outputs[0]
+      }
+      if (target && target.deviceId !== el.sinkId) {
+        await el.setSinkId(target.deviceId)
       }
     } catch { /* best-effort */ }
   }
@@ -664,11 +666,14 @@ export function useCallEngine(opts: {
     await applySinkForMode(next)
   }, [speakerMode, hasExternalAudio])
 
-  // Detect audio devices when a call becomes active.
+  // Detect audio devices when a call becomes active AND listen for changes
+  // (headset plugged/unplugged mid-call).
   useEffect(() => {
-    if (status === 'active') {
-      void detectAudioDevices()
-    }
+    if (status !== 'active') return
+    void detectAudioDevices()
+    function onDeviceChange() { void detectAudioDevices() }
+    navigator.mediaDevices.addEventListener('devicechange', onDeviceChange)
+    return () => navigator.mediaDevices.removeEventListener('devicechange', onDeviceChange)
   }, [status, mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
