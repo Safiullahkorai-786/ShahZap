@@ -183,7 +183,6 @@ export function useCallEngine(opts: {
           if (pc) {
             void pc.setRemoteDescription(new RTCSessionDescription(sig.sdp))
               .then(async () => {
-                rebuildRemoteStream()
                 await flushPendingIce(pc)
                 const answer = await pc.createAnswer()
                 await pc.setLocalDescription(answer)
@@ -200,10 +199,7 @@ export function useCallEngine(opts: {
         const pc = pcRef.current
         if (pc) {
           void pc.setRemoteDescription(new RTCSessionDescription(sig.sdp))
-            .then(async () => {
-              rebuildRemoteStream()
-              await flushPendingIce(pc)
-            }).catch(() => {})
+            .then(() => flushPendingIce(pc)).catch(() => {})
         }
         break
       }
@@ -402,21 +398,6 @@ export function useCallEngine(opts: {
     } else {
       pc.addTrack(vt, stream)
     }
-  }
-
-  // Rebuild the remote stream from the peer connection's receiver tracks. Called
-  // after every (re)negotiation and track event, so when the other party turns
-  // their camera back on the re-added video reliably appears even if the browser
-  // doesn't deliver a fresh ontrack for the existing receiver.
-  function rebuildRemoteStream() {
-    const pc = pcRef.current
-    if (!pc) return
-    const tks = pc.getReceivers().map((r) => r.track).filter((t): t is MediaStreamTrack => !!t && t.readyState !== 'ended')
-    if (tks.length === 0) return
-    const next = new MediaStream(tks)
-    const hasVideo = tks.some((t) => t.kind === 'video')
-    if (hasVideo) { setRemoteVideoOn(true); callSawVideoRef.current = true }
-    setRemoteStream(next)
   }
 
   // Offer a mid-call renegotiation (used when turning the camera on/off mid-call).
