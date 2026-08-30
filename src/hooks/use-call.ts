@@ -57,12 +57,6 @@ export function useCallEngine(opts: {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null)
   const [target, setTarget] = useState<CallTarget | null>(null)
-  // Audio output: 'earpiece' (top speaker, default for audio calls),
-  // 'speaker' (loud speaker, default for video calls), or 'external'
-  // (Bluetooth / wired headset — detected automatically).
-  const [speakerMode, setSpeakerMode] = useState<'earpiece' | 'speaker' | 'external'>('earpiece')
-  const [hasExternalAudio, setHasExternalAudio] = useState(false)
-  const audioElRef = useRef<HTMLAudioElement | null>(null)
 
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
@@ -604,78 +598,6 @@ export function useCallEngine(opts: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myId])
 
-  // ── Audio output routing ───────────────────────────────────────────────
-  // Detect external audio devices (Bluetooth / wired headset) and toggle
-  // between earpiece ↔ speaker.  Listens for device changes so headsets
-  // plugged in mid-call are detected immediately.
-  function isExternalDevice(d: MediaDeviceInfo) {
-    if (d.kind !== 'audiooutput') return false
-    if (d.deviceId === 'default' || d.deviceId === 'communications') return false
-    const label = d.label.toLowerCase()
-    // Built-in devices are NOT external.
-    if (/speaker|earpiece|built-in|internal|receiver|bottom|top/.test(label)) return false
-    // Everything else (headphones, headset, bluetooth, USB, wired) is external.
-    return true
-  }
-
-  async function detectAudioDevices() {
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices()
-      const external = devices.some(isExternalDevice)
-      setHasExternalAudio(external)
-      if (external) {
-        setSpeakerMode('external')
-      } else {
-        const initial = mode === 'video' ? 'speaker' : 'earpiece'
-        setSpeakerMode(initial)
-      }
-    } catch { /* device enumeration not supported */ }
-  }
-
-  async function applySinkForMode(m: 'earpiece' | 'speaker' | 'external') {
-    const el = audioElRef.current
-    if (!el) return
-    // setSinkId is supported in Chrome/Edge but NOT Safari/iOS.
-    // On Safari the OS handles routing based on connected devices.
-    if (typeof el.setSinkId !== 'function') return
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices()
-      const outputs = devices.filter((d) => d.kind === 'audiooutput')
-      let target: MediaDeviceInfo | undefined
-      if (m === 'external') {
-        target = outputs.find(isExternalDevice)
-      } else if (m === 'speaker') {
-        target = outputs.find((d) => /speaker|loud|hands-free/i.test(d.label))
-          || outputs.find((d) => d.deviceId !== 'default' && d.deviceId !== 'communications')
-      } else {
-        // earpiece — 'default' or 'communications' routes to earpiece on most devices
-        target = outputs.find((d) => d.deviceId === 'communications')
-          || outputs.find((d) => d.deviceId === 'default')
-          || outputs[0]
-      }
-      if (target && target.deviceId !== el.sinkId) {
-        await el.setSinkId(target.deviceId)
-      }
-    } catch { /* best-effort */ }
-  }
-
-  const toggleSpeaker = useCallback(async () => {
-    if (hasExternalAudio) return // external device is always active
-    const next = speakerMode === 'earpiece' ? 'speaker' : 'earpiece'
-    setSpeakerMode(next)
-    await applySinkForMode(next)
-  }, [speakerMode, hasExternalAudio])
-
-  // Detect audio devices when a call becomes active AND listen for changes
-  // (headset plugged/unplugged mid-call).
-  useEffect(() => {
-    if (status !== 'active') return
-    void detectAudioDevices()
-    function onDeviceChange() { void detectAudioDevices() }
-    navigator.mediaDevices.addEventListener('devicechange', onDeviceChange)
-    return () => navigator.mediaDevices.removeEventListener('devicechange', onDeviceChange)
-  }, [status, mode]) // eslint-disable-line react-hooks/exhaustive-deps
-
   return {
     status,
     mode,
@@ -683,8 +605,6 @@ export function useCallEngine(opts: {
     remoteMuted,
     remoteVideoOn,
     videoEnabled,
-    speakerMode,
-    hasExternalAudio,
     error,
     localStream,
     remoteStream,
@@ -695,8 +615,6 @@ export function useCallEngine(opts: {
     endCall,
     toggleMute,
     toggleVideo,
-    toggleSpeaker,
-    audioElRef,
     clearError: () => setError(''),
   }
 }
