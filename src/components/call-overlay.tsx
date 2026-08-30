@@ -318,7 +318,7 @@ export function CallOverlay(props: {
     // Clear srcObject on unmount so mobile browsers release the capture
     // device even if the call ends by closing/tearing down the overlay.
     return () => { if (v) { v.pause(); v.srcObject = null } }
-  }, [status, mode, localStream, minimized, previewSwapped])
+  }, [status, mode, localStream, minimized, previewSwapped, videoEnabled])
 
   // Attach remote video/audio whenever the remote stream (re)appears, so a
   // track arriving a beat after the UI is shown still lights up the feed.
