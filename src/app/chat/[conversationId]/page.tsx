@@ -13,8 +13,8 @@ import { AdsterraBanner } from '@/components/adsterra-banner'
 import { resolveIdentity, type Identity } from '@/lib/identity'
 import { registerChatComposerFocus } from '@/lib/chat-composer-focus'
 import { useSiteActive } from '@/hooks/use-site-active'
-import { useFileTransfer } from '@/components/call-provider'
-import { validateFile, newFileId, chunkFile } from '@/lib/file-transfer'
+import { useBackgroundP2P } from '@/hooks/use-background-p2p'
+import { validateFile, newFileId, chunkFile, BROADCAST_THRESHOLD, fileToDataUrl, dataUrlToBlob, type BroadcastFileMessage, type FileMeta } from '@/lib/file-transfer'
 import { useCallCoveringChat } from '@/hooks/use-call-covering-chat'
 import { Shimmer } from '@/components/shimmer'
 import { RichText } from '@/components/rich-text'
@@ -256,10 +256,10 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
   const [editing, setEditing] = useState<Message | null>(null)
   const [drag, setDrag] = useState<{ id: string; dx: number } | null>(null)
 
-  // ── P2P file transfer state ─────────────────────────────────────────
-  type P2PFile = { id: string; name: string; mime: string; url: string; senderId: string; senderName: string }
-  const [p2pFiles, setP2pFiles] = useState<P2PFile[]>([])
-  const incomingChunksRef = useRef<Map<string, { meta: import('@/lib/file-transfer').FileMeta; chunks: ArrayBuffer[]; received: number }>>(new Map())
+  // ── Hybrid file transfer state ──────────────────────────────────────
+  type SharedFile = { id: string; name: string; mime: string; url: string; senderId: string; senderName: string }
+  const [sharedFiles, setSharedFiles] = useState<SharedFile[]>([])
+  const incomingChunksRef = useRef<Map<string, { meta: FileMeta; chunks: ArrayBuffer[]; received: number }>>(new Map())
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [fileSending, setFileSending] = useState(false)
   const [fileProgress, setFileProgress] = useState<{ sent: number; total: number } | null>(null)
@@ -336,9 +336,9 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
     prevHidden.current = hidden
   }, [hidden])
 
-  // Cleanup P2P file blob URLs on unmount.
+  // Cleanup shared file blob URLs on unmount.
   useEffect(() => {
-    return () => { p2pFiles.forEach((f) => URL.revokeObjectURL(f.url)) }
+    return () => { sharedFiles.forEach((f) => URL.revokeObjectURL(f.url)) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -547,6 +547,13 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
           } else {
             setPartnerTyping(false)
           }
+        })
+        .on('broadcast', { event: 'file' }, ({ payload }) => {
+          const p = payload as BroadcastFileMessage
+          if (p.senderId === user.id) return
+          const blob = dataUrlToBlob(p.dataUrl)
+          const url = URL.createObjectURL(blob)
+          setSharedFiles((prev) => [...prev, { id: p.id, name: p.name, mime: p.mime, url, senderId: p.senderId, senderName: p.senderName }])
         })
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'friend_requests', filter: `receiver_id=eq.${user.id}` }, async (payload) => {
           lastRealtimeActivity = Date.now()
@@ -1046,39 +1053,40 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
     if (persona) setBotTyping(true)
   }
 
-  // ── P2P file transfer handlers ───────────────────────────────────────
-  const { sendFileData, isDataChannelOpen } = useFileTransfer(useCallback((data: ArrayBuffer | string) => {
-    if (typeof data === 'string') {
-      try {
-        const msg = JSON.parse(data) as import('@/lib/file-transfer').FileProtocolMessage
-        if (msg.kind === 'file-meta') {
-          incomingChunksRef.current.set(msg.id, { meta: msg, chunks: new Array(msg.chunkCount), received: 0 })
-        } else if (msg.kind === 'file-end') {
-          const inc = incomingChunksRef.current.get(msg.id)
-          if (inc && inc.received === inc.meta.chunkCount) {
-            const blob = new Blob(inc.chunks, { type: inc.meta.mime })
-            const url = URL.createObjectURL(blob)
-            setP2pFiles((prev) => [...prev, { id: msg.id, name: inc.meta.name, mime: inc.meta.mime, url, senderId: userId ?? '', senderName: inc.meta.senderName }])
-            incomingChunksRef.current.delete(msg.id)
+  // ── Hybrid file transfer: background P2P + broadcast fallback ───────
+  const { send: p2pSend, isOpen: p2pOpen } = useBackgroundP2P({
+    conversationId,
+    myId: userId,
+    onData: useCallback((data: ArrayBuffer | string) => {
+      if (typeof data === 'string') {
+        try {
+          const msg = JSON.parse(data) as FileMeta | import('@/lib/file-transfer').FileEnd
+          if (msg.kind === 'file-meta') {
+            incomingChunksRef.current.set(msg.id, { meta: msg, chunks: new Array(msg.chunkCount), received: 0 })
+          } else if (msg.kind === 'file-end') {
+            const inc = incomingChunksRef.current.get(msg.id)
+            if (inc && inc.received === inc.meta.chunkCount) {
+              const blob = new Blob(inc.chunks, { type: inc.meta.mime })
+              const url = URL.createObjectURL(blob)
+              setSharedFiles((prev) => [...prev, { id: msg.id, name: inc.meta.name, mime: inc.meta.mime, url, senderId: userId ?? '', senderName: inc.meta.senderName }])
+              incomingChunksRef.current.delete(msg.id)
+            }
           }
+        } catch { /* ignore */ }
+      } else {
+        // Binary chunk: 4-byte index + 36-byte file ID + data
+        const view = new Uint8Array(data)
+        const idx = new DataView(data).getUint32(0)
+        const fileId = new TextDecoder().decode(view.slice(4, 40)).replace(/\0/g, '')
+        const chunkData = data.slice(40)
+        const inc = incomingChunksRef.current.get(fileId)
+        if (inc && idx < inc.chunks.length) {
+          inc.chunks[idx] = chunkData
+          inc.received++
         }
-      } catch { /* ignore malformed messages */ }
-    } else {
-      // Binary chunk: first 36 chars of the ArrayBuffer are the file ID (ASCII)
-      // followed by the 4-byte chunk index, then the actual data.
-      const view = new Uint8Array(data)
-      // Protocol: 4-byte index (big-endian) + 36-byte file ID + chunk data
-      const idx = new DataView(data).getUint32(0)
-      const idBytes = view.slice(4, 40)
-      const fileId = new TextDecoder().decode(idBytes).replace(/\0/g, '')
-      const chunkData = data.slice(40)
-      const inc = incomingChunksRef.current.get(fileId)
-      if (inc && idx < inc.chunks.length) {
-        inc.chunks[idx] = chunkData
-        inc.received++
       }
-    }
-  }, [userId]))
+    }, [userId]),
+  })
 
   async function onFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -1086,31 +1094,43 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
     e.target.value = ''
     const err = validateFile(file)
     if (err) { setError(err); return }
-    if (!isDataChannelOpen()) { setError('File transfer requires an active call with DataChannel.'); return }
     setFileSending(true)
     setFileProgress({ sent: 0, total: file.size })
     try {
       const fileId = newFileId()
-      const { meta, chunks } = await chunkFile(file, fileId, senderNameRef.current || 'User')
-      sendFileData(JSON.stringify(meta))
-      for (let i = 0; i < chunks.length; i++) {
-        // Protocol: 4-byte big-endian index + 36-byte padded file ID + chunk data
-        const idPadded = new TextEncoder().encode(meta.id.padEnd(36, '\0'))
-        const combined = new ArrayBuffer(4 + 36 + chunks[i].byteLength)
-        const view = new Uint8Array(combined)
-        new DataView(combined).setUint32(0, i)
-        view.set(idPadded, 4)
-        view.set(new Uint8Array(chunks[i]), 4 + 36)
-        sendFileData(combined)
-        setFileProgress({ sent: (i + 1) * chunks[i].byteLength, total: meta.size })
-        // Small delay between chunks to avoid overwhelming the DataChannel
-        await new Promise((r) => setTimeout(r, 5))
+      if (file.size <= BROADCAST_THRESHOLD) {
+        // ── Strategy A: Base64 via Supabase broadcast (<2MB) ───────
+        const dataUrl = await fileToDataUrl(file)
+        const channel = channelRef.current
+        if (channel) {
+          const msg: BroadcastFileMessage = { type: 'file', id: fileId, name: file.name, mime: file.type, dataUrl, senderId: userId, senderName: senderNameRef.current || 'User' }
+          void channel.send({ type: 'broadcast', event: 'file', payload: msg })
+        }
+        // Show own file in chat
+        const blob = dataUrlToBlob(dataUrl)
+        const url = URL.createObjectURL(blob)
+        setSharedFiles((prev) => [...prev, { id: fileId, name: file.name, mime: file.type, url, senderId: userId, senderName: senderNameRef.current || 'You' }])
+      } else {
+        // ── Strategy B: Chunked via persistent DataChannel (>2MB) ──
+        if (!p2pOpen()) { setError('Large file transfer requires a connection. Please wait a moment.'); setFileSending(false); setFileProgress(null); return }
+        const { meta, chunks } = await chunkFile(file, fileId, senderNameRef.current || 'User')
+        p2pSend(JSON.stringify(meta))
+        for (let i = 0; i < chunks.length; i++) {
+          const idPadded = new TextEncoder().encode(meta.id.padEnd(36, '\0'))
+          const combined = new ArrayBuffer(4 + 36 + chunks[i].byteLength)
+          const view = new Uint8Array(combined)
+          new DataView(combined).setUint32(0, i)
+          view.set(idPadded, 4)
+          view.set(new Uint8Array(chunks[i]), 4 + 36)
+          p2pSend(combined)
+          setFileProgress({ sent: (i + 1) * chunks[i].byteLength, total: meta.size })
+          await new Promise((r) => setTimeout(r, 5))
+        }
+        p2pSend(JSON.stringify({ kind: 'file-end', id: fileId } satisfies import('@/lib/file-transfer').FileEnd))
+        const blob = new Blob(chunks, { type: meta.mime })
+        const url = URL.createObjectURL(blob)
+        setSharedFiles((prev) => [...prev, { id: fileId, name: file.name, mime: meta.mime, url, senderId: userId, senderName: senderNameRef.current || 'You' }])
       }
-      sendFileData(JSON.stringify({ kind: 'file-end', id: fileId } satisfies import('@/lib/file-transfer').FileEnd))
-      // Show own file in chat
-      const blob = new Blob(chunks, { type: meta.mime })
-      const url = URL.createObjectURL(blob)
-      setP2pFiles((prev) => [...prev, { id: fileId, name: file.name, mime: meta.mime, url, senderId: userId, senderName: senderNameRef.current || 'You' }])
     } catch { setError('File transfer failed. Please try again.') }
     setFileSending(false)
     setFileProgress(null)
@@ -2086,15 +2106,17 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
             </div>
           </div>
         )}
-        {p2pFiles.map((f) => {
+        {sharedFiles.map((f) => {
           const mine = f.senderId === userId
           return (
             <div key={f.id} className={`flex w-full px-1 ${mine ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[75%] overflow-hidden rounded-2xl ${mine ? 'rounded-br-md bg-gradient-to-br from-cyan-500 to-cyan-400 text-white' : 'rounded-bl-md bg-slate-800 text-slate-100'}`}>
                 {f.mime.startsWith('image/') ? (
                   <img src={f.url} alt={f.name} className="max-h-64 w-auto rounded-2xl object-cover" />
-                ) : (
+                ) : f.mime.startsWith('video/') ? (
                   <video src={f.url} controls className="max-h-64 w-auto rounded-2xl" />
+                ) : (
+                  <audio src={f.url} controls className="min-w-[200px] rounded-2xl px-3 py-2" />
                 )}
                 <div className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] opacity-70">
                   <span className="truncate">{f.name}</span>
@@ -2158,13 +2180,13 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
                   className={`flex h-11 w-11 flex-none items-center justify-center rounded-full transition active:scale-95 ${emojiOpen ? 'bg-cyan-400/20 text-cyan-300' : 'text-slate-400 hover:bg-cyan-400/10 hover:text-cyan-200'}`}>
                   <Smile size={22} />
                 </button>
-                <button type="button" aria-label="Send photo or video"
+                <button type="button" aria-label="Send photo, video, or audio"
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={fileSending || !isDataChannelOpen()}
-                  className={`flex h-11 w-11 flex-none items-center justify-center rounded-full transition active:scale-95 ${isDataChannelOpen() ? 'text-slate-400 hover:bg-cyan-400/10 hover:text-cyan-200' : 'text-slate-600'}`}>
+                  disabled={fileSending}
+                  className="flex h-11 w-11 flex-none items-center justify-center rounded-full text-slate-400 transition hover:bg-cyan-400/10 hover:text-cyan-200 active:scale-95 disabled:opacity-40">
                   <ImageIcon size={22} />
                 </button>
-                <input ref={fileInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={onFileSelect} />
+                <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*" className="hidden" onChange={onFileSelect} />
                 <textarea ref={inputRef} value={text} onChange={(e) => onTextChange(e.target.value)} maxLength={2000} rows={1}
                   onTouchStart={() => { kbTouchRef.current = true; setVirtualKb(true) }}
                   onKeyDown={(e) => {

@@ -1,11 +1,10 @@
 'use client'
 
-// P2P file transfer over WebRTC DataChannel.
-// Files are compressed client-side, chunked into 16 KB binary slices,
-// sent directly device-to-device, and reconstructed in browser memory.
-// Zero server bandwidth — Supabase storage is never touched.
+// Hybrid file transfer: broadcast (base64 via Supabase) for files <2MB,
+// persistent RTCDataChannel for files >2MB. Zero server storage overhead.
 
 export const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5 MB
+export const BROADCAST_THRESHOLD = 2 * 1024 * 1024 // 2 MB — above this, use DataChannel
 const CHUNK_SIZE = 16 * 1024 // 16 KB per chunk — safe for SCTP
 const COMPRESSION_QUALITY = 0.82
 const MAX_IMAGE_DIM = 1920 // max width/height for images
@@ -26,7 +25,6 @@ export type FileChunk = {
   kind: 'file-chunk'
   id: string
   index: number
-  // binary payload follows as a separate ArrayBuffer message
 }
 
 export type FileEnd = {
@@ -41,6 +39,18 @@ export type FileAck = {
 
 export type FileProtocolMessage = FileMeta | FileEnd | FileAck
 
+// ── Broadcast message (base64 via Supabase Realtime) ──────────────────
+
+export type BroadcastFileMessage = {
+  type: 'file'
+  id: string
+  name: string
+  mime: string
+  dataUrl: string // base64 data URL
+  senderId: string
+  senderName: string
+}
+
 // ── File ID generator ─────────────────────────────────────────────────
 
 export function newFileId(): string {
@@ -51,7 +61,9 @@ export function newFileId(): string {
 
 export function validateFile(file: File): string | null {
   if (file.size > MAX_FILE_SIZE) return `File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum is 5 MB.`
-  if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) return 'Only images and videos are supported.'
+  if (!file.type.startsWith('image/') && !file.type.startsWith('video/') && !file.type.startsWith('audio/')) {
+    return 'Only images, videos, and audio are supported.'
+  }
   return null
 }
 
@@ -86,15 +98,34 @@ function compressImage(file: File): Promise<Blob> {
 }
 
 // ── Prepare file for transfer ─────────────────────────────────────────
-// Compresses images, passes videos through as-is (already encoded).
 
 export async function prepareFile(file: File): Promise<{ blob: Blob; mime: string }> {
   if (file.type.startsWith('image/')) {
     const compressed = await compressImage(file)
     return { blob: compressed, mime: 'image/jpeg' }
   }
-  // Video: send as-is (browser-encoded mp4/webm)
   return { blob: file, mime: file.type }
+}
+
+// ── Base64 conversion (for broadcast path <2MB) ───────────────────────
+
+export async function fileToDataUrl(file: File): Promise<string> {
+  const { blob } = await prepareFile(file)
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(blob)
+  })
+}
+
+export function dataUrlToBlob(dataUrl: string): Blob {
+  const parts = dataUrl.split(',')
+  const mime = parts[0].match(/:(.*?);/)?.[1] ?? 'application/octet-stream'
+  const binary = atob(parts[1])
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return new Blob([bytes], { type: mime })
 }
 
 // ── Chunking ──────────────────────────────────────────────────────────
