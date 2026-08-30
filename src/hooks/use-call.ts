@@ -176,12 +176,14 @@ export function useCallEngine(opts: {
       case 'offer': {
         if (sig.token !== tokenRef.current) return
         if (statusRef.current === 'active') {
-          // Mid-call renegotiation (e.g. the peer turned their camera on):
-          // apply it and send back an answer right away.
+          // Mid-call renegotiation (e.g. the peer turned their camera on/off):
+          // apply it, rebuild the remote feed from the receiver tracks (so a
+          // re-added video track reliably shows up), and answer right away.
           const pc = pcRef.current
           if (pc) {
             void pc.setRemoteDescription(new RTCSessionDescription(sig.sdp))
               .then(async () => {
+                rebuildRemoteStream()
                 await flushPendingIce(pc)
                 const answer = await pc.createAnswer()
                 await pc.setLocalDescription(answer)
@@ -198,7 +200,10 @@ export function useCallEngine(opts: {
         const pc = pcRef.current
         if (pc) {
           void pc.setRemoteDescription(new RTCSessionDescription(sig.sdp))
-            .then(() => flushPendingIce(pc)).catch(() => {})
+            .then(async () => {
+              rebuildRemoteStream()
+              await flushPendingIce(pc)
+            }).catch(() => {})
         }
         break
       }
@@ -385,6 +390,35 @@ export function useCallEngine(opts: {
     stream.getTracks().forEach((tk) => pc.addTrack(tk, stream))
   }
 
+  // Re-attach a video track to the SAME video transceiver (via replaceTrack)
+  // rather than pc.addTrack — after the video was removed during a toggle-off,
+  // re-adding with addTrack can create a mismatched transceiver whose track the
+  // peer never receives. replaceTrack reuses the existing transceiver so the
+  // renegotiated offer actually delivers live video to the other side.
+  async function attachVideoToPeer(pc: RTCPeerConnection, vt: MediaStreamTrack, stream: MediaStream) {
+    const tr = pc.getTransceivers().find((x) => x.receiver?.track?.kind === 'video')
+    if (tr && tr.sender) {
+      await tr.sender.replaceTrack(vt)
+    } else {
+      pc.addTrack(vt, stream)
+    }
+  }
+
+  // Rebuild the remote stream from the peer connection's receiver tracks. Called
+  // after every (re)negotiation and track event, so when the other party turns
+  // their camera back on the re-added video reliably appears even if the browser
+  // doesn't deliver a fresh ontrack for the existing receiver.
+  function rebuildRemoteStream() {
+    const pc = pcRef.current
+    if (!pc) return
+    const tks = pc.getReceivers().map((r) => r.track).filter((t): t is MediaStreamTrack => !!t && t.readyState !== 'ended')
+    if (tks.length === 0) return
+    const next = new MediaStream(tks)
+    const hasVideo = tks.some((t) => t.kind === 'video')
+    if (hasVideo) { setRemoteVideoOn(true); callSawVideoRef.current = true }
+    setRemoteStream(next)
+  }
+
   // Offer a mid-call renegotiation (used when turning the camera on/off mid-call).
   // Waits for the connection to return to a stable signaling state first so the
   // new offer isn't rejected (InvalidStateError) and the re-added track actually
@@ -539,7 +573,7 @@ export function useCallEngine(opts: {
         callSawVideoRef.current = true
         setVideoEnabled(true)
         setLocalStream(new MediaStream(stream.getTracks()))
-        if (pc) { pc.addTrack(vt, stream); await renegotiate() }
+        if (pc) { await attachVideoToPeer(pc, vt, stream); await renegotiate() }
         send({ type: 'video', on: true, token: tokenRef.current ?? '' })
       } catch {
         setError('Could not access the camera. Please allow access in site settings.')
@@ -571,7 +605,7 @@ export function useCallEngine(opts: {
         callSawVideoRef.current = true
         setVideoEnabled(true)
         setLocalStream(new MediaStream(stream.getTracks()))
-        if (pc) { pc.addTrack(vt, stream); await renegotiate() }
+        if (pc) { await attachVideoToPeer(pc, vt, stream); await renegotiate() }
         send({ type: 'video', on: true, token: tokenRef.current ?? '' })
       } catch {
         setError('Could not access the camera. Please allow access in site settings.')
