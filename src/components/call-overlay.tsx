@@ -337,7 +337,7 @@ export function CallOverlay(props: {
       if (rv) { rv.pause(); rv.srcObject = null }
       if (ra) { ra.pause(); ra.srcObject = null }
     }
-  }, [status, mode, remoteStream, minimized, previewSwapped])
+  }, [status, mode, remoteStream, minimized, previewSwapped, remoteVideoOn])
 
   if (!open) return null
 
