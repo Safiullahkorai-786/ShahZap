@@ -317,6 +317,14 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // When the call overlay disappears (hidden → visible), re-scroll to the
+  // latest message so the user doesn't land at the top of the conversation.
+  const prevHidden = useRef(hidden)
+  useEffect(() => {
+    if (prevHidden.current && !hidden) didInitialScroll.current = false
+    prevHidden.current = hidden
+  }, [hidden])
+
   useEffect(() => {
     if (hidden) return
     const supabase = createClient()
