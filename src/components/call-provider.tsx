@@ -35,7 +35,7 @@ type CallApi = {
   clearError: () => void
 }
 
-const CallContext = createContext<CallApi | null>(null)
+export const CallContext = createContext<CallApi | null>(null)
 
 export function useCall(): CallApi {
   const ctx = useContext(CallContext)

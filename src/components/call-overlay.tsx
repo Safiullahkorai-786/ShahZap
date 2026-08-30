@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, MessageCircle, Minimize2, Maximize2, User } from 'lucide-react'
-import { CallChatPanel } from '@/components/call-chat-panel'
+import { ChatRoom } from '@/app/chat/[conversationId]/page'
 import { createClient } from '@/lib/supabase/client'
 import { focusChatComposerNow } from '@/lib/chat-composer-focus'
 import { getNotifDisplayPrefs, type CallNotifyStyle } from '@/lib/notification-display'
@@ -679,7 +679,7 @@ export function CallOverlay(props: {
         {/* Chat panel — WhatsApp Web style, right-hand side, desktop only */}
         {showChat && conversationId && (
           <div className="hidden h-full w-[26rem] shrink-0 lg:block">
-            <CallChatPanel conversationId={conversationId} />
+            <ChatRoom conversationId={conversationId} suppressCalls markReadInCall />
           </div>
         )}
       </div>
