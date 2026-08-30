@@ -686,11 +686,12 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
       // the call — there its .subscribe() can be a no-op (its callback never
       // fires), so this is the only reliable way it picks up new messages.
       startSmartPoll()
-      // Typing poll: DB-based fallback for typing indicators.  The broadcast
-      // path may not work when two ChatRoom instances share the same Supabase
-      // client (second subscribe is a no-op).  broadcastTyping() already
+      // Typing poll: DB-based fallback only for the call panel.  The main page
+      // uses broadcast events which work reliably.  In the call panel, two
+      // ChatRoom instances share the same Supabase client (second subscribe is
+      // a no-op), so broadcasts never arrive there.  broadcastTyping() already
       // persists typing_at via the set_typing RPC, so this poll picks it up.
-      startTypingPoll()
+      if (channelScope === 'call-panel') startTypingPoll()
 
       // ── Presence: re-evaluate the online window as time passes. ──
       // last_active_at is kept fresh by the realtime profiles UPDATE handler;
