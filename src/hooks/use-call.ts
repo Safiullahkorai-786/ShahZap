@@ -385,13 +385,32 @@ export function useCallEngine(opts: {
     stream.getTracks().forEach((tk) => pc.addTrack(tk, stream))
   }
 
-  // Offer a mid-call renegotiation (used when turning the camera on mid-call).
+  // Offer a mid-call renegotiation (used when turning the camera on/off mid-call).
+  // Waits for the connection to return to a stable signaling state first so the
+  // new offer isn't rejected (InvalidStateError) and the re-added track actually
+  // lands — renegotiating while another negotiation is in flight is what caused
+  // the remote video to drop out (black screen) after toggling the camera.
   async function renegotiate() {
     const pc = pcRef.current
     if (!pc) return
-    const offer = await pc.createOffer()
-    await pc.setLocalDescription(offer)
-    send({ type: 'offer', sdp: offer, token: tokenRef.current ?? '' })
+    try {
+      if (pc.signalingState !== 'stable') {
+        await new Promise<void>((resolve) => {
+          const deadline = Date.now() + 4000
+          const poll = () => {
+            if (pc.signalingState === 'stable') return resolve()
+            if (Date.now() >= deadline) return resolve()
+            setTimeout(poll, 40)
+          }
+          poll()
+        })
+      }
+      const offer = await pc.createOffer()
+      await pc.setLocalDescription(offer)
+      send({ type: 'offer', sdp: offer, token: tokenRef.current ?? '' })
+    } catch {
+      // best-effort: a failed renegotiation should never kill the call
+    }
   }
 
   async function flushPendingIce(pc: RTCPeerConnection) {
