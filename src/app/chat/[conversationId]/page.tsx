@@ -165,7 +165,7 @@ async function areFriends(a: string, b: string): Promise<boolean> {
   }
 }
 
-export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall = false, channelScope = 'page' }: { conversationId: string; suppressCalls?: boolean; markReadInCall?: boolean; channelScope?: 'page' | 'call-panel' }) {
+export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall = false }: { conversationId: string; suppressCalls?: boolean; markReadInCall?: boolean }) {
   const router = useRouter()
   const { t } = useI18n()
   // In-call mode fills the side panel edge-to-edge instead of the centered
@@ -471,13 +471,7 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
         if (active && fresh) setMessages(fresh as Message[])
       })()
 
-      // Channel name is scoped so the same conversation can have two live
-      // realtime subscriptions simultaneously: the DM page under the call uses
-      // 'page', while the call's embedded side-panel chat uses 'call-panel'.
-      // Sharing one name across two ChatRoom instances on the same Supabase
-      // client makes the second .subscribe() a no-op, so the panel would never
-      // update live. Distinct names mean both receive INSERT/UPDATE events.
-      channel = supabase.channel(`conversation:${channelScope}:${conversationId}`, { config: { broadcast: { self: false } } })
+      channel = supabase.channel(`conversation:${conversationId}`, { config: { broadcast: { self: false } } })
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload) => {
           lastRealtimeActivity = Date.now()
           const message = payload.new as Message
@@ -687,7 +681,7 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
       window.clearTimeout(pressTimer.current)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationId, router, channelScope])
+  }, [conversationId, router])
 
   // Read receipts: while THIS chat is open, stamp my read receipt AND mark
   // inbound messages read so my partner's ticks turn "seen". Re-stamps on an
