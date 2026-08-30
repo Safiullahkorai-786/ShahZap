@@ -165,7 +165,7 @@ async function areFriends(a: string, b: string): Promise<boolean> {
   }
 }
 
-export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall = false }: { conversationId: string; suppressCalls?: boolean; markReadInCall?: boolean }) {
+export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall = false, channelScope = 'page' }: { conversationId: string; suppressCalls?: boolean; markReadInCall?: boolean; channelScope?: 'page' | 'call-panel' }) {
   const router = useRouter()
   const { t } = useI18n()
   // In-call mode fills the side panel edge-to-edge instead of the centered
@@ -324,6 +324,7 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
     let lastRealtimeActivity = Date.now()
     let channelStatus = ''
     let smartPollTimer: number | undefined
+    let typingPollTimer: number | undefined
     let presenceCheckTimer: number | undefined
     const otherRef: { current: OtherProfile | null } = { current: null }
     const otherIdRef: { current: string | null } = { current: null }
@@ -389,6 +390,34 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
 
     function stopSmartPoll() {
       if (smartPollTimer) { window.clearInterval(smartPollTimer); smartPollTimer = undefined }
+    }
+
+    // ── Typing poll (DB-based fallback) ────────────────────────────────
+    // Broadcast typing events only work when this ChatRoom is the sole
+    // subscriber on the Supabase channel.  During calls a second ChatRoom
+    // instance exists (main page + call panel), making the panel's
+    // subscribe a no-op.  Since broadcastTyping() already persists
+    // typing_at via the set_typing RPC, we poll it here so the call panel
+    // (and any other degraded-realtime scenario) still shows typing.
+    const TYPING_POLL_MS = 2_000
+    const TYPING_WINDOW_MS = 5_000
+
+    async function pollTyping() {
+      if (!active || !otherIdRef.current || !userIdRef2.current) return
+      const { data } = await supabase.rpc('get_partner_typing', { p_conversation_id: conversationId })
+      if (!active) return
+      const typingAt = data as string | null
+      const isTyping = !!typingAt && (Date.now() - new Date(typingAt).getTime()) < TYPING_WINDOW_MS
+      setPartnerTyping(isTyping)
+    }
+
+    function startTypingPoll() {
+      if (typingPollTimer) return
+      typingPollTimer = window.setInterval(() => void pollTyping(), TYPING_POLL_MS)
+    }
+
+    function stopTypingPoll() {
+      if (typingPollTimer) { window.clearInterval(typingPollTimer); typingPollTimer = undefined }
     }
 
     async function load() {
@@ -471,7 +500,7 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
         if (active && fresh) setMessages(fresh as Message[])
       })()
 
-      channel = supabase.channel(`conversation:${conversationId}`, { config: { broadcast: { self: false } } })
+      channel = supabase.channel(`conversation:${channelScope}:${conversationId}`, { config: { broadcast: { self: false } } })
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload) => {
           lastRealtimeActivity = Date.now()
           const message = payload.new as Message
@@ -657,6 +686,11 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
       // the call — there its .subscribe() can be a no-op (its callback never
       // fires), so this is the only reliable way it picks up new messages.
       startSmartPoll()
+      // Typing poll: DB-based fallback for typing indicators.  The broadcast
+      // path may not work when two ChatRoom instances share the same Supabase
+      // client (second subscribe is a no-op).  broadcastTyping() already
+      // persists typing_at via the set_typing RPC, so this poll picks it up.
+      startTypingPoll()
 
       // ── Presence: re-evaluate the online window as time passes. ──
       // last_active_at is kept fresh by the realtime profiles UPDATE handler;
@@ -675,13 +709,14 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
       channelRef.current = null
       if (channel) void supabase.removeChannel(channel)
       if (smartPollTimer) window.clearInterval(smartPollTimer)
+      if (typingPollTimer) window.clearInterval(typingPollTimer)
       if (presenceCheckTimer) window.clearInterval(presenceCheckTimer)
       window.clearTimeout(typingStopTimer.current)
       window.clearTimeout(partnerTypingExpiry.current)
       window.clearTimeout(pressTimer.current)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationId, router])
+  }, [conversationId, router, channelScope])
 
   // Read receipts: while THIS chat is open, stamp my read receipt AND mark
   // inbound messages read so my partner's ticks turn "seen". Re-stamps on an
