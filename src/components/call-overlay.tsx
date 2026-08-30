@@ -582,6 +582,11 @@ export function CallOverlay(props: {
                       <MicOff size={11} />
                     </span>
                   )}
+                  {!mainIsSelf && muted && (
+                    <span className="absolute bottom-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white shadow">
+                      <MicOff size={11} />
+                    </span>
+                  )}
                 </div>
               ) : (
                 <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-slate-800 px-1.5 py-2">
