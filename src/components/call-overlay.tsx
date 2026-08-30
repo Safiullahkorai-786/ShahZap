@@ -6,7 +6,7 @@
 
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, MessageCircle, Minimize2, Maximize2, User } from 'lucide-react'
+import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, MessageCircle, Minimize2, Maximize2, User, Volume1, Volume2, Headphones } from 'lucide-react'
 import { CallChatPanel } from '@/components/call-chat-panel'
 import { createClient } from '@/lib/supabase/client'
 import { focusChatComposerNow } from '@/lib/chat-composer-focus'
@@ -22,22 +22,26 @@ export function CallOverlay(props: {
   remoteMuted: boolean
   remoteVideoOn: boolean
   videoEnabled: boolean
+  speakerMode: 'earpiece' | 'speaker' | 'external'
+  hasExternalAudio: boolean
   error: string
   otherName: string
   conversationId?: string
   localStream: MediaStream | null
   remoteStream: MediaStream | null
+  audioElRef: React.RefObject<HTMLAudioElement | null>
   onAccept: () => void
   onReject: () => void
   onEnd: () => void
   onToggleMute: () => void
   onToggleVideo: () => void
+  onToggleSpeaker: () => void
   onMinimizedChange: (minimized: boolean) => void
   clearError: () => void
 }) {
   const {
-    open, status, mode, muted, remoteMuted, remoteVideoOn, videoEnabled, error, otherName,
-    localStream, remoteStream, onAccept, onReject, onEnd, onToggleMute, onToggleVideo,
+    open, status, mode, muted, remoteMuted, remoteVideoOn, videoEnabled, speakerMode, hasExternalAudio, error, otherName,
+    localStream, remoteStream, audioElRef, onAccept, onReject, onEnd, onToggleMute, onToggleVideo, onToggleSpeaker,
     conversationId, onMinimizedChange, clearError,
   } = props
 
@@ -488,6 +492,10 @@ export function CallOverlay(props: {
               className={`flex h-10 w-10 items-center justify-center rounded-full text-white transition hover:bg-slate-600 ${muted ? 'bg-red-500 hover:bg-red-400' : 'bg-slate-700'}`}>
               {muted ? <MicOff size={16} /> : <Mic size={16} />}
             </button>
+            <button onClick={onToggleSpeaker} aria-label={speakerMode === 'earpiece' ? 'Speaker' : 'Earpiece'} title={speakerMode === 'earpiece' ? 'Speaker' : 'Earpiece'}
+              className={`flex h-10 w-10 items-center justify-center rounded-full text-white transition hover:bg-slate-600 ${speakerMode === 'speaker' ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-700'}`}>
+              {hasExternalAudio ? <Headphones size={16} /> : speakerMode === 'speaker' ? <Volume2 size={16} /> : <Volume1 size={16} />}
+            </button>
             <button onClick={onToggleVideo} aria-label="Toggle camera" title="Camera"
               className={`flex h-10 w-10 items-center justify-center rounded-full text-white transition hover:bg-slate-600 ${localHasVideo && videoEnabled ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-600/70'}`}>
               {localHasVideo && videoEnabled ? <Video size={16} /> : <VideoOff size={16} />}
@@ -497,7 +505,7 @@ export function CallOverlay(props: {
               <PhoneOff size={16} />
             </button>
           </div>
-          <audio ref={remoteAudioRef} autoPlay playsInline hidden />
+          <audio ref={(el) => { remoteAudioRef.current = el; audioElRef.current = el }} autoPlay playsInline hidden />
         </div>
       )
     }
@@ -641,6 +649,13 @@ export function CallOverlay(props: {
                 {muted ? <MicOff size={24} /> : <Mic size={24} />}
               </ControlButton>
               <ControlButton
+                label={speakerMode === 'earpiece' ? 'Switch to speaker' : speakerMode === 'speaker' ? 'Switch to earpiece' : 'External audio connected'}
+                active={speakerMode === 'speaker'}
+                onClick={onToggleSpeaker}
+              >
+                {hasExternalAudio ? <Headphones size={24} /> : speakerMode === 'speaker' ? <Volume2 size={24} /> : <Volume1 size={24} />}
+              </ControlButton>
+              <ControlButton
                 label={localHasVideo && videoEnabled ? 'Turn off camera' : 'Turn on camera'}
                 active={localHasVideo && !videoEnabled}
                 onClick={onToggleVideo}
@@ -673,7 +688,7 @@ export function CallOverlay(props: {
               </button>
             </div>
           </div>
-          <audio ref={remoteAudioRef} autoPlay playsInline hidden />
+          <audio ref={(el) => { remoteAudioRef.current = el; audioElRef.current = el }} autoPlay playsInline hidden />
         </div>
 
         {/* Chat panel — WhatsApp Web style, right-hand side, desktop only */}

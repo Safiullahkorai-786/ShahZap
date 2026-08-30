@@ -23,6 +23,8 @@ type CallApi = {
   remoteMuted: boolean
   remoteVideoOn: boolean
   videoEnabled: boolean
+  speakerMode: 'earpiece' | 'speaker' | 'external'
+  hasExternalAudio: boolean
   error: string
   otherName: string
   // True while an active call is showing full-screen (not minimized to the
@@ -35,6 +37,8 @@ type CallApi = {
   endCall: () => void
   toggleMute: () => void
   toggleVideo: () => void
+  toggleSpeaker: () => void
+  audioElRef: React.RefObject<HTMLAudioElement | null>
   clearError: () => void
 }
 
@@ -126,6 +130,8 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     remoteMuted: engine.remoteMuted,
     remoteVideoOn: engine.remoteVideoOn,
     videoEnabled: engine.videoEnabled,
+    speakerMode: engine.speakerMode,
+    hasExternalAudio: engine.hasExternalAudio,
     error: engine.error,
     otherName,
     coveringChat: engine.status === 'active' && !callMinimized,
@@ -135,6 +141,8 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     endCall: () => void engine.endCall(),
     toggleMute: () => void engine.toggleMute(),
     toggleVideo: () => void engine.toggleVideo(),
+    toggleSpeaker: () => void engine.toggleSpeaker(),
+    audioElRef: engine.audioElRef,
     clearError: () => engine.clearError(),
   }
 
@@ -149,11 +157,14 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         remoteMuted={engine.remoteMuted}
         remoteVideoOn={engine.remoteVideoOn}
         videoEnabled={engine.videoEnabled}
+        speakerMode={engine.speakerMode}
+        hasExternalAudio={engine.hasExternalAudio}
         error={engine.error}
         otherName={otherName}
         conversationId={engine.target?.conversationId}
         localStream={engine.localStream}
         remoteStream={engine.remoteStream}
+        audioElRef={engine.audioElRef}
         onMinimizedChange={setCallMinimized}
         onAccept={() => {
           const t = incomingRef.current
@@ -165,6 +176,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         onEnd={() => { resolveCallNotif(); api.endCall() }}
         onToggleMute={() => api.toggleMute()}
         onToggleVideo={() => api.toggleVideo()}
+        onToggleSpeaker={() => api.toggleSpeaker()}
         clearError={() => api.clearError()}
       />
     </CallContext.Provider>

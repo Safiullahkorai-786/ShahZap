@@ -57,6 +57,12 @@ export function useCallEngine(opts: {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null)
   const [target, setTarget] = useState<CallTarget | null>(null)
+  // Audio output: 'earpiece' (top speaker, default for audio calls),
+  // 'speaker' (loud speaker, default for video calls), or 'external'
+  // (Bluetooth / wired headset — detected automatically).
+  const [speakerMode, setSpeakerMode] = useState<'earpiece' | 'speaker' | 'external'>('earpiece')
+  const [hasExternalAudio, setHasExternalAudio] = useState(false)
+  const audioElRef = useRef<HTMLAudioElement | null>(null)
 
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
@@ -598,6 +604,73 @@ export function useCallEngine(opts: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myId])
 
+  // ── Audio output routing ───────────────────────────────────────────────
+  // Detect external audio devices (Bluetooth / wired headset) and toggle
+  // between earpiece ↔ speaker.  Uses setSinkId() where supported.
+  async function detectAudioDevices() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const external = devices.some(
+        (d) => d.kind === 'audiooutput' && d.deviceId !== 'default' && d.deviceId !== 'communications'
+          && !/speaker|earpiece|built-in|internal/i.test(d.label),
+      )
+      setHasExternalAudio(external)
+      if (external) {
+        setSpeakerMode('external')
+        const ext = devices.find(
+          (d) => d.kind === 'audiooutput' && d.deviceId !== 'default' && d.deviceId !== 'communications'
+            && !/speaker|earpiece|built-in|internal/i.test(d.label),
+        )
+        if (ext) await applySink(ext.deviceId)
+      } else {
+        // Default: video calls go to speaker, audio calls to earpiece.
+        const initial = mode === 'video' ? 'speaker' : 'earpiece'
+        setSpeakerMode(initial)
+        await applySinkForMode(initial)
+      }
+    } catch { /* device enumeration not supported — leave defaults */ }
+  }
+
+  async function applySink(deviceId: string) {
+    const el = audioElRef.current
+    if (!el) return
+    try {
+      if (typeof el.setSinkId === 'function') {
+        await el.setSinkId(deviceId)
+      }
+    } catch { /* sinkId not supported or permission denied */ }
+  }
+
+  async function applySinkForMode(m: 'earpiece' | 'speaker' | 'external') {
+    if (m === 'external') return // already applied via detectAudioDevices
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const outputs = devices.filter((d) => d.kind === 'audiooutput')
+      if (m === 'speaker') {
+        const sp = outputs.find((d) => /speaker|loud|hands-free/i.test(d.label)) || outputs.find((d) => d.deviceId !== 'default')
+        if (sp) return await applySink(sp.deviceId)
+      } else {
+        // earpiece — use 'communications' or 'default' which routes to earpiece on mobile
+        const ep = outputs.find((d) => /earpiece|top|receiver|default|communications/i.test(d.label)) || outputs[0]
+        if (ep) return await applySink(ep.deviceId)
+      }
+    } catch { /* best-effort */ }
+  }
+
+  const toggleSpeaker = useCallback(async () => {
+    if (hasExternalAudio) return // external device is always active
+    const next = speakerMode === 'earpiece' ? 'speaker' : 'earpiece'
+    setSpeakerMode(next)
+    await applySinkForMode(next)
+  }, [speakerMode, hasExternalAudio])
+
+  // Detect audio devices when a call becomes active.
+  useEffect(() => {
+    if (status === 'active') {
+      void detectAudioDevices()
+    }
+  }, [status, mode]) // eslint-disable-line react-hooks/exhaustive-deps
+
   return {
     status,
     mode,
@@ -605,6 +678,8 @@ export function useCallEngine(opts: {
     remoteMuted,
     remoteVideoOn,
     videoEnabled,
+    speakerMode,
+    hasExternalAudio,
     error,
     localStream,
     remoteStream,
@@ -615,6 +690,8 @@ export function useCallEngine(opts: {
     endCall,
     toggleMute,
     toggleVideo,
+    toggleSpeaker,
+    audioElRef,
     clearError: () => setError(''),
   }
 }
