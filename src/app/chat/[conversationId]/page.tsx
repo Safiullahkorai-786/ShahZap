@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { MoreVertical, Send, UserPlus, ShieldAlert, Ban, Languages, CornerUpLeft, Pencil, Trash2, X, Check, CheckCheck, ArrowDown, ArrowLeft, SunMoon, Clock, UserCheck, UserMinus, Smile, SmilePlus, BellRing, Vibrate, VolumeX, Type, ChevronDown, Plus, Minus, Cake, Sparkles, User, Globe, Copy, Image as ImageIcon, Heart, Phone, PhoneCall, Video } from 'lucide-react'
 import type { RealtimeChannel } from '@supabase/supabase-js'
@@ -13,6 +13,8 @@ import { AdsterraBanner } from '@/components/adsterra-banner'
 import { resolveIdentity, type Identity } from '@/lib/identity'
 import { registerChatComposerFocus } from '@/lib/chat-composer-focus'
 import { useSiteActive } from '@/hooks/use-site-active'
+import { useFileTransfer } from '@/components/call-provider'
+import { validateFile, newFileId, chunkFile } from '@/lib/file-transfer'
 import { useCallCoveringChat } from '@/hooks/use-call-covering-chat'
 import { Shimmer } from '@/components/shimmer'
 import { RichText } from '@/components/rich-text'
@@ -254,6 +256,15 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
   const [editing, setEditing] = useState<Message | null>(null)
   const [drag, setDrag] = useState<{ id: string; dx: number } | null>(null)
 
+  // ── P2P file transfer state ─────────────────────────────────────────
+  type P2PFile = { id: string; name: string; mime: string; url: string; senderId: string; senderName: string }
+  const [p2pFiles, setP2pFiles] = useState<P2PFile[]>([])
+  const incomingChunksRef = useRef<Map<string, { meta: import('@/lib/file-transfer').FileMeta; chunks: ArrayBuffer[]; received: number }>>(new Map())
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [fileSending, setFileSending] = useState(false)
+  const [fileProgress, setFileProgress] = useState<{ sent: number; total: number } | null>(null)
+  const senderNameRef = useRef('')
+
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const formRef = useRef<HTMLFormElement>(null)
@@ -324,6 +335,11 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
     if (prevHidden.current && !hidden) didInitialScroll.current = false
     prevHidden.current = hidden
   }, [hidden])
+
+  // Cleanup P2P file blob URLs on unmount.
+  useEffect(() => {
+    return () => { p2pFiles.forEach((f) => URL.revokeObjectURL(f.url)) }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (hidden) return
@@ -420,8 +436,9 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
       if (!user) { router.replace('/'); return }
       setUserId(user.id)
       userIdRef2.current = user.id
-      const { data: myProfile } = await supabase.from('profiles').select('chat_language').eq('id', user.id).maybeSingle()
+      const { data: myProfile } = await supabase.from('profiles').select('chat_language,display_name').eq('id', user.id).maybeSingle()
       if (active) setMyChatLang(myProfile?.chat_language ?? null)
+      if (myProfile?.display_name) senderNameRef.current = myProfile.display_name
 
       const { data: participants } = await supabase.from('conversation_participants').select('profile_id').eq('conversation_id', conversationId)
       const otherProfileId = participants?.find((p) => p.profile_id !== user.id)?.profile_id ?? null
@@ -1027,6 +1044,76 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
     setUnreadCount(0)
     requestAnimationFrame(() => { const el = scrollRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }) })
     if (persona) setBotTyping(true)
+  }
+
+  // ── P2P file transfer handlers ───────────────────────────────────────
+  const { sendFileData, isDataChannelOpen } = useFileTransfer(useCallback((data: ArrayBuffer | string) => {
+    if (typeof data === 'string') {
+      try {
+        const msg = JSON.parse(data) as import('@/lib/file-transfer').FileProtocolMessage
+        if (msg.kind === 'file-meta') {
+          incomingChunksRef.current.set(msg.id, { meta: msg, chunks: new Array(msg.chunkCount), received: 0 })
+        } else if (msg.kind === 'file-end') {
+          const inc = incomingChunksRef.current.get(msg.id)
+          if (inc && inc.received === inc.meta.chunkCount) {
+            const blob = new Blob(inc.chunks, { type: inc.meta.mime })
+            const url = URL.createObjectURL(blob)
+            setP2pFiles((prev) => [...prev, { id: msg.id, name: inc.meta.name, mime: inc.meta.mime, url, senderId: userId ?? '', senderName: inc.meta.senderName }])
+            incomingChunksRef.current.delete(msg.id)
+          }
+        }
+      } catch { /* ignore malformed messages */ }
+    } else {
+      // Binary chunk: first 36 chars of the ArrayBuffer are the file ID (ASCII)
+      // followed by the 4-byte chunk index, then the actual data.
+      const view = new Uint8Array(data)
+      // Protocol: 4-byte index (big-endian) + 36-byte file ID + chunk data
+      const idx = new DataView(data).getUint32(0)
+      const idBytes = view.slice(4, 40)
+      const fileId = new TextDecoder().decode(idBytes).replace(/\0/g, '')
+      const chunkData = data.slice(40)
+      const inc = incomingChunksRef.current.get(fileId)
+      if (inc && idx < inc.chunks.length) {
+        inc.chunks[idx] = chunkData
+        inc.received++
+      }
+    }
+  }, [userId]))
+
+  async function onFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !userId) return
+    e.target.value = ''
+    const err = validateFile(file)
+    if (err) { setError(err); return }
+    if (!isDataChannelOpen()) { setError('File transfer requires an active call with DataChannel.'); return }
+    setFileSending(true)
+    setFileProgress({ sent: 0, total: file.size })
+    try {
+      const fileId = newFileId()
+      const { meta, chunks } = await chunkFile(file, fileId, senderNameRef.current || 'User')
+      sendFileData(JSON.stringify(meta))
+      for (let i = 0; i < chunks.length; i++) {
+        // Protocol: 4-byte big-endian index + 36-byte padded file ID + chunk data
+        const idPadded = new TextEncoder().encode(meta.id.padEnd(36, '\0'))
+        const combined = new ArrayBuffer(4 + 36 + chunks[i].byteLength)
+        const view = new Uint8Array(combined)
+        new DataView(combined).setUint32(0, i)
+        view.set(idPadded, 4)
+        view.set(new Uint8Array(chunks[i]), 4 + 36)
+        sendFileData(combined)
+        setFileProgress({ sent: (i + 1) * chunks[i].byteLength, total: meta.size })
+        // Small delay between chunks to avoid overwhelming the DataChannel
+        await new Promise((r) => setTimeout(r, 5))
+      }
+      sendFileData(JSON.stringify({ kind: 'file-end', id: fileId } satisfies import('@/lib/file-transfer').FileEnd))
+      // Show own file in chat
+      const blob = new Blob(chunks, { type: meta.mime })
+      const url = URL.createObjectURL(blob)
+      setP2pFiles((prev) => [...prev, { id: fileId, name: file.name, mime: meta.mime, url, senderId: userId, senderName: senderNameRef.current || 'You' }])
+    } catch { setError('File transfer failed. Please try again.') }
+    setFileSending(false)
+    setFileProgress(null)
   }
 
   async function saveEdit() {
@@ -1999,6 +2086,26 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
             </div>
           </div>
         )}
+        {p2pFiles.map((f) => {
+          const mine = f.senderId === userId
+          return (
+            <div key={f.id} className={`flex w-full px-1 ${mine ? 'justify-end' : 'justify-start'}`}>
+              <div className={`max-w-[75%] overflow-hidden rounded-2xl ${mine ? 'rounded-br-md bg-gradient-to-br from-cyan-500 to-cyan-400 text-white' : 'rounded-bl-md bg-slate-800 text-slate-100'}`}>
+                {f.mime.startsWith('image/') ? (
+                  <img src={f.url} alt={f.name} className="max-h-64 w-auto rounded-2xl object-cover" />
+                ) : (
+                  <video src={f.url} controls className="max-h-64 w-auto rounded-2xl" />
+                )}
+                <div className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] opacity-70">
+                  <span className="truncate">{f.name}</span>
+                  <a href={f.url} download={f.name} onClick={(e) => e.stopPropagation()}
+                    className="ml-auto flex-none rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-bold hover:bg-white/30">Save</a>
+                </div>
+                {!mine && <p className="px-3 pb-1 text-[10px] opacity-50">{f.senderName}</p>}
+              </div>
+            </div>
+          )
+        })}
       </div>
 
       {error && <p className={`mx-auto w-full ${col} px-3 pb-2 text-xs text-red-300`}>{error}</p>}
@@ -2007,6 +2114,17 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
       <form ref={formRef} onSubmit={send} className="relative z-10 flex-none border-t border-slate-800 bg-slate-900 px-3 pt-2"
         style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
         <div className={`mx-auto ${col}`}>
+          {fileSending && fileProgress && (
+            <div className="mb-2 flex items-center gap-2 rounded-xl border-l-4 border-cyan-400 bg-cyan-950/20 p-2.5">
+              <ImageIcon size={15} className="flex-none text-cyan-300" />
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-bold text-cyan-300">Sending file...</p>
+                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-700">
+                  <div className="h-full rounded-full bg-cyan-400 transition-all duration-300" style={{ width: `${fileProgress.total > 0 ? Math.min(100, (fileProgress.sent / fileProgress.total) * 100) : 0}%` }} />
+                </div>
+              </div>
+            </div>
+          )}
           {composerQuote && (
             <div className={`mb-2 flex items-center gap-2 rounded-xl border-l-4 p-2.5 ${composerMode === 'edit' ? 'border-amber-400 bg-amber-950/20' : 'border-cyan-400 bg-cyan-950/20'}`}>
               {composerMode === 'edit'
@@ -2040,6 +2158,13 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
                   className={`flex h-11 w-11 flex-none items-center justify-center rounded-full transition active:scale-95 ${emojiOpen ? 'bg-cyan-400/20 text-cyan-300' : 'text-slate-400 hover:bg-cyan-400/10 hover:text-cyan-200'}`}>
                   <Smile size={22} />
                 </button>
+                <button type="button" aria-label="Send photo or video"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={fileSending || !isDataChannelOpen()}
+                  className={`flex h-11 w-11 flex-none items-center justify-center rounded-full transition active:scale-95 ${isDataChannelOpen() ? 'text-slate-400 hover:bg-cyan-400/10 hover:text-cyan-200' : 'text-slate-600'}`}>
+                  <ImageIcon size={22} />
+                </button>
+                <input ref={fileInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={onFileSelect} />
                 <textarea ref={inputRef} value={text} onChange={(e) => onTextChange(e.target.value)} maxLength={2000} rows={1}
                   onTouchStart={() => { kbTouchRef.current = true; setVirtualKb(true) }}
                   onKeyDown={(e) => {

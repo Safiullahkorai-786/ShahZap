@@ -32,10 +32,16 @@ type CallApi = {
   endCall: () => void
   toggleMute: () => void
   toggleVideo: () => void
+  sendFileData: (data: string | ArrayBuffer) => boolean
+  isDataChannelOpen: () => boolean
   clearError: () => void
 }
 
 export const CallContext = createContext<CallApi | null>(null)
+
+// Module-level ref for P2P file transfer data callback.
+// Shared between CallProvider (which sets it) and useFileTransfer (which reads it).
+let onFileDataRef: ((data: ArrayBuffer | string) => void) | null = null
 
 export function useCall(): CallApi {
   const ctx = useContext(CallContext)
@@ -68,6 +74,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     myId: userId,
     ringSound: (kind) => playRing(kind),
     stopRingingSound: () => stopRing(),
+    onFileData: (data) => onFileDataRef?.(data),
     onIncoming: (target, _mode) => {
       incomingRef.current = target
     },
@@ -132,6 +139,8 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     endCall: () => void engine.endCall(),
     toggleMute: () => void engine.toggleMute(),
     toggleVideo: () => void engine.toggleVideo(),
+    sendFileData: engine.sendFileData,
+    isDataChannelOpen: engine.isDataChannelOpen,
     clearError: () => engine.clearError(),
   }
 
@@ -166,4 +175,17 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       />
     </CallContext.Provider>
   )
+}
+
+/**
+ * Hook for P2P file transfer. Registers a callback for incoming DataChannel
+ * data and exposes send helpers. Use inside the ChatRoom component.
+ */
+export function useFileTransfer(onData: (data: ArrayBuffer | string) => void) {
+  const ctx = useContext(CallContext)
+  useEffect(() => { onFileDataRef = onData; return () => { onFileDataRef = null } }, [onData])
+  return {
+    sendFileData: ctx?.sendFileData ?? (() => false),
+    isDataChannelOpen: ctx?.isDataChannelOpen ?? (() => false),
+  }
 }

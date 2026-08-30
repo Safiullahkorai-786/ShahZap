@@ -44,8 +44,9 @@ export function useCallEngine(opts: {
     callStatus: 'answered' | 'missed' | 'outgoing_unanswered'
     durationSeconds: number
   }) => void
+  onFileData?: (data: ArrayBuffer | string) => void
 }) {
-  const { myId, ringSound, stopRingingSound, onIncoming, onCallFinish } = opts
+  const { myId, ringSound, stopRingingSound, onIncoming, onCallFinish, onFileData } = opts
 
   const [status, setStatus] = useState<CallStatus>('idle')
   const [mode, setMode] = useState<CallMode>('audio')
@@ -73,6 +74,9 @@ export function useCallEngine(opts: {
   const myIdRef = useRef<string | null>(null)
   useEffect(() => { myIdRef.current = myId }, [myId])
   const targetRef = useRef<CallTarget | null>(null)
+  const dcRef = useRef<RTCDataChannel | null>(null)
+  const onFileDataRef = useRef(onFileData)
+  useEffect(() => { onFileDataRef.current = onFileData }, [onFileData])
 
   // Call-log bookkeeping: whether WE placed the call (the caller inserts the
   // single log row both sides see), when it went active, and whether either
@@ -279,9 +283,11 @@ export function useCallEngine(opts: {
       pc.onicecandidate = null
       pc.ontrack = null
       pc.onconnectionstatechange = null
+      pc.ondatachannel = null
       pc.close()
       pcRef.current = null
     }
+    if (dcRef.current) { try { dcRef.current.close() } catch {} dcRef.current = null }
     if (localStreamRef.current) { localStreamRef.current.getTracks().forEach((tk) => tk.stop()); localStreamRef.current = null }
     setLocalStream((prev) => { if (prev) prev.getTracks().forEach((tk) => tk.stop()); return null })
     setRemoteStream((prev) => { if (prev) prev.getTracks().forEach((tk) => tk.stop()); return null })
@@ -364,6 +370,22 @@ export function useCallEngine(opts: {
       if (tk.kind === 'video') setRemoteVideoOn(false)
     }
     pcRef.current = pc
+
+    // ── DataChannel for P2P file transfer ────────────────────────────
+    // Caller creates the channel; callee receives it via ondatachannel.
+    try {
+      const dc = pc.createDataChannel('shahzap-files', { ordered: true })
+      dc.binaryType = 'arraybuffer'
+      dc.onmessage = (ev) => onFileDataRef.current?.(ev.data)
+      dcRef.current = dc
+    } catch { /* DataChannel not supported — file transfer disabled */ }
+    pc.ondatachannel = (ev) => {
+      const dc = ev.channel
+      dc.binaryType = 'arraybuffer'
+      dc.onmessage = (e) => onFileDataRef.current?.(e.data)
+      dcRef.current = dc
+    }
+
     return pc
   }
 
@@ -598,6 +620,19 @@ export function useCallEngine(opts: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myId])
 
+  /** Send raw data (JSON string or ArrayBuffer) over the P2P DataChannel. */
+  const sendFileData = useCallback((data: string | ArrayBuffer) => {
+    const dc = dcRef.current
+    if (!dc || dc.readyState !== 'open') return false
+    if (typeof data === 'string') dc.send(data)
+    else dc.send(data)
+    return true
+  }, [])
+
+  const isDataChannelOpen = useCallback(() => {
+    return dcRef.current?.readyState === 'open'
+  }, [])
+
   return {
     status,
     mode,
@@ -615,6 +650,8 @@ export function useCallEngine(opts: {
     endCall,
     toggleMute,
     toggleVideo,
+    sendFileData,
+    isDataChannelOpen,
     clearError: () => setError(''),
   }
 }
