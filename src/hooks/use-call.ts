@@ -386,15 +386,14 @@ export function useCallEngine(opts: {
     stream.getTracks().forEach((tk) => pc.addTrack(tk, stream))
   }
 
-  // Re-attach a video track to the SAME video transceiver (via replaceTrack)
-  // rather than pc.addTrack — after the video was removed during a toggle-off,
-  // re-adding with addTrack can create a mismatched transceiver whose track the
-  // peer never receives. replaceTrack reuses the existing transceiver so the
-  // renegotiated offer actually delivers live video to the other side.
+  // Attach a video track to the peer connection for the first time or after
+  // a toggle-off.  Because we use replaceTrack(null) on turn-off (not
+  // removeTrack), the sender + transceiver stay alive.  We can simply
+  // replaceTrack(vt) on the existing sender to re-activate video cleanly.
   async function attachVideoToPeer(pc: RTCPeerConnection, vt: MediaStreamTrack, stream: MediaStream) {
-    const tr = pc.getTransceivers().find((x) => x.receiver?.track?.kind === 'video')
-    if (tr && tr.sender) {
-      await tr.sender.replaceTrack(vt)
+    const videoSender = pc.getSenders().find((s) => s.track?.kind === 'video' || (!s.track && pc.getTransceivers().some((t) => t.sender === s && (t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video'))))
+    if (videoSender) {
+      await videoSender.replaceTrack(vt)
     } else {
       pc.addTrack(vt, stream)
     }
@@ -562,37 +561,15 @@ export function useCallEngine(opts: {
       return
     }
 
-    const currentlyOn = vids[0].enabled
-    if (currentlyOn) {
-      // Turn the camera OFF: release the track and remove it from the peer so
-      // the other side drops back to audio mode (no frozen video frame).
-      vids.forEach((tk) => tk.stop())
-      vids.forEach((tk) => stream.removeTrack(tk))
-      setVideoEnabled(false)
-      setLocalStream(new MediaStream(stream.getTracks()))
-      if (pc) {
-        pc.getSenders().forEach((s) => { if (s.track && vids.includes(s.track)) pc.removeTrack(s) })
-        await renegotiate()
-      }
-      send({ type: 'video', on: false, token: tokenRef.current ?? '' })
-    } else {
-      // Camera was off but the track was retained — acquire a fresh one and
-      // re-attach it.
-      try {
-        const v = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
-        const vt = v.getVideoTracks()[0]
-        if (!vt) return
-        stream.addTrack(vt)
-        callSawVideoRef.current = true
-        setVideoEnabled(true)
-        setLocalStream(new MediaStream(stream.getTracks()))
-        if (pc) { await attachVideoToPeer(pc, vt, stream); await renegotiate() }
-        send({ type: 'video', on: true, token: tokenRef.current ?? '' })
-      } catch {
-        setError('Could not access the camera. Please allow access in site settings.')
-      }
-    }
-  }, [])
+    // Toggle the avatar overlay on/off.  The video track stays alive the
+    // entire time — we never stop, remove, or renegotiate it.  The remote
+    // side just hides the video behind their avatar when they receive the
+    // "off" signal, and reveals it again on "on".  This avoids all the WebRTC
+    // transceiver / renegotiation bugs that cause a black screen.
+    const next = !videoEnabled
+    setVideoEnabled(next)
+    send({ type: 'video', on: next, token: tokenRef.current ?? '' })
+  }, [videoEnabled])
 
   // ── Inbound signaling channel ─────────────────────────────────────────
   // Always listen on our own channel for inbound calls. The outbound peer
