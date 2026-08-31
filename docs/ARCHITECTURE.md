@@ -2,7 +2,7 @@
 
 ## Status
 
-Phase 0 — Authoritative architecture reference. Updated with each implementation change.
+Phase K — Authoritative architecture reference. P2P-first + Supabase-reliable chat architecture fully implemented (Phases A–K).
 
 ## Product Model
 
@@ -166,50 +166,79 @@ await db.cleanup.startCleanupScheduler()
 
 ---
 
-## Message Pipeline (Phase 3 + Phase 4 — Implemented)
+## Message Pipeline (Phases A–K — Complete)
 
 All messages flow through a unified handler regardless of transport:
 
-```
-                  OUTGOING MESSAGE
-                        |
-                        v
-               p2pOpen() ? ──── YES ──→ p2pSend()
-                        |                   |
-                       NO              success?
-                        |              /       \
-                        |            YES        NO
-                        |             |          |
-                        |          DONE    Supabase fallback
-                        |                       |
-                        v                       v
-              supabase.from('messages').insert()
-                        |
-                        v
-                Unified Pipeline
-                        |
-               +--------+--------+
-               v                 v
-           IndexedDB             UI
+### Canonical ChatEvent Model
+
+All operations are expressed as `ChatEvent` — a discriminated union with 9 variants:
+
+```typescript
+type ChatEvent =
+  | MessageCreateEvent    // message.create
+  | MessageEditEvent      // message.edit
+  | MessageDeleteEvent    // message.delete
+  | ReactionAddEvent      // reaction.add
+  | ReactionRemoveEvent   // reaction.remove
+  | TranslationUpdateEvent // translation.update
+  | MediaCreateEvent      // media.create
+  | MediaDeleteEvent      // media.delete
+  | VoiceCreateEvent      // voice.create
 ```
 
-### Incoming message flow:
+Each event has: `eventId`, `conversationId`, `senderId`, `senderSequence`, `version`, `createdAt`, `operation`, `payload`.
+
+### Capability Negotiation
+
+Peers exchange `ChatCapabilities` during sync handshake:
+```typescript
+type ChatCapabilities = {
+  protocolVersion: number
+  supportsEvents: boolean
+}
+```
+Old clients that don't send capabilities default to `supportsEvents: false` → legacy `kind:'text'` format.
+
+### Outgoing: dispatchChatOperation()
+
+Single exit point for all outgoing operations. Creates ChatEvent, persists to IDB, returns `{ event, msg, uiMsg, via }`:
+
+```
+UI → dispatchChatOperation() → ChatEvent
+  → handleEvent() → ingestMessage()/patchMessage() → IndexedDB (always)
+  → caller → WebRTC DataChannel (if via='webrtc')
+  → caller → Supabase fallback (if via='supabase')
+```
+
+### Incoming: handleEvent()
+
+Single entry point for all event-based ingestion. Deduplicates by eventId, applies operation through existing pipeline functions:
 
 ```
 WebRTC DataChannel ─────┐
-                        |
-Supabase Realtime ──────┤
-                        |
-Smart Poll (5s) ────────┘
+                         |
+Supabase Realtime ───────┤
+                         |
+Smart Poll (5s) ─────────┘
                 |
                 v
-        ingestMessage() / ingestBatch()
+    handleEvent(event, transport)  ← for ChatEvent
+    ingestMessage(msg)             ← for legacy kind:'text'
+    ingestBatch(rows)              ← for initial load
                 |
                 +--> Validate (ID + conversationId required)
                 +--> Deduplicate (in-memory processingIds + IndexedDB unique ID)
-                +--> Persist to IndexedDB (idbSaveMessage)
+                +--> Persist to IndexedDB (idbSaveMessage / idbUpdateMessage)
                 +--> Update React/UI state (setMessages)
 ```
+
+### USE_EVENT_PROTOCOL Flag
+
+`USE_EVENT_PROTOCOL = true` (enabled Phase F). Controls:
+- Outgoing: sends `ChatEvent` via DataChannel when peer supports it
+- Incoming: processes `kind:'event'` messages via `handleEvent()`
+- Fallback: sends legacy `kind:'text'` when peer doesn't support events
 
 ### Persistence model
 
@@ -337,37 +366,41 @@ No transport-specific UI logic. The UI consumes normalized messages.
 
 ---
 
-## Media Pipeline
+## Media Pipeline (Phase G — Complete)
 
-All media flows through WebRTC when possible:
+All media flows through the canonical event pipeline:
 
+### Event Types
+- `media.create` — images, videos, audio, files (metadata + fileRef)
+- `media.delete` — marks media message as deleted
+- `voice.create` — voice notes (metadata + fileRef + durationMs)
+
+### Send Flow
 ```
-File/Image/Video/Audio
-        |
-        v
-  Compress (if image)
-        |
-        v
-  Chunk (16KB)
-        |
-        v
-  WebRTC DataChannel (binary)
-        |
-        v
-  Receiver reassembles
-        |
-        v
-  Blob
-        |
-        v
-  IndexedDB (persist)
-        |
-        v
-  URL.createObjectURL (UI)
+File/voice → dispatchChatOperation(media.create/voice.create)
+  → handleEvent → IDB messages store (metadata)
+  → persistMediaToIDB → IDB media store (blob)
+  → WebRTC DataChannel (binary chunks) OR Supabase broadcast (<2MB)
+  → event via WebRTC if peer supports it
 ```
 
-Small files (<2MB) may use Supabase broadcast (base64) as fallback.
-Large files (>2MB) require DataChannel.
+### Receive Flow
+```
+DataChannel/broadcast → blob received
+  → persistMediaToIDB → IDB media store (blob)
+  → React state (SharedFile[]) → renders <img>/<video>/<audio>
+```
+
+### Voice Recording
+- `MediaRecorder` API with webm/opus codec
+- `startRecording()` → `stopRecording()` → `VoiceRecording` (blob, durationMs, mimeType)
+- UI: Mic button with recording indicator and duration timer
+
+### Persistence
+- IndexedDB `messages` store: metadata (messageType, fileName, etc.)
+- IndexedDB `media` store: actual blob data
+- Both survive page refresh
+- Supabase Storage fallback available for large files via `uploadToSupabaseStorage()`
 
 ---
 
@@ -682,24 +715,26 @@ Friend conversations are exempt from expiration.
 
 | File | Purpose |
 |---|---|
-| `src/app/chat/[conversationId]/page.tsx` | Main chat page + ChatRoom component |
+| `src/app/chat/[conversationId]/page.tsx` | Main chat page — event dispatch, media, voice, reconciliation |
 | `src/hooks/use-call.ts` | Voice/video call engine |
-| `src/hooks/use-background-p2p.ts` | Persistent P2P DataChannel |
+| `src/hooks/use-background-p2p.ts` | Persistent P2P DataChannel + capability negotiation |
 | `src/components/call-provider.tsx` | Global call context provider |
 | `src/components/call-overlay.tsx` | Call UI overlay |
-| `src/lib/file-transfer.ts` | File chunking, compression, protocol |
+| `src/lib/file-transfer.ts` | ChatEvent model (9 variants), validateChatEvent, capabilities, file chunking |
+| `src/lib/db/pipeline.ts` | Unified pipeline — handleEvent, dispatchChatOperation, ingestMessage, patchMessage |
+| `src/lib/db/schema.ts` | IndexedDB schema (messages, media, sender_sequences) |
+| `src/lib/db/messages.ts` | Message CRUD |
+| `src/lib/db/media.ts` | Media CRUD |
+| `src/lib/db/media-storage.ts` | Media persistence + Supabase Storage fallback |
+| `src/lib/db/sender-sequences.ts` | Monotonic sender-scoped sequencing |
+| `src/lib/db/cleanup.ts` | Expiration and cleanup |
+| `src/lib/db/index.ts` | Public API |
+| `src/lib/voice-recording.ts` | MediaRecorder voice capture |
 | `src/lib/call.ts` | ICE servers, call types, constants |
 | `src/lib/notification-sound.ts` | Sound preferences and playback |
 | `src/lib/identity.ts` | Display name resolution |
 | `src/lib/matching.ts` | Match queue client logic |
 | `src/components/presence-heartbeat.tsx` | Online presence heartbeat |
-| `src/lib/db/schema.ts` | IndexedDB schema, version, connection |
-| `src/lib/db/conversations.ts` | Conversation CRUD |
-| `src/lib/db/messages.ts` | Message CRUD |
-| `src/lib/db/media.ts` | Media CRUD |
-| `src/lib/db/cleanup.ts` | Expiration and cleanup |
-| `src/lib/db/pipeline.ts` | Unified message pipeline (ingest, dedup, persist) |
-| `src/lib/db/index.ts` | Public API |
 
 ---
 
@@ -713,12 +748,13 @@ Friend conversations are exempt from expiration.
 - Read receipts do NOT route through Cloudflare Worker
 
 ### Supabase Usage Minimization
-- WebRTC is primary transport for text, typing, media
+- WebRTC is primary transport for text, typing, media, reactions, edits, deletes
 - Supabase is fallback when WebRTC unavailable
 - No permanent chat transcripts in PostgreSQL (transitioning)
-- No normal media in Supabase Storage
+- No normal media in Supabase Storage (only fallback for large files)
 - Typing via DataChannel primary, Supabase broadcast fallback
 - Smart poll (5s) is reliability backbone, not primary transport
+- **Cost optimization:** removed redundant SELECTs after INSERT/UPDATE, removed redundant `mark_conversation_read` RPC calls
 
 ### WebRTC-First Strategy
 - Text messages via DataChannel when open
@@ -760,8 +796,17 @@ Friend conversations are exempt from expiration.
 
 | Framework | Purpose |
 |---|---|
-| Vitest | Unit tests (IndexedDB layer) |
+| Vitest | Unit tests (pipeline, events, reconciliation, cost optimization) |
 | happy-dom | DOM environment for tests |
 | fake-indexeddb | IndexedDB polyfill for Node.js tests |
+
+**166 tests** covering:
+- Pipeline ingestion (dedup, batch, cross-transport)
+- Event protocol (validate, handle, dispatch)
+- CRUD operations (text, edit, delete, reaction, translation)
+- Media operations (media.create, voice.create, media.delete)
+- Reconciliation (mixed events, sequences, dedup)
+- Cost optimization (WebRTC vs Supabase paths)
+- P2P hook (capabilities, signaling, reconnect)
 
 Run tests: `npm test`
