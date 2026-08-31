@@ -16,7 +16,7 @@ import { useSiteActive } from '@/hooks/use-site-active'
 import { useBackgroundP2P } from '@/hooks/use-background-p2p'
 import { validateFile, newFileId, chunkFile, BROADCAST_THRESHOLD, fileToDataUrl, dataUrlToBlob, validateChatEvent, type BroadcastFileMessage, type FileMeta, type TextMessage } from '@/lib/file-transfer'
 import { ingestMessage, ingestBatch, patchMessage, handleEvent, dispatchChatOperation, loadFromIndexedDB, supabaseToPipeline, pipelineToUI, getLatestSenderSequence, getNextSenderSequence, type PipelineMessage } from '@/lib/db/pipeline'
-import { deleteMessage as deleteIDBMessage } from '@/lib/db/messages'
+import { deleteMessage as deleteIDBMessage, getMessage as getIDBMessage } from '@/lib/db/messages'
 import type { SyncRequest, SyncResponse } from '@/lib/file-transfer'
 import type { MessageTransport } from '@/lib/db/schema'
 import { logText, logReconcile } from '@/lib/p2p-debug'
@@ -578,7 +578,17 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
             originalMessage: updated.original_message,
             translatedMessage: updated.translated_message ?? null,
           })
-          setMessages((current) => current.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)))
+          setMessages((current) => current.map((item) => {
+            if (item.id !== updated.id) return item
+            // Merge remote fields, but preserve local reactions if remote has none.
+            // A Supabase UPDATE for delivered_at/read_at may carry stale null reactions
+            // while a WebRTC-delivered reaction hasn't been confirmed by the server yet.
+            const merged = { ...item, ...updated }
+            if (!updated.reactions && item.reactions) {
+              merged.reactions = item.reactions
+            }
+            return merged
+          }))
         })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${otherProfileId}` }, (payload) => {
           lastRealtimeActivity = Date.now()
@@ -1565,6 +1575,19 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
     }
 
     // Supabase fallback (edit always goes through Supabase for server confirmation)
+    // When the message was originally sent via WebRTC, there is no Supabase row.
+    const idbMsg = await getIDBMessage(editing.id)
+    if (idbMsg?.transport === 'webrtc') {
+      void patchMessage(editing.id, {
+        originalMessage: value,
+        editedAt: result.event.createdAt,
+        version: result.event.version,
+      })
+      setMessages((prev) => prev.map((m) => (m.id === editing.id ? { ...m, original_message: value, edited_at: result.event.createdAt } : m)))
+      setEditing(null); setText('')
+      inputRef.current?.focus()
+      return
+    }
     const supabase = createClient()
     const { error: e } = await supabase
       .from('messages')
@@ -1610,6 +1633,11 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
     }
 
     // Supabase fallback (delete always goes through Supabase for server confirmation)
+    // When the message was originally sent via WebRTC, there is no Supabase row.
+    const idbMsg = await getIDBMessage(m.id)
+    if (idbMsg?.transport === 'webrtc') {
+      return
+    }
     const supabase = createClient()
     const { error: e } = await supabase.from('messages').update({ deleted_at: optimistic.deleted_at }).eq('id', m.id)
     if (e) {
@@ -1629,6 +1657,8 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
     // Phase 3: Persist receiver-side delete to IndexedDB (optimistic)
     void patchMessage(m.id, { deletedByReceiverAt: optimistic.deleted_by_receiver_at })
     setMessages((prev) => prev.map((x) => (x.id === m.id ? optimistic : x)))
+    const idbMsg = await getIDBMessage(m.id)
+    if (idbMsg?.transport === 'webrtc') return
     const supabase = createClient()
     const { error: e } = await supabase.from('messages').update({ deleted_by_receiver_at: optimistic.deleted_by_receiver_at }).eq('id', m.id).is('deleted_by_receiver_at', null)
     if (e) {
@@ -1676,6 +1706,16 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
     // Phase F: Send event via WebRTC if peer supports it, skip Supabase RPC
     if (USE_EVENT_PROTOCOL && result.via === 'webrtc') {
       p2pSend(JSON.stringify(result.event))
+      requestAnimationFrame(() => togglingMessages.current.delete(m.id))
+      return
+    }
+
+    // When P2P is disconnected but the message was originally sent via WebRTC,
+    // there is no Supabase row for this message. The local IDB patch from
+    // dispatchChatOperation is the source of truth; the event will be delivered
+    // when P2P reconnects. Skip the Supabase RPC to avoid a 404/RLS error.
+    const idbMsg = await getIDBMessage(m.id)
+    if (idbMsg?.transport === 'webrtc') {
       requestAnimationFrame(() => togglingMessages.current.delete(m.id))
       return
     }
