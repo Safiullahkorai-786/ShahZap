@@ -63,15 +63,202 @@ export type SyncRequest = {
   kind: 'sync-request'
   senderId: string
   lastKnownSequences: Record<string, number>
+  capabilities?: ChatCapabilities
 }
 
 export type SyncResponse = {
   kind: 'sync-response'
   senderId: string
   messages: TextMessage[]
+  events?: ChatEvent[] // Phase H: event-based reconciliation
+  capabilities?: ChatCapabilities
 }
 
-export type TextProtocolMessage = TextMessage | TextAck | SyncRequest | SyncResponse
+// ── Protocol capability negotiation ─────────────────────────────
+
+export type ChatCapabilities = {
+  protocolVersion: number
+  supportsEvents: boolean
+}
+
+// ── ChatEvent: canonical, transport-agnostic operation envelope ──
+
+export type ChatOperation =
+  | 'message.create'
+  | 'message.edit'
+  | 'message.delete'
+  | 'reaction.add'
+  | 'reaction.remove'
+  | 'translation.update'
+  | 'media.create'
+  | 'media.delete'
+  | 'voice.create'
+
+interface ChatEventBase {
+  kind: 'event'
+  eventId: string
+  conversationId: string
+  senderId: string
+  senderSequence: number
+  createdAt: string
+}
+
+interface MessageCreateEvent extends ChatEventBase {
+  operation: 'message.create'
+  version: number
+  payload: {
+    messageId: string
+    originalMessage: string
+    translatedMessage?: string | null
+    replyToMessageId?: string | null
+  }
+}
+
+interface MessageEditEvent extends ChatEventBase {
+  operation: 'message.edit'
+  version: number
+  payload: {
+    messageId: string
+    originalMessage: string
+    editedAt: string
+  }
+}
+
+interface MessageDeleteEvent extends ChatEventBase {
+  operation: 'message.delete'
+  version: number
+  payload: {
+    messageId: string
+    deletedAt: string
+  }
+}
+
+interface ReactionAddEvent extends ChatEventBase {
+  operation: 'reaction.add'
+  version: number
+  payload: {
+    messageId: string
+    emoji: string
+  }
+}
+
+interface ReactionRemoveEvent extends ChatEventBase {
+  operation: 'reaction.remove'
+  version: number
+  payload: {
+    messageId: string
+    emoji: string
+  }
+}
+
+interface TranslationUpdateEvent extends ChatEventBase {
+  operation: 'translation.update'
+  version: number
+  payload: {
+    messageId: string
+    translatedMessage: string
+  }
+}
+
+interface MediaCreateEvent extends ChatEventBase {
+  operation: 'media.create'
+  version: number
+  payload: {
+    messageId: string
+    fileRef: string // file ID for DataChannel transfer or Supabase Storage path
+    fileName: string
+    fileSize: number
+    mimeType: string
+    mediaType: 'image' | 'video' | 'audio' | 'file'
+  }
+}
+
+interface MediaDeleteEvent extends ChatEventBase {
+  operation: 'media.delete'
+  version: number
+  payload: {
+    messageId: string
+    deletedAt: string
+  }
+}
+
+interface VoiceCreateEvent extends ChatEventBase {
+  operation: 'voice.create'
+  version: number
+  payload: {
+    messageId: string
+    fileRef: string
+    fileSize: number
+    mimeType: string
+    durationMs?: number
+  }
+}
+
+export type ChatEvent =
+  | MessageCreateEvent
+  | MessageEditEvent
+  | MessageDeleteEvent
+  | ReactionAddEvent
+  | ReactionRemoveEvent
+  | TranslationUpdateEvent
+  | MediaCreateEvent
+  | MediaDeleteEvent
+  | VoiceCreateEvent
+
+// ── Validation ──────────────────────────────────────────────────
+
+export function validateChatEvent(parsed: unknown): parsed is ChatEvent {
+  if (typeof parsed !== 'object' || parsed === null) return false
+  const obj = parsed as Record<string, unknown>
+  if (obj.kind !== 'event') return false
+  if (typeof obj.eventId !== 'string') return false
+  if (typeof obj.conversationId !== 'string') return false
+  if (typeof obj.senderId !== 'string') return false
+  if (typeof obj.senderSequence !== 'number') return false
+  if (typeof obj.operation !== 'string') return false
+  if (typeof obj.version !== 'number') return false
+  if (typeof obj.createdAt !== 'string') return false
+  if (typeof obj.payload !== 'object' || obj.payload === null) return false
+  const payload = obj.payload as Record<string, unknown>
+  switch (obj.operation) {
+    case 'message.create':
+      return typeof payload.messageId === 'string'
+        && typeof payload.originalMessage === 'string'
+    case 'message.edit':
+      return typeof payload.messageId === 'string'
+        && typeof payload.originalMessage === 'string'
+        && typeof payload.editedAt === 'string'
+    case 'message.delete':
+      return typeof payload.messageId === 'string'
+        && typeof payload.deletedAt === 'string'
+    case 'reaction.add':
+    case 'reaction.remove':
+      return typeof payload.messageId === 'string'
+        && typeof payload.emoji === 'string'
+    case 'translation.update':
+      return typeof payload.messageId === 'string'
+        && typeof payload.translatedMessage === 'string'
+    case 'media.create':
+      return typeof payload.messageId === 'string'
+        && typeof payload.fileRef === 'string'
+        && typeof payload.fileName === 'string'
+        && typeof payload.fileSize === 'number'
+        && typeof payload.mimeType === 'string'
+        && typeof payload.mediaType === 'string'
+    case 'media.delete':
+      return typeof payload.messageId === 'string'
+        && typeof payload.deletedAt === 'string'
+    case 'voice.create':
+      return typeof payload.messageId === 'string'
+        && typeof payload.fileRef === 'string'
+        && typeof payload.fileSize === 'number'
+        && typeof payload.mimeType === 'string'
+    default:
+      return false
+  }
+}
+
+export type TextProtocolMessage = TextMessage | TextAck | SyncRequest | SyncResponse | ChatEvent
 
 // ── Broadcast message (base64 via Supabase Realtime) ──────────────────
 

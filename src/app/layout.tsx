@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import "./globals.css";
 import { PwaRegister } from "@/components/PwaRegister";
 import { PresenceHeartbeat } from "@/components/presence-heartbeat";
@@ -41,7 +42,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
-        <script
+        <Script
+          id="shahzap-theme-init"
+          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{
             __html: "try{var s=JSON.parse(localStorage.getItem('shahzap:theme')||'{}');var b=s.base==='white'?'white':'dark';document.documentElement.dataset.base=b;document.documentElement.dataset.accent=s.accent||'none'}catch(e){}",
           }}

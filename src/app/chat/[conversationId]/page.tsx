@@ -1,8 +1,8 @@
 'use client'
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
-import { MoreVertical, Send, UserPlus, ShieldAlert, Ban, Languages, CornerUpLeft, Pencil, Trash2, X, Check, CheckCheck, ArrowDown, ArrowLeft, SunMoon, Clock, UserCheck, UserMinus, Smile, SmilePlus, BellRing, Vibrate, VolumeX, Type, ChevronDown, Plus, Minus, Cake, Sparkles, User, Globe, Copy, Image as ImageIcon, Heart, Phone, PhoneCall, Video } from 'lucide-react'
+import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { MoreVertical, Send, UserPlus, ShieldAlert, Ban, Languages, CornerUpLeft, Pencil, Trash2, X, Check, CheckCheck, ArrowDown, ArrowLeft, SunMoon, Clock, UserCheck, UserMinus, Smile, SmilePlus, BellRing, Vibrate, VolumeX, Type, ChevronDown, Plus, Minus, Cake, Sparkles, User, Globe, Copy, Image as ImageIcon, Heart, Phone, PhoneCall, Video, Mic, StopCircle } from 'lucide-react'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import { getSoundPrefs, setSoundBundle, setSoundMode, notify, playFriendRequestSound, playMessageSound, playSentSound, playUnfriendSound, type SoundPrefs } from '@/lib/notification-sound'
@@ -14,12 +14,14 @@ import { resolveIdentity, type Identity } from '@/lib/identity'
 import { registerChatComposerFocus } from '@/lib/chat-composer-focus'
 import { useSiteActive } from '@/hooks/use-site-active'
 import { useBackgroundP2P } from '@/hooks/use-background-p2p'
-import { validateFile, newFileId, chunkFile, BROADCAST_THRESHOLD, fileToDataUrl, dataUrlToBlob, type BroadcastFileMessage, type FileMeta, type TextMessage } from '@/lib/file-transfer'
-import { ingestMessage, ingestBatch, patchMessage, loadFromIndexedDB, supabaseToPipeline, pipelineToUI, getLatestSenderSequence, getNextSenderSequence, type PipelineMessage } from '@/lib/db/pipeline'
+import { validateFile, newFileId, chunkFile, BROADCAST_THRESHOLD, fileToDataUrl, dataUrlToBlob, validateChatEvent, type BroadcastFileMessage, type FileMeta, type TextMessage } from '@/lib/file-transfer'
+import { ingestMessage, ingestBatch, patchMessage, handleEvent, dispatchChatOperation, loadFromIndexedDB, supabaseToPipeline, pipelineToUI, getLatestSenderSequence, getNextSenderSequence, type PipelineMessage } from '@/lib/db/pipeline'
 import { deleteMessage as deleteIDBMessage } from '@/lib/db/messages'
 import type { SyncRequest, SyncResponse } from '@/lib/file-transfer'
 import type { MessageTransport } from '@/lib/db/schema'
 import { logText, logReconcile } from '@/lib/p2p-debug'
+import { persistMediaToIDB, loadMediaFromIDB } from '@/lib/db/media-storage'
+import { startRecording, stopRecording, isRecording, cancelRecording, type VoiceRecording } from '@/lib/voice-recording'
 import { useCallCoveringChat } from '@/hooks/use-call-covering-chat'
 import { Shimmer } from '@/components/shimmer'
 import { RichText } from '@/components/rich-text'
@@ -70,6 +72,11 @@ type OtherProfile = {
   profile_visible?: boolean
   last_active_at: string | null
 }
+
+// Phase B/F: Canonical event protocol feature flag.
+// When true, outgoing CRUD sends ChatEvent via DataChannel when peer supports it.
+// When false, legacy kind:'text' + direct Supabase calls only.
+const USE_EVENT_PROTOCOL = true
 
 const AGE_BAND_LABELS: Record<string, string> = {
   under_13: 'Under 13', '13_15': '13–15', '16_17': '16–17', '18_20': '18–20',
@@ -271,6 +278,9 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
   const [fileSending, setFileSending] = useState(false)
   const [fileProgress, setFileProgress] = useState<{ sent: number; total: number } | null>(null)
   const senderNameRef = useRef('')
+  const [voiceRecording, setVoiceRecording] = useState(false)
+  const [voiceDuration, setVoiceDuration] = useState(0)
+  const voiceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -303,9 +313,8 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
   // Which surface opened this chat: 'match' | 'friends' | 'online' | 'profile'
   // | 'bot' | 'notification' | 'dashboard' | '' (unknown). Determines whether
   // the header shows Next (match), a Back button, or call icons (friends only).
-  const [entry] = useState(() => {
-    try { return new URLSearchParams(window.location.search).get('from') ?? '' } catch { return '' }
-  })
+  const searchParams = useSearchParams()
+  const entry = searchParams.get('from') ?? ''
 
   const isFriend = friendState === 'friends'
 
@@ -351,11 +360,6 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
   useEffect(() => {
     if (hidden) return
     const supabase = createClient()
-    // Unique per effect run so React Strict Mode's double-mount never reuses an
-    // already-joined RealtimeChannel under the same topic (RealtimeClient dedupes
-    // channels by topic; calling .on() on a joined channel throws
-    // "cannot add callbacks after subscribe()").
-    const rtNonce = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
     let channel: ReturnType<typeof supabase.channel> | undefined
     let active = true
     // Smart fallback: only poll when Realtime is down or silent.
@@ -388,22 +392,25 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
       if (!active) return
       const { data: fresh } = await supabase.from('messages').select(MESSAGE_COLUMNS).eq('conversation_id', conversationId).order('created_at', { ascending: true })
       if (!fresh || !active) return
-      // Phase 3: Persist to IndexedDB (dedup is internal to ingestBatch)
-      void ingestBatch(fresh as never[], conversationId, 'supabase')
+      // Phase 3+4: Merge into IndexedDB and use the MERGED result for state.
+      // P2P-only messages live in IndexedDB but not Supabase; using the raw
+      // Supabase rows would erase them from the UI every poll cycle.
+      const merged = await ingestBatch(fresh as never[], conversationId, 'supabase')
+      const uiMerged = (merged as PipelineMessage[]).map(pipelineToUI) as unknown as Message[]
       const toggling = togglingMessages.current
       setMessages((prev) => {
         if (toggling.size > 0) {
-          const next = prev.map((m) => toggling.has(m.id) ? m : (fresh.find((f) => f.id === m.id) as Message) ?? m)
+          const next = prev.map((m) => toggling.has(m.id) ? m : (uiMerged.find((f) => f.id === m.id) as Message) ?? m)
           return next.length === prev.length && next.every((m, i) => m === prev[i]) ? prev : next
         }
-        const changed = prev.length !== fresh.length || fresh[fresh.length - 1]?.id !== prev[prev.length - 1]?.id ||
-          fresh.some((fm, i) => {
+        const changed = prev.length !== uiMerged.length || uiMerged[uiMerged.length - 1]?.id !== prev[prev.length - 1]?.id ||
+          uiMerged.some((fm, i) => {
             const pm = prev[i]
             return !pm || pm.id !== fm.id || pm.edited_at !== fm.edited_at || pm.deleted_at !== fm.deleted_at || pm.deleted_by_receiver_at !== fm.deleted_by_receiver_at ||
               pm.delivered_at !== fm.delivered_at || pm.read_at !== fm.read_at ||
               JSON.stringify(pm.reactions ?? {}) !== JSON.stringify(fm.reactions ?? {})
           })
-        return changed ? (fresh as Message[]) : prev
+        return changed ? uiMerged : prev
       })
       const latest = fresh[fresh.length - 1]
       if (latest && latest.sender_id !== userIdRef2.current) setBotTyping(false)
@@ -521,7 +528,6 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
           .update({ last_read_at: new Date().toISOString() })
           .eq('conversation_id', conversationId)
           .eq('profile_id', user.id)
-        await supabase.rpc('mark_conversation_read', { p_conversation_id: conversationId }).then(() => {}, () => {})
         if (!active) return
         const { data: fresh } = await supabase.from('messages').select(MESSAGE_COLUMNS).eq('conversation_id', conversationId).order('created_at', { ascending: true })
         if (active && fresh) {
@@ -530,8 +536,16 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
         }
       })()
 
-      channel = supabase.channel(`conversation:${conversationId}:${rtNonce}`, { config: { broadcast: { self: false } } })
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload) => {
+      channel = supabase.channel(`conversation:${conversationId}`, { config: { broadcast: { self: false } } })
+      channelRef.current = channel
+
+      // Guard: under React StrictMode, a second async load() may resume after
+      // the first already subscribed this topic. Adding callbacks to a
+      // joined/joining channel throws, so bail out early.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const alreadySubscribed = (channel as any).isJoined?.() || (channel as any).isJoining?.()
+      if (!alreadySubscribed) {
+        channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload) => {
           lastRealtimeActivity = Date.now()
           const message = payload.new as Message
           // Phase 3: Persist to IndexedDB via unified pipeline
@@ -599,6 +613,8 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
           const p = payload as BroadcastFileMessage
           if (p.senderId === user.id) return
           const blob = dataUrlToBlob(p.dataUrl)
+          // Phase G: Persist received file to IndexedDB
+          void persistMediaToIDB({ messageId: p.id, conversationId, blob, mimeType: p.mime, fileName: p.name })
           const url = URL.createObjectURL(blob)
           setSharedFiles((prev) => [...prev, { id: p.id, name: p.name, mime: p.mime, url, senderId: p.senderId, senderName: p.senderName }])
         })
@@ -730,6 +746,7 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
           // read-receipts always surface.
           startSmartPoll()
         })
+      } // end alreadySubscribed guard
       channelRef.current = channel
 
       // A StrictMode first-mount run may finish subscribing after its cleanup
@@ -798,11 +815,7 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
         .eq('conversation_id', conversationId)
         .eq('profile_id', userId)
 
-      // 2. Also call the server RPC as a belt-and-suspenders safety net.
-      //    Swallow errors — the direct update above is the primary path.
-      await supabase.rpc('mark_conversation_read', { p_conversation_id: conversationId }).then(() => {}, () => {})
-
-      // 3. Mark message notifications for this conversation as read
+      // 2. Mark message notifications for this conversation as read
       await supabase.rpc('mark_message_notifications_read', { p_conversation_id: conversationId }).then(() => {}, () => {})
 
       // 3. Re-fetch messages to immediately pick up the server-stamped
@@ -813,19 +826,20 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
         .eq('conversation_id', conversationId)
         .order('created_at', { ascending: true })
       if (data) {
-        // Phase 3: Persist read-receipt updates to IndexedDB
-        void ingestBatch(data as never[], conversationId, 'supabase')
+        // Phase 3+4: Merge into IndexedDB and use the MERGED result for state
+        // to preserve P2P-only messages not present in the Supabase query.
+        const merged = await ingestBatch(data as never[], conversationId, 'supabase')
+        const uiMerged = (merged as PipelineMessage[]).map(pipelineToUI) as unknown as Message[]
         // Idempotent: only touch state when the fetched rows actually differ
         // from what we already have, so the periodic re-stamp doesn't rebuild
         // the message list (and jank scrolling in the call side panel) every
         // few seconds when nothing changed.
         setMessages((prev) => {
-          const fresh = data as Message[]
-          const changed = prev.length !== fresh.length || prev.some((m, i) => {
-            const f = fresh[i]
+          const changed = prev.length !== uiMerged.length || prev.some((m, i) => {
+            const f = uiMerged[i]
             return !f || f.id !== m.id || f.read_at !== m.read_at || f.delivered_at !== m.delivered_at
           })
-          return changed ? fresh : prev
+          return changed ? uiMerged : prev
         })
       }
     }
@@ -1091,87 +1105,61 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
     setText('')
     if (!persona) broadcastTyping(false)
 
-    // Phase 4: Generate message ID upfront for consistent identity
+    // Phase D: Unified dispatch — creates event, persists to IDB, attempts WebRTC
     const messageId = crypto.randomUUID()
-    const now = new Date().toISOString()
-    const senderSequence = await getNextSenderSequence(conversationId, userId)
-
-    // Phase 4: WebRTC-first routing
-    if (p2pOpen()) {
-      // ── PRIMARY: WebRTC DataChannel ──────────────────────────────
-      const textMsg: TextMessage = {
-        kind: 'text',
-        id: messageId,
-        conversationId,
-        senderId: userId,
-        content: value,
-        createdAt: now,
-        senderSequence,
-        replyToId: replyTo?.id,
-      }
-      // Persist locally (optimistic) before sending
-      const canonical: PipelineMessage = {
-        id: messageId,
-        conversationId,
-        senderId: userId,
+    const result = await dispatchChatOperation({
+      operation: 'message.create',
+      conversationId,
+      senderId: userId,
+      payload: {
+        messageId,
         originalMessage: value,
-        translatedMessage: null,
-        createdAt: now,
-        transport: 'webrtc',
-        reactions: null,
-        editedAt: null,
-        deletedAt: null,
-        replyToMessageId: replyTo?.id ?? null,
-        deletedByReceiverAt: null,
-        deliveredAt: null,
-        readAt: null,
-        messageType: null,
-        callMode: null,
-        callStatus: null,
-        callDurationSeconds: null,
-        senderSequence,
+        replyToMessageId: replyTo?.id,
+      },
+      currentVersion: 0,
+      p2pOpen,
+    })
+
+    if (result.via === 'webrtc') {
+      // Phase F: Send canonical event when peer supports it, legacy text otherwise
+      if (USE_EVENT_PROTOCOL) {
+        p2pSend(JSON.stringify(result.event))
+      } else {
+        const textMsg: TextMessage = {
+          kind: 'text',
+          id: messageId,
+          conversationId,
+          senderId: userId,
+          content: value,
+          createdAt: result.msg.createdAt,
+          senderSequence: result.msg.senderSequence ?? 0,
+          replyToId: replyTo?.id,
+        }
+        p2pSend(JSON.stringify(textMsg))
       }
-      void ingestMessage(canonical)
-      setMessages((current) => (current.some((item) => item.id === messageId) ? current : [...current, pipelineToUI(canonical) as unknown as Message]))
-      // Send via DataChannel — if this fails, fall back to Supabase
-      const sent = p2pSend(JSON.stringify(textMsg))
-      logText({ case: sent ? 'webrtc' : 'race-cleanup', messageId, p2pOpen: p2pOpen(), p2pSend: sent })
-      if (sent) {
-        playSentSound()
-        setReplyTo(null)
-        inputRef.current?.focus()
-        setUnreadCount(0)
-        requestAnimationFrame(() => { const el = scrollRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }) })
-        if (persona) setBotTyping(true)
-        return
-      }
-      // WebRTC send failed — remove optimistic entry, fall through to Supabase
-      void deleteIDBMessage(messageId)
-      setMessages((current) => current.filter((item) => item.id !== messageId))
+      setMessages((current) => (current.some((item) => item.id === messageId) ? current : [...current, result.uiMsg as unknown as Message]))
+      playSentSound()
+      setReplyTo(null)
+      inputRef.current?.focus()
+      setUnreadCount(0)
+      requestAnimationFrame(() => { const el = scrollRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }) })
+      if (persona) setBotTyping(true)
+      return
     }
 
-    // ── FALLBACK: Supabase (also used when DataChannel is not open) ──
-    // Explicitly provide the client-generated messageId so the same logical
-    // message retains its identity across WebRTC and Supabase paths.
-    // PostgreSQL: id uuid primary key default gen_random_uuid()
-    // When a value is supplied, it is used instead of the DEFAULT.
+    // ── Supabase fallback ──────────────────────────────────────────
     const supabase = createClient()
-    const { data: inserted, error: sendError } = await supabase
+    const { error: sendError } = await supabase
       .from('messages')
       .insert({ id: messageId, conversation_id: conversationId, sender_id: userId, original_message: value, reply_to_message_id: replyTo?.id ?? null })
-      .select(MESSAGE_COLUMNS)
-      .single()
-    if (sendError || !inserted) {
+    if (sendError) {
       setError(friendlyError(sendError, 'Your message could not be sent. Please try again.'))
       setText(value)
       return
     }
     logText({ case: 'supabase-fallback', messageId, p2pOpen: p2pOpen() })
-    // Phase 3: Persist sent message to IndexedDB via unified pipeline
-    const canonical = supabaseToPipeline(inserted as never, 'supabase')
-    canonical.conversationId = conversationId
-    void ingestMessage(canonical)
-    setMessages((current) => (current.some((item) => item.id === inserted.id) ? current : [...current, inserted as Message]))
+    // IDB already persisted by dispatcher — use local data for React state
+    setMessages((current) => (current.some((item) => item.id === messageId) ? current : [...current, result.uiMsg as unknown as Message]))
     playSentSound()
     setReplyTo(null)
     inputRef.current?.focus()
@@ -1180,10 +1168,56 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
     if (persona) setBotTyping(true)
   }
 
+  // ── Phase B: Legacy kind:'text' handler (extracted) ───────────────
+  const handleLegacyTextMessage = useCallback((textMsg: TextMessage) => {
+    if (textMsg.senderId === userId) return
+    const canonical: PipelineMessage = {
+      id: textMsg.id,
+      conversationId: textMsg.conversationId,
+      senderId: textMsg.senderId,
+      originalMessage: textMsg.content,
+      translatedMessage: null,
+      createdAt: textMsg.createdAt,
+      transport: 'webrtc',
+      reactions: null,
+      editedAt: null,
+      deletedAt: null,
+      replyToMessageId: textMsg.replyToId ?? null,
+      deletedByReceiverAt: null,
+      deliveredAt: null,
+      readAt: null,
+      messageType: null,
+      callMode: null,
+      callStatus: null,
+      callDurationSeconds: null,
+      senderSequence: textMsg.senderSequence,
+    }
+    void ingestMessage(canonical).then((isNew) => {
+      if (isNew) {
+        setMessages((current) => (current.some((item) => item.id === textMsg.id) ? current : [...current, pipelineToUI(canonical) as unknown as Message]))
+        playMessageSound()
+      }
+    })
+  }, [userId, conversationId, playMessageSound])
+
+  // ── Phase B: Canonical event handler ──────────────────────────────
+  const handleCanonicalEvent = useCallback(async (data: string) => {
+    const parsed = JSON.parse(data)
+    if (!validateChatEvent(parsed)) return
+    if (parsed.senderId === userId) return
+    if (parsed.conversationId !== conversationId) return
+    const result = await handleEvent(parsed, 'webrtc')
+    if (result) {
+      setMessages((current) => (current.some((item) => item.id === result.id) ? current : [...current, pipelineToUI(result) as unknown as Message]))
+      playMessageSound()
+    }
+  }, [userId, conversationId, playMessageSound])
+
   // ── Hybrid file transfer: background P2P + broadcast fallback ───────
-  const { send: p2pSend, isOpen: p2pOpen } = useBackgroundP2P({
+  const { send: p2pSend, isOpen: p2pOpen, transport: p2pTransport } = useBackgroundP2P({
     conversationId,
     myId: userId,
+    otherId: otherId,
     enabled: !disableP2P,
     // Phase 4.3: WebRTC is transport only. When the peer is known offline we
     // keep the signaling channel subscribed but do not initiate/retry P2P, so
@@ -1196,39 +1230,14 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
       if (typeof data === 'string') {
         try {
           const parsed = JSON.parse(data)
-          // Phase 4: Handle text messages from DataChannel
+          // Phase B: Canonical event protocol (feature-flagged)
+          if (USE_EVENT_PROTOCOL && parsed.kind === 'event') {
+            await handleCanonicalEvent(data)
+            return
+          }
+          // Phase 4: Handle text messages from DataChannel (legacy)
           if (parsed.kind === 'text') {
-            const textMsg = parsed as TextMessage
-            // Ignore own messages (echo)
-            if (textMsg.senderId === userId) return
-            // Persist via unified pipeline (dedup is internal)
-            const canonical: PipelineMessage = {
-              id: textMsg.id,
-              conversationId: textMsg.conversationId,
-              senderId: textMsg.senderId,
-              originalMessage: textMsg.content,
-              translatedMessage: null,
-              createdAt: textMsg.createdAt,
-              transport: 'webrtc',
-              reactions: null,
-              editedAt: null,
-              deletedAt: null,
-              replyToMessageId: textMsg.replyToId ?? null,
-              deletedByReceiverAt: null,
-              deliveredAt: null,
-              readAt: null,
-              messageType: null,
-              callMode: null,
-              callStatus: null,
-              callDurationSeconds: null,
-              senderSequence: textMsg.senderSequence,
-            }
-            void ingestMessage(canonical).then((isNew) => {
-              if (isNew) {
-                setMessages((current) => (current.some((item) => item.id === textMsg.id) ? current : [...current, pipelineToUI(canonical) as unknown as Message]))
-                playMessageSound()
-              }
-            })
+            handleLegacyTextMessage(parsed as TextMessage)
             return
           }
           // Phase 4: Reconnect reconciliation — peer requests our messages
@@ -1244,6 +1253,9 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
                 const peerLastKnown = req.lastKnownSequences[userId] ?? 0
                 return (m.senderSequence ?? 0) > peerLastKnown
               })
+            // Phase H: Split into text messages and events for full reconciliation
+            const textMessages = missing
+              .filter((m) => !m.messageType || m.messageType === 'text')
               .map((m) => ({
                 kind: 'text' as const,
                 id: m.id,
@@ -1254,18 +1266,41 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
                 senderSequence: m.senderSequence ?? 0,
                 replyToId: m.replyToMessageId ?? undefined,
               }))
-            if (missing.length > 0) {
-              const syncResp: SyncResponse = { kind: 'sync-response', senderId: userId, messages: missing }
+            const eventMessages: import('@/lib/file-transfer').ChatEvent[] = missing
+              .filter((m) => m.messageType && m.messageType !== 'text')
+              .map((m) => {
+                // Reconstruct ChatEvent from stored PipelineMessage
+                const base = {
+                  kind: 'event' as const,
+                  eventId: m.id,
+                  conversationId: m.conversationId,
+                  senderId: m.senderId,
+                  senderSequence: m.senderSequence ?? 0,
+                  createdAt: m.createdAt,
+                  version: m.version ?? 1,
+                }
+                if (m.messageType === 'media') {
+                  return { ...base, operation: 'media.create' as const, payload: { messageId: m.id, fileRef: m.id, fileName: m.originalMessage, fileSize: 0, mimeType: '', mediaType: 'file' as const } }
+                }
+                if (m.messageType === 'voice') {
+                  return { ...base, operation: 'voice.create' as const, payload: { messageId: m.id, fileRef: m.id, fileSize: 0, mimeType: '' } }
+                }
+                // Reactions, edits, deletes, translations — reconstruct from stored state
+                return { ...base, operation: 'message.create' as const, payload: { messageId: m.id, originalMessage: m.originalMessage } }
+              })
+            if (textMessages.length > 0 || eventMessages.length > 0) {
+              const syncResp: SyncResponse = { kind: 'sync-response', senderId: userId, messages: textMessages, events: eventMessages.length > 0 ? eventMessages : undefined }
               p2pSend(JSON.stringify(syncResp))
             }
-            logReconcile('sync-response', missing.length)
+            logReconcile('sync-response', textMessages.length + eventMessages.length)
             return
           }
           // Phase 4: Reconnect reconciliation — receive missing messages
           if (parsed.kind === 'sync-response' && userId) {
             const resp = parsed as SyncResponse
             if (resp.senderId === userId) return
-            logReconcile('sync-request', resp.messages.length)
+            logReconcile('sync-response', resp.messages.length + (resp.events?.length ?? 0))
+            // Process legacy text messages
             for (const textMsg of resp.messages) {
               const canonical: PipelineMessage = {
                 id: textMsg.id,
@@ -1294,6 +1329,16 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
                 }
               })
             }
+            // Phase H: Process canonical events via handleEvent
+            if (resp.events) {
+              for (const event of resp.events) {
+                void handleEvent(event, 'webrtc').then((result) => {
+                  if (result) {
+                    setMessages((current) => (current.some((item) => item.id === result.id) ? current : [...current, pipelineToUI(result) as unknown as Message]))
+                  }
+                })
+              }
+            }
             return
           }
           // File transfer protocol messages
@@ -1304,6 +1349,8 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
             const inc = incomingChunksRef.current.get(msg.id)
             if (inc && inc.received === inc.meta.chunkCount) {
               const blob = new Blob(inc.chunks, { type: inc.meta.mime })
+              // Phase G: Persist received file to IndexedDB
+              void persistMediaToIDB({ messageId: msg.id, conversationId, blob, mimeType: inc.meta.mime, fileName: inc.meta.name })
               const url = URL.createObjectURL(blob)
               setSharedFiles((prev) => [...prev, { id: msg.id, name: inc.meta.name, mime: inc.meta.mime, url, senderId: userId ?? '', senderName: inc.meta.senderName }])
               incomingChunksRef.current.delete(msg.id)
@@ -1322,7 +1369,7 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
           inc.received++
         }
       }
-    }, [userId]),
+    }, [userId, conversationId, handleLegacyTextMessage, handleCanonicalEvent]),
   })
 
   async function onFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -1335,6 +1382,26 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
     setFileProgress({ sent: 0, total: file.size })
     try {
       const fileId = newFileId()
+      const mediaType = file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : 'file'
+
+      // Phase G: Dispatch media.create event through pipeline
+      const currentVersion = 0
+      const result = await dispatchChatOperation({
+        operation: 'media.create',
+        conversationId,
+        senderId: userId,
+        payload: {
+          messageId: fileId,
+          fileRef: fileId,
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType: file.type,
+          mediaType,
+        },
+        currentVersion,
+        p2pOpen,
+      })
+
       if (file.size <= BROADCAST_THRESHOLD) {
         // ── Strategy A: Base64 via Supabase broadcast (<2MB) ───────
         const dataUrl = await fileToDataUrl(file)
@@ -1343,10 +1410,15 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
           const msg: BroadcastFileMessage = { type: 'file', id: fileId, name: file.name, mime: file.type, dataUrl, senderId: userId, senderName: senderNameRef.current || 'User' }
           void channel.send({ type: 'broadcast', event: 'file', payload: msg })
         }
-        // Show own file in chat
+        // Phase G: Persist blob to IndexedDB
         const blob = dataUrlToBlob(dataUrl)
+        void persistMediaToIDB({ messageId: fileId, conversationId, blob, mimeType: file.type, fileName: file.name })
         const url = URL.createObjectURL(blob)
         setSharedFiles((prev) => [...prev, { id: fileId, name: file.name, mime: file.type, url, senderId: userId, senderName: senderNameRef.current || 'You' }])
+        // Send event via WebRTC if peer supports it
+        if (USE_EVENT_PROTOCOL && result.via === 'webrtc') {
+          p2pSend(JSON.stringify(result.event))
+        }
       } else {
         // ── Strategy B: Chunked via persistent DataChannel (>2MB) ──
         if (!p2pOpen()) { setError('Large file transfer requires a connection. Please wait a moment.'); setFileSending(false); setFileProgress(null); return }
@@ -1365,33 +1437,137 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
         }
         p2pSend(JSON.stringify({ kind: 'file-end', id: fileId } satisfies import('@/lib/file-transfer').FileEnd))
         const blob = new Blob(chunks, { type: meta.mime })
+        // Phase G: Persist blob to IndexedDB
+        void persistMediaToIDB({ messageId: fileId, conversationId, blob, mimeType: meta.mime, fileName: file.name })
         const url = URL.createObjectURL(blob)
         setSharedFiles((prev) => [...prev, { id: fileId, name: file.name, mime: meta.mime, url, senderId: userId, senderName: senderNameRef.current || 'You' }])
+        // Send event via WebRTC if peer supports it
+        if (USE_EVENT_PROTOCOL && result.via === 'webrtc') {
+          p2pSend(JSON.stringify(result.event))
+        }
       }
     } catch { setError('File transfer failed. Please try again.') }
     setFileSending(false)
     setFileProgress(null)
   }
 
+  // ── Phase G: Voice note recording ─────────────────────────────────
+  async function handleVoiceRecord() {
+    if (voiceRecording) {
+      // Stop recording
+      try {
+        const recording = await stopRecording()
+        setVoiceRecording(false)
+        if (voiceTimerRef.current) { clearInterval(voiceTimerRef.current); voiceTimerRef.current = null }
+        setVoiceDuration(0)
+        await sendVoiceNote(recording)
+      } catch { setError('Voice recording failed.'); setVoiceRecording(false) }
+    } else {
+      // Start recording
+      try {
+        await startRecording()
+        setVoiceRecording(true)
+        setVoiceDuration(0)
+        voiceTimerRef.current = setInterval(() => setVoiceDuration((d) => d + 1), 1000)
+      } catch { setError('Could not start recording. Please allow microphone access.') }
+    }
+  }
+
+  function handleVoiceCancel() {
+    cancelRecording()
+    setVoiceRecording(false)
+    if (voiceTimerRef.current) { clearInterval(voiceTimerRef.current); voiceTimerRef.current = null }
+    setVoiceDuration(0)
+  }
+
+  async function sendVoiceNote(recording: VoiceRecording) {
+    if (!userId || !recording.blob.size) return
+    const fileId = newFileId()
+
+    // Dispatch voice.create event through pipeline
+    const result = await dispatchChatOperation({
+      operation: 'voice.create',
+      conversationId,
+      senderId: userId,
+      payload: {
+        messageId: fileId,
+        fileRef: fileId,
+        fileSize: recording.blob.size,
+        mimeType: recording.mimeType,
+        durationMs: recording.durationMs,
+      },
+      currentVersion: 0,
+      p2pOpen,
+    })
+
+    if (USE_EVENT_PROTOCOL && result.via === 'webrtc') {
+      // Send event metadata
+      p2pSend(JSON.stringify(result.event))
+      // Send audio binary via DataChannel
+      const buffer = await recording.blob.arrayBuffer()
+      const idPadded = new TextEncoder().encode(fileId.padEnd(36, '\0'))
+      const combined = new ArrayBuffer(4 + 36 + buffer.byteLength)
+      const view = new Uint8Array(combined)
+      new DataView(combined).setUint32(0, 0)
+      view.set(idPadded, 4)
+      view.set(new Uint8Array(buffer), 4 + 36)
+      p2pSend(combined)
+    }
+    // Persist blob to IndexedDB
+    void persistMediaToIDB({ messageId: fileId, conversationId, blob: recording.blob, mimeType: recording.mimeType, fileName: `voice-${fileId}.webm` })
+    const url = URL.createObjectURL(recording.blob)
+    setSharedFiles((prev) => [...prev, { id: fileId, name: `Voice note`, mime: recording.mimeType, url, senderId: userId, senderName: senderNameRef.current || 'You' }])
+  }
+
   async function saveEdit() {
     if (!editing || !userId) return
     const value = text.trim()
     if (!value) { setStatusLine('Edited message cannot be empty.'); return }
-    const supabase = createClient()
-    const { data, error: e } = await supabase
-      .from('messages')
-      .update({ original_message: value, edited_at: new Date().toISOString() })
-      .eq('id', editing.id)
-      .select(MESSAGE_COLUMNS)
-      .single()
-    if (e || !data) { setStatusLine(friendlyError(e, 'Could not save your edit.')); return }
-    // Phase 3: Persist edit to IndexedDB
-    void patchMessage(data.id, {
-      originalMessage: data.original_message,
-      editedAt: data.edited_at ?? null,
-      translatedMessage: data.translated_message ?? null,
+
+    // Phase D: Dispatch through unified pipeline
+    const currentMsg = messages.find((m) => m.id === editing.id)
+    const currentVersion = (currentMsg as PipelineMessage | undefined)?.version ?? 1
+    const result = await dispatchChatOperation({
+      operation: 'message.edit',
+      conversationId,
+      senderId: userId,
+      payload: {
+        messageId: editing.id,
+        originalMessage: value,
+        editedAt: new Date().toISOString(),
+      },
+      currentVersion,
+      p2pOpen,
     })
-    setMessages((prev) => prev.map((m) => (m.id === data.id ? (data as Message) : m)))
+
+    // Phase F: Send event via WebRTC if peer supports it, skip Supabase
+    if (USE_EVENT_PROTOCOL && result.via === 'webrtc') {
+      p2pSend(JSON.stringify(result.event))
+      void patchMessage(editing.id, {
+        originalMessage: value,
+        editedAt: result.event.createdAt,
+        version: result.event.version,
+      })
+      setMessages((prev) => prev.map((m) => (m.id === editing.id ? { ...m, original_message: value, edited_at: result.event.createdAt } : m)))
+      setEditing(null); setText('')
+      inputRef.current?.focus()
+      return
+    }
+
+    // Supabase fallback (edit always goes through Supabase for server confirmation)
+    const supabase = createClient()
+    const { error: e } = await supabase
+      .from('messages')
+      .update({ original_message: value, edited_at: result.event.createdAt })
+      .eq('id', editing.id)
+    if (e) { setStatusLine(friendlyError(e, 'Could not save your edit.')); return }
+    // Update IDB with local data (server confirmed the write)
+    void patchMessage(editing.id, {
+      originalMessage: value,
+      editedAt: result.event.createdAt,
+      version: result.event.version,
+    })
+    setMessages((prev) => prev.map((m) => (m.id === editing.id ? { ...m, original_message: value, edited_at: result.event.createdAt } : m)))
     setEditing(null); setText('')
     inputRef.current?.focus()
   }
@@ -1399,9 +1575,31 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
   async function deleteMessage(m: Message) {
     setActionsMsg(null)
     const optimistic = { ...m, deleted_at: new Date().toISOString() }
-    // Phase 3: Persist delete to IndexedDB (optimistic)
-    void patchMessage(m.id, { deletedAt: optimistic.deleted_at })
+
+    // Phase D: Dispatch through unified pipeline
+    const currentVersion = ((m as unknown as PipelineMessage).version) ?? 1
+    const result = await dispatchChatOperation({
+      operation: 'message.delete',
+      conversationId,
+      senderId: userId!,
+      payload: {
+        messageId: m.id,
+        deletedAt: optimistic.deleted_at,
+      },
+      currentVersion,
+      p2pOpen,
+    })
+
+    // Optimistic UI update
     setMessages((prev) => prev.map((x) => (x.id === m.id ? optimistic : x)))
+
+    // Phase F: Send event via WebRTC if peer supports it, skip Supabase
+    if (USE_EVENT_PROTOCOL && result.via === 'webrtc') {
+      p2pSend(JSON.stringify(result.event))
+      return
+    }
+
+    // Supabase fallback (delete always goes through Supabase for server confirmation)
     const supabase = createClient()
     const { error: e } = await supabase.from('messages').update({ deleted_at: optimistic.deleted_at }).eq('id', m.id)
     if (e) {
@@ -1446,9 +1644,32 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
     if (!alreadyMine) {
       nextAll[emoji] = [...(nextAll[emoji] ?? []), userId]
     }
+
+    // Phase D: Dispatch through unified pipeline (event creation + IDB + WebRTC)
+    const action = alreadyMine ? 'reaction.remove' as const : 'reaction.add' as const
+    const currentVersion = ((m as unknown as PipelineMessage).version) ?? 1
+    const result = await dispatchChatOperation({
+      operation: action,
+      conversationId,
+      senderId: userId,
+      payload: { messageId: m.id, emoji },
+      currentVersion,
+      p2pOpen,
+    })
+
+    // Optimistic UI update
     setMessages((prev) => prev.map((x) => (x.id === m.id ? { ...x, reactions: nextAll } : x)))
-    // Phase 3: Persist optimistic reaction to IndexedDB
-    void patchMessage(m.id, { reactions: nextAll })
+    // Persist optimistic reaction to IndexedDB (reactions use caller-managed IDB
+    // because the Supabase RPC returns the confirmed full reactions state)
+    void patchMessage(m.id, { reactions: nextAll, version: result.event.version })
+
+    // Phase F: Send event via WebRTC if peer supports it, skip Supabase RPC
+    if (USE_EVENT_PROTOCOL && result.via === 'webrtc') {
+      p2pSend(JSON.stringify(result.event))
+      requestAnimationFrame(() => togglingMessages.current.delete(m.id))
+      return
+    }
+
     togglingMessages.current.add(m.id)
     try {
       const supabase = createClient()
@@ -1459,7 +1680,7 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
         setMessages((prev) => prev.map((x) => (x.id === m.id ? { ...x, reactions: before } : x)))
         return
       }
-      // Phase 3: Persist server-confirmed reaction to IndexedDB
+      // Persist server-confirmed reaction to IndexedDB
       void patchMessage(m.id, { reactions: data as Record<string, string[]> })
       setMessages((prev) => prev.map((x) => (x.id === m.id ? { ...x, reactions: data as Record<string, string[]> } : x)))
     } finally {
@@ -1569,7 +1790,21 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
       })
       const data = await res.json().catch(() => null)
       if (res.ok && data?.translatedText) {
-        // Phase 3: Persist translation to IndexedDB
+        // Phase F: Dispatch translation.update event via pipeline
+        const currentVersion = (m as unknown as PipelineMessage | undefined)?.version ?? 1
+        const result = await dispatchChatOperation({
+          operation: 'translation.update',
+          conversationId,
+          senderId: userId!,
+          payload: { messageId: m.id, translatedMessage: data.translatedText },
+          currentVersion,
+          p2pOpen,
+        })
+        // Send event via WebRTC if peer supports it
+        if (USE_EVENT_PROTOCOL && result.via === 'webrtc') {
+          p2pSend(JSON.stringify(result.event))
+        }
+        // Also persist locally (IDB already updated by dispatcher, but ensure React state)
         void patchMessage(m.id, { translatedMessage: data.translatedText })
         setMessages((prev) => prev.map((x) => x.id === m.id ? { ...x, translated_message: data.translatedText } : x))
         translatedShownRef.current.set(m.id, true)
@@ -1819,14 +2054,16 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
                 {devP2P && (
                   <span
                     className={`inline-flex flex-none items-center gap-1 rounded px-1 py-px text-[9px] font-semibold uppercase tracking-wide ${
-                      p2pStatus === 'open' ? 'bg-emerald-500/20 text-emerald-300' :
-                      p2pStatus === 'failed' ? 'bg-rose-500/20 text-rose-300' :
-                      p2pStatus === 'idle' ? 'bg-slate-600/30 text-slate-400' :
-                      'bg-amber-500/20 text-amber-300'
+                      p2pTransport.current === 'p2p' ? 'bg-emerald-500/20 text-emerald-300' :
+                      p2pTransport.current === 'connecting' ? 'bg-amber-500/20 text-amber-300' :
+                      'bg-slate-600/30 text-slate-400'
                     }`}
-                    title="Dev-only WebRTC transport state (__P2P_DEBUG__)"
+                    title={`Internal: ${p2pStatus} | Transport: ${p2pTransport.current} (__P2P_DEBUG__)`}
                   >
-                    P2P: {p2pStatus.toUpperCase()}
+                    {p2pTransport.current === 'p2p' ? 'P2P ACTIVE' :
+                     p2pTransport.current === 'connecting' ? 'P2P CONNECTING' :
+                     p2pTransport.current === 'disabled' ? 'P2P OFF' :
+                     'SUPABASE'}
                   </span>
                 )}
               </span>
@@ -2461,6 +2698,12 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
                   <ImageIcon size={22} />
                 </button>
                 <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*" className="hidden" onChange={onFileSelect} />
+                <button type="button" aria-label={voiceRecording ? 'Stop recording' : 'Record voice note'}
+                  onClick={voiceRecording ? () => void handleVoiceCancel() : () => void handleVoiceRecord()}
+                  className={`flex h-11 w-11 flex-none items-center justify-center rounded-full transition active:scale-95 ${voiceRecording ? 'animate-pulse bg-red-500 text-white' : 'text-slate-400 hover:bg-cyan-400/10 hover:text-cyan-200'}`}>
+                  {voiceRecording ? <StopCircle size={22} /> : <Mic size={22} />}
+                </button>
+                {voiceRecording && <span className="text-xs text-red-400 tabular-nums">{Math.floor(voiceDuration / 60)}:{(voiceDuration % 60).toString().padStart(2, '0')}</span>}
                 <textarea ref={inputRef} value={text} onChange={(e) => onTextChange(e.target.value)} maxLength={2000} rows={1}
                   onTouchStart={() => { kbTouchRef.current = true; setVirtualKb(true) }}
                   onKeyDown={(e) => {
@@ -2597,5 +2840,9 @@ export default function ChatPage() {
   const params = useParams<{ conversationId: string }>()
   const conversationId = params.conversationId ?? ''
   const hidden = useCallCoveringChat()
-  return <ChatRoom conversationId={conversationId} hidden={hidden} />
+  return (
+    <Suspense>
+      <ChatRoom conversationId={conversationId} hidden={hidden} />
+    </Suspense>
+  )
 }

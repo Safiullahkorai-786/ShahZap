@@ -17,6 +17,7 @@ import {
 } from './messages'
 import type { DBMessage, MessageTransport } from './schema'
 import { getLatestSenderSequence as idbGetLatestSenderSequence, getNextSenderSequence as idbGetNextSenderSequence } from './sender-sequences'
+import type { ChatEvent, ChatOperation } from '@/lib/file-transfer'
 
 // ── Canonical message type ─────────────────────────────────────────────
 // This is the single source of truth for message shape in the pipeline.
@@ -24,6 +25,7 @@ import { getLatestSenderSequence as idbGetLatestSenderSequence, getNextSenderSeq
 
 export type PipelineMessage = DBMessage & {
   senderSequence?: number
+  version?: number
 }
 
 // ── Map Supabase row to canonical type ─────────────────────────────────
@@ -41,7 +43,7 @@ export type SupabaseRow = {
   deleted_by_receiver_at?: string | null
   delivered_at?: string | null
   read_at?: string | null
-  message_type?: 'text' | 'call' | null
+  message_type?: 'text' | 'call' | 'media' | 'voice' | null
   call_mode?: 'audio' | 'video' | null
   call_status?: 'answered' | 'missed' | 'outgoing_unanswered' | null
   call_duration_seconds?: number | null
@@ -85,7 +87,7 @@ export type UIMessage = {
   deleted_by_receiver_at?: string | null
   delivered_at?: string | null
   read_at?: string | null
-  message_type?: 'text' | 'call' | null
+  message_type?: 'text' | 'call' | 'media' | 'voice' | null
   call_mode?: 'audio' | 'video' | null
   call_status?: 'answered' | 'missed' | 'outgoing_unanswered' | null
   call_duration_seconds?: number | null
@@ -222,6 +224,235 @@ export async function patchMessage(
   return updated
 }
 
+// ── Pipeline: handle a canonical ChatEvent ──────────────────────
+// The single entry point for all event-based ingestion.
+// Deduplicates by eventId, applies the operation through existing
+// pipeline functions, and returns the affected PipelineMessage.
+
+export async function handleEvent(
+  event: ChatEvent,
+  transport: MessageTransport = 'webrtc',
+): Promise<PipelineMessage | null> {
+  // Dedup by eventId (in-memory for concurrent calls)
+  if (processingIds.has(event.eventId)) return null
+  // For message.create/media.create/voice.create, eventId === messageId, so IDB
+  // dedup works directly via ingestMessage. Skip the eventId-based dedup here
+  // to avoid conflict with ingestMessage's own processingIds check.
+  const skipIdBeforeIngest = event.operation === 'message.create'
+    || event.operation === 'media.create'
+    || event.operation === 'voice.create'
+  if (!skipIdBeforeIngest) {
+    processingIds.add(event.eventId)
+  }
+  try {
+    switch (event.operation) {
+      case 'message.create': {
+        const { payload } = event
+        const msg: PipelineMessage = {
+          id: payload.messageId,
+          conversationId: event.conversationId,
+          senderId: event.senderId,
+          originalMessage: payload.originalMessage,
+          translatedMessage: payload.translatedMessage ?? null,
+          createdAt: event.createdAt,
+          transport,
+          reactions: null,
+          editedAt: null,
+          deletedAt: null,
+          replyToMessageId: payload.replyToMessageId ?? null,
+          deletedByReceiverAt: null,
+          deliveredAt: null,
+          readAt: null,
+          messageType: null,
+          callMode: null,
+          callStatus: null,
+          callDurationSeconds: null,
+          senderSequence: event.senderSequence,
+          version: event.version,
+        }
+        const isNew = await ingestMessage(msg)
+        return isNew ? msg : null
+      }
+      case 'message.edit': {
+        const { payload } = event
+        // Check delete terminality: if already deleted, reject
+        const current = await idbGetMessage(payload.messageId)
+        if (current?.deletedAt) return null
+        return patchMessage(payload.messageId, {
+          originalMessage: payload.originalMessage,
+          editedAt: payload.editedAt,
+          version: event.version,
+          transport,
+        })
+      }
+      case 'message.delete': {
+        const { payload } = event
+        return patchMessage(payload.messageId, {
+          deletedAt: payload.deletedAt,
+          version: event.version,
+          transport,
+        })
+      }
+      case 'reaction.add': {
+        const { payload } = event
+        const current = await idbGetMessage(payload.messageId)
+        if (!current) return null
+        const reactions = { ...(current.reactions ?? {}) }
+        const users = [...(reactions[payload.emoji] ?? [])]
+        if (!users.includes(event.senderId)) users.push(event.senderId)
+        reactions[payload.emoji] = users
+        return patchMessage(payload.messageId, {
+          reactions,
+          transport,
+        })
+      }
+      case 'reaction.remove': {
+        const { payload } = event
+        const current = await idbGetMessage(payload.messageId)
+        if (!current) return null
+        const reactions = { ...(current.reactions ?? {}) }
+        const users = [...(reactions[payload.emoji] ?? [])]
+        const idx = users.indexOf(event.senderId)
+        if (idx !== -1) users.splice(idx, 1)
+        if (users.length === 0) {
+          delete reactions[payload.emoji]
+        } else {
+          reactions[payload.emoji] = users
+        }
+        return patchMessage(payload.messageId, {
+          reactions,
+          transport,
+        })
+      }
+      case 'translation.update': {
+        const { payload } = event
+        return patchMessage(payload.messageId, {
+          translatedMessage: payload.translatedMessage,
+          transport,
+        })
+      }
+      case 'media.create':
+      case 'voice.create': {
+        const { payload } = event
+        const msg: PipelineMessage = {
+          id: payload.messageId,
+          conversationId: event.conversationId,
+          senderId: event.senderId,
+          originalMessage: (payload as { fileName?: string }).fileName ?? '',
+          translatedMessage: null,
+          createdAt: event.createdAt,
+          transport,
+          reactions: null,
+          editedAt: null,
+          deletedAt: null,
+          replyToMessageId: null,
+          deletedByReceiverAt: null,
+          deliveredAt: null,
+          readAt: null,
+          messageType: event.operation === 'voice.create' ? 'voice' : 'media',
+          callMode: null,
+          callStatus: null,
+          callDurationSeconds: null,
+          senderSequence: event.senderSequence,
+          version: event.version,
+        }
+        const isNew = await ingestMessage(msg)
+        return isNew ? msg : null
+      }
+      case 'media.delete': {
+        const { payload } = event
+        return patchMessage(payload.messageId, {
+          deletedAt: payload.deletedAt,
+          version: event.version,
+          transport,
+        })
+      }
+      default:
+        return null
+    }
+  } finally {
+    if (!skipIdBeforeIngest) {
+      processingIds.delete(event.eventId)
+    }
+  }
+}
+
+// ── Pipeline: dispatch an outgoing ChatOperation ────────────────
+// The single exit point for all outgoing chat operations.
+// Creates a ChatEvent, persists to IDB, and returns the event + canonical
+// message. The caller handles transport (WebRTC/Supabase) based on the
+// returned `via` hint.
+
+export type DispatchResult = {
+  event: ChatEvent
+  msg: PipelineMessage
+  uiMsg: UIMessage
+  via: 'webrtc' | 'supabase'
+}
+
+export async function dispatchChatOperation(opts: {
+  operation: ChatOperation
+  conversationId: string
+  senderId: string
+  payload: Record<string, unknown>
+  currentVersion?: number
+  p2pOpen: () => boolean
+}): Promise<DispatchResult> {
+  const { operation, conversationId, senderId, payload, currentVersion = 1, p2pOpen } = opts
+  // For message.create, eventId === messageId (per Phase B design)
+  const eventId = operation === 'message.create'
+    ? ((payload.messageId as string) ?? crypto.randomUUID())
+    : crypto.randomUUID()
+  const now = new Date().toISOString()
+  const senderSequence = await idbGetNextSenderSequence(conversationId, senderId)
+  const version = currentVersion + 1
+
+  const event: ChatEvent = {
+    kind: 'event',
+    eventId,
+    conversationId,
+    senderId,
+    senderSequence,
+    createdAt: now,
+    operation,
+    version,
+    payload: payload as never,
+  } as ChatEvent
+
+  // Persist to IDB via handleEvent (canonical ingestion path)
+  const msg = await handleEvent(event, p2pOpen() ? 'webrtc' : 'supabase')
+  const via = p2pOpen() ? 'webrtc' as const : 'supabase' as const
+
+  if (msg) {
+    return { event, msg, uiMsg: pipelineToUI(msg), via }
+  }
+
+  // handleEvent returned null (e.g. delete terminality, missing message)
+  const fallbackMsg: PipelineMessage = {
+    id: (payload.messageId as string) ?? eventId,
+    conversationId,
+    senderId,
+    originalMessage: (payload.originalMessage as string) ?? '',
+    translatedMessage: null,
+    createdAt: now,
+    transport: via,
+    reactions: null,
+    editedAt: null,
+    deletedAt: null,
+    replyToMessageId: null,
+    deletedByReceiverAt: null,
+    deliveredAt: null,
+    readAt: null,
+    messageType: null,
+    callMode: null,
+    callStatus: null,
+    callDurationSeconds: null,
+    senderSequence,
+    version,
+  }
+  return { event, msg: fallbackMsg, uiMsg: pipelineToUI(fallbackMsg), via }
+}
+
 // ── Pipeline: load from IndexedDB (for instant rendering on open) ──────
 
 export async function loadFromIndexedDB(conversationId: string): Promise<PipelineMessage[]> {
@@ -266,55 +497,34 @@ export async function sendTextMessage(opts: {
 }): Promise<{ msg: PipelineMessage; uiMsg: UIMessage; via: 'webrtc' | 'supabase' }> {
   const { conversationId, senderId, content, replyToId, p2pSend, p2pOpen } = opts
 
-  // Generate message ID
-  const id = crypto.randomUUID()
-  const now = new Date().toISOString()
-
-  // Get next sender sequence (atomically increment + persist)
-  const senderSequence = await idbGetNextSenderSequence(conversationId, senderId)
-
-  // Build canonical message
-  const canonical: PipelineMessage = {
-    id,
+  // Use the unified dispatcher for IDB persistence
+  const result = await dispatchChatOperation({
+    operation: 'message.create',
     conversationId,
     senderId,
-    originalMessage: content,
-    translatedMessage: null,
-    createdAt: now,
-    transport: p2pOpen() ? 'webrtc' : 'supabase',
-    reactions: null,
-    editedAt: null,
-    deletedAt: null,
-    replyToMessageId: replyToId ?? null,
-    deletedByReceiverAt: null,
-    deliveredAt: null,
-    readAt: null,
-    messageType: null,
-    callMode: null,
-    callStatus: null,
-    callDurationSeconds: null,
-    senderSequence,
-  }
+    payload: {
+      messageId: crypto.randomUUID(),
+      originalMessage: content,
+      replyToMessageId: replyToId,
+    },
+    currentVersion: 0,
+    p2pOpen,
+  })
 
-  // Persist locally (optimistic)
-  await ingestMessage(canonical)
-
-  // Send via DataChannel if open
-  if (p2pOpen()) {
+  // Send legacy kind:'text' via DataChannel for backward compatibility
+  if (result.via === 'webrtc') {
     const textMsg = {
       kind: 'text' as const,
-      id,
+      id: result.msg.id,
       conversationId,
       senderId,
       content,
-      createdAt: now,
-      senderSequence,
+      createdAt: result.msg.createdAt,
+      senderSequence: result.msg.senderSequence ?? 0,
       replyToId,
     }
     p2pSend(JSON.stringify(textMsg))
-    return { msg: canonical, uiMsg: pipelineToUI(canonical), via: 'webrtc' }
   }
 
-  // Supabase fallback — caller handles the DB insert
-  return { msg: canonical, uiMsg: pipelineToUI(canonical), via: 'supabase' }
+  return { msg: result.msg, uiMsg: result.uiMsg, via: result.via }
 }

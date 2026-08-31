@@ -38,11 +38,12 @@ export type DBMessage = {
   deletedByReceiverAt: string | null
   deliveredAt: string | null
   readAt: string | null
-  messageType: 'text' | 'call' | null
+  messageType: 'text' | 'call' | 'media' | 'voice' | null
   callMode: 'audio' | 'video' | null
   callStatus: 'answered' | 'missed' | 'outgoing_unanswered' | null
   callDurationSeconds: number | null
   senderSequence?: number
+  version?: number
 }
 
 export type DBMedia = {

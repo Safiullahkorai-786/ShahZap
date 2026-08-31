@@ -23,12 +23,33 @@ import { useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ICE_SERVERS } from '@/lib/call'
 import { logP2P, logReconcile, p2pDebugEnabled } from '@/lib/p2p-debug'
+import type { ChatCapabilities } from '@/lib/file-transfer'
 
 type Status = 'idle' | 'signaling' | 'connecting' | 'open' | 'failed'
+
+// User-facing transport state — what the badge should show.
+export type TransportStatus = 'p2p' | 'connecting' | 'supabase' | 'disabled'
+
+// If the WebRTC handshake has not completed within this window, give up and
+// let Supabase carry messages.  The hook will still retry in the background
+// when the peer is online.
+const SIGNALING_TIMEOUT_MS = 10_000
+
+// After this many consecutive signaling failures, stop retrying for this
+// session.  The conversation remains fully functional via Supabase.  A page
+// refresh resets the counter.
+const MAX_SIGNALLING_ATTEMPTS = 3
+
+// Phase B: Local capabilities advertised during sync handshake.
+const LOCAL_CAPABILITIES: ChatCapabilities = {
+  protocolVersion: 2,
+  supportsEvents: true,
+}
 
 export function useBackgroundP2P(opts: {
   conversationId: string | null
   myId: string | null
+  otherId: string | null
   onData: (data: ArrayBuffer | string) => void
   enabled?: boolean
   // True → peer is online, attempt P2P. False → peer offline, stay responsive
@@ -38,7 +59,7 @@ export function useBackgroundP2P(opts: {
   // changes, so a page can render a live P2P indicator while testing.
   onStatusChange?: (status: Status) => void
 }) {
-  const { conversationId, myId, onData, enabled = true, peerOnline, onStatusChange } = opts
+  const { conversationId, myId, otherId, onData, enabled = true, peerOnline, onStatusChange } = opts
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const dcRef = useRef<RTCDataChannel | null>(null)
   const chRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null)
@@ -48,9 +69,11 @@ export function useBackgroundP2P(opts: {
   const isInitiatorRef = useRef(false)
   const onDataRef = useRef(onData)
   const retryTimerRef = useRef<number | undefined>(undefined)
+  const signalingTimeoutRef = useRef<number | undefined>(undefined)
   const peerOnlineRef = useRef(peerOnline)
   const attemptsRef = useRef(0)
   const onStatusRef = useRef(onStatusChange)
+  const transportRef = useRef<TransportStatus>('disabled')
 
   useEffect(() => { onDataRef.current = onData }, [onData])
   useEffect(() => { peerOnlineRef.current = peerOnline }, [peerOnline])
@@ -81,16 +104,36 @@ export function useBackgroundP2P(opts: {
   const isOpen = useCallback(() => dcRef.current?.readyState === 'open', [])
 
   useEffect(() => {
-    if (!conversationId || !myId || !enabled) return
+    if (!conversationId || !myId || !otherId || !enabled) {
+      transportRef.current = 'disabled'
+      return
+    }
     let active = true
     const supabase = createClient()
     const topic = `signal:${conversationId}`
-    const ch = supabase.channel(topic, { config: { broadcast: { self: false } } })
-    chRef.current = ch
     logP2P('initializing', { conversationId, peerOnline: peerOnlineRef.current })
 
     const token = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
     tokenRef.current = token
+
+    // Deterministic leader election: the peer whose user ID sorts first
+    // alphabetically always initiates. Both peers compute the same result.
+    const iAmInitiator = myId < otherId
+
+    function clearSignalingTimeout() {
+      if (signalingTimeoutRef.current) {
+        window.clearTimeout(signalingTimeoutRef.current)
+        signalingTimeoutRef.current = undefined
+      }
+    }
+
+    function updateTransport() {
+      if (!enabled) { transportRef.current = 'disabled'; return }
+      if (dcRef.current?.readyState === 'open') { transportRef.current = 'p2p'; return }
+      const s = statusRef.current
+      if (s === 'signaling' || s === 'connecting') { transportRef.current = 'connecting'; return }
+      transportRef.current = 'supabase'
+    }
 
     function createPC() {
       logP2P('RTCPeerConnection created', { conversationId })
@@ -98,15 +141,21 @@ export function useBackgroundP2P(opts: {
       pc.onicecandidate = (ev) => {
         if (ev.candidate) logP2P('ICE gathering', { candidateIndex: ev.candidate?.sdpMLineIndex })
         if (ev.candidate && active) {
-          void ch.send({ type: 'broadcast', event: 'signal', payload: { type: 'ice', candidate: ev.candidate.toJSON(), token: tokenRef.current, from: myId } })
+          void chRef.current?.send({ type: 'broadcast', event: 'signal', payload: { type: 'ice', candidate: ev.candidate.toJSON(), token: tokenRef.current, from: myId } })
         }
       }
       pc.onconnectionstatechange = () => {
         const s = pc.connectionState
         logP2P('connectionState', { state: s, conversationId })
-        if (s === 'connected') setStatus('connecting')
+        if (s === 'connected') {
+          clearSignalingTimeout()
+          setStatus('connecting')
+          updateTransport()
+        }
         if (s === 'failed' || s === 'disconnected' || s === 'closed') {
+          clearSignalingTimeout()
           setStatus('failed')
+          updateTransport()
           cleanup()
           // Do not retry while the peer is known offline.
           if (active && peerOnlineRef.current !== false) {
@@ -126,26 +175,33 @@ export function useBackgroundP2P(opts: {
       dc.onmessage = (ev) => onDataRef.current(ev.data)
       dc.onopen = () => {
         logP2P('DataChannel open', { conversationId, initiator: isInitiatorRef.current })
+        clearSignalingTimeout()
         setStatus('open')
+        updateTransport()
         attemptsRef.current = 0
         // Reconnect reconciliation: responder sends sync-request
-        // with sender-scoped last known sequences
+        // with sender-scoped last known sequences and capabilities
         if (!isInitiatorRef.current && myId) {
           logReconcile('sync-request')
           const syncReq = JSON.stringify({
             kind: 'sync-request',
             senderId: myId,
             lastKnownSequences: {},
+            capabilities: LOCAL_CAPABILITIES,
           })
           try { dc.send(syncReq) } catch {}
         }
       }
-      dc.onclose = () => { logP2P('DataChannel closed', { conversationId }); setStatus('idle') }
+      dc.onclose = () => { logP2P('DataChannel closed', { conversationId }); setStatus('idle'); updateTransport() }
       dcRef.current = dc
     }
 
     function scheduleRetry() {
       if (retryTimerRef.current) return
+      if (attemptsRef.current >= MAX_SIGNALLING_ATTEMPTS) {
+        logP2P('max signaling attempts reached, giving up for this session', { attempts: attemptsRef.current, conversationId })
+        return
+      }
       // Bounded backoff: cap attempt count and lengthen the interval so an
       // unreachable peer never causes unbounded resource churn.
       const backoff = Math.min(3000 * Math.pow(2, Math.min(attemptsRef.current, 4)), 30000)
@@ -163,15 +219,36 @@ export function useBackgroundP2P(opts: {
     async function start() {
       if (!active) return
       logP2P('starting', { conversationId, peerOnline: peerOnlineRef.current })
+      clearSignalingTimeout()
       setStatus('signaling')
+      updateTransport()
       if (pcRef.current) { try { pcRef.current.close() } catch {} pcRef.current = null }
       if (dcRef.current) { try { dcRef.current.close() } catch {} dcRef.current = null }
 
+      // Create a FRESH signaling channel each time.  After cleanup() destroys
+      // the old channel, re-using the same instance would throw "join multiple
+      // times".  A fresh channel ensures retries work correctly.
+      if (chRef.current) { void supabase.removeChannel(chRef.current); chRef.current = null }
+      const ch = supabase.channel(topic, { config: { broadcast: { self: false } } })
+      chRef.current = ch
+
       const pc = createPC()
 
-      // Only the peer with the earlier creation timestamp initiates.
-      // The other peer waits for an offer and becomes the responder.
-      const iAmInitiator = Date.now() <= parseInt(token.split('-')[0], 36)
+      // If the WebRTC handshake does not complete within the timeout window,
+      // give up and let Supabase carry messages.  The hook will retry later
+      // if the peer is online.
+      signalingTimeoutRef.current = window.setTimeout(() => {
+        if (!active) return
+        if (statusRef.current === 'signaling') {
+          logP2P('signaling timeout', { conversationId })
+          setStatus('failed')
+          updateTransport()
+          cleanup()
+          if (peerOnlineRef.current !== false) {
+            scheduleRetry()
+          }
+        }
+      }, SIGNALING_TIMEOUT_MS)
 
       // Presence-aware: do NOT send an offer while the peer is known offline.
       // We create the DataChannel so we are ready to answer if the peer
@@ -238,8 +315,14 @@ export function useBackgroundP2P(opts: {
 
     function cleanup() {
       logP2P('destroyed', { conversationId })
+      clearSignalingTimeout()
       if (retryTimerRef.current) { window.clearTimeout(retryTimerRef.current); retryTimerRef.current = undefined }
-      if (dcRef.current) { try { dcRef.current.close() } catch {} dcRef.current = null }
+      if (dcRef.current) {
+        dcRef.current.onopen = null
+        dcRef.current.onclose = null
+        dcRef.current.onmessage = null
+        try { dcRef.current.close() } catch {} dcRef.current = null
+      }
       if (pcRef.current) {
         pcRef.current.onicecandidate = null
         pcRef.current.onconnectionstatechange = null
@@ -253,7 +336,8 @@ export function useBackgroundP2P(opts: {
     void start()
 
     return () => { active = false; cleanup() }
-  }, [conversationId, myId, enabled, peerOnline])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId, myId, otherId, enabled])
 
-  return { send, isOpen, status: statusRef }
+  return { send, isOpen, status: statusRef, transport: transportRef }
 }
