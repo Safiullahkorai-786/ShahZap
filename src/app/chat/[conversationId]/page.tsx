@@ -351,6 +351,11 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
   useEffect(() => {
     if (hidden) return
     const supabase = createClient()
+    // Unique per effect run so React Strict Mode's double-mount never reuses an
+    // already-joined RealtimeChannel under the same topic (RealtimeClient dedupes
+    // channels by topic; calling .on() on a joined channel throws
+    // "cannot add callbacks after subscribe()").
+    const rtNonce = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
     let channel: ReturnType<typeof supabase.channel> | undefined
     let active = true
     // Smart fallback: only poll when Realtime is down or silent.
@@ -525,7 +530,7 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
         }
       })()
 
-      channel = supabase.channel(`conversation:${conversationId}`, { config: { broadcast: { self: false } } })
+      channel = supabase.channel(`conversation:${conversationId}:${rtNonce}`, { config: { broadcast: { self: false } } })
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload) => {
           lastRealtimeActivity = Date.now()
           const message = payload.new as Message
@@ -726,6 +731,14 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
           startSmartPoll()
         })
       channelRef.current = channel
+
+      // A StrictMode first-mount run may finish subscribing after its cleanup
+      // already ran (active false); tear it down so it can't deliver duplicates.
+      if (!active) {
+        void supabase.removeChannel(channel)
+        channelRef.current = null
+        return
+      }
 
       // Always run the polling safety net, independent of subscribe status.
       // This is essential for the call's side chat panel, whose ChatRoom

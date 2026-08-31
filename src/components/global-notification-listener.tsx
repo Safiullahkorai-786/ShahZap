@@ -19,15 +19,17 @@ export function GlobalNotificationListener() {
 
   useEffect(() => {
     const supabase = createClient()
+    let active = true
+    const rtNonce = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 
     async function init() {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      if (!user || !active) return
       userIdRef.current = user.id
 
       // Subscribe to ALL notification events for this user
       const channel = supabase
-        .channel(`global-notif:${user.id}`)
+        .channel(`global-notif:${user.id}:${rtNonce}`)
         .on(
           'postgres_changes',
           { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
@@ -60,11 +62,13 @@ export function GlobalNotificationListener() {
         .subscribe()
 
       channelRef.current = channel
+      if (!active) { void supabase.removeChannel(channel); channelRef.current = null }
     }
 
     void init()
 
     return () => {
+      active = false
       if (channelRef.current) void supabase.removeChannel(channelRef.current)
       if (channelRef2.current) void supabase.removeChannel(channelRef2.current)
     }

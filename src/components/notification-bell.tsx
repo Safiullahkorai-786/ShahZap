@@ -138,7 +138,13 @@ export function NotificationBell() {
 
   useEffect(() => {
     const supabase = createClient()
+    // Unique per effect run so React Strict Mode's double-mount never reuses an
+    // already-joined RealtimeChannel under the same topic (RealtimeClient dedupes
+    // channels by topic; calling .on() on a joined channel throws
+    // "cannot add callbacks after subscribe()").
+    const rtNonce = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
     let channel: ReturnType<typeof supabase.channel> | undefined
+    let active = true
 
     async function init() {
       await fetchNotifications()
@@ -147,7 +153,7 @@ export function NotificationBell() {
       if (!user) return
 
       channel = supabase
-        .channel(`notif-bell:${user.id}`)
+        .channel(`notif-bell:${user.id}:${rtNonce}`)
         .on(
           'postgres_changes',
           { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
@@ -223,12 +229,17 @@ export function NotificationBell() {
           },
         )
         .subscribe()
+
+      // A StrictMode first-mount run may finish subscribing after its cleanup
+      // already ran (active false); tear it down so it can't deliver duplicates.
+      if (!active) { void supabase.removeChannel(channel); channel = undefined }
     }
 
     void init()
     const ticker = window.setInterval(() => setNowTick(Date.now()), 30_000)
 
     return () => {
+      active = false
       window.clearInterval(ticker)
       if (channel) void supabase.removeChannel(channel)
     }

@@ -2,6 +2,12 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   async headers() {
+    // In development, Next.js/Turbopack recompiles bundles on every change.
+    // A long-lived Cache-Control header causes the browser to serve stale JS
+    // (e.g. compiled without NEXT_PUBLIC_* env vars). Only apply the immutable
+    // cache in production where content-hashed bundles are truly stable.
+    if (process.env.NODE_ENV !== 'production') return [];
+
     return [
       // Content-hashed build output never changes — cache for a year.
       {

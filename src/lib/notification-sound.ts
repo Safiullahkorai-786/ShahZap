@@ -141,7 +141,7 @@ function tone(c: AudioContext, { freq, at = 0, dur = 0.25, peak = 0.16, type = '
   osc.frequency.setValueAtTime(freq, t0)
   if (glideTo) osc.frequency.exponentialRampToValueAtTime(glideTo, t0 + dur)
   gain.gain.setValueAtTime(0.0001, t0)
-  gain.gain.exponentialRampToValueAtTime(peak, t0 + 0.02)
+  gain.gain.exponentialRampToValueAtTime(Math.max(peak, 0.0001), t0 + 0.02)
   gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur)
   gain.connect(c.destination)
   osc.connect(gain)

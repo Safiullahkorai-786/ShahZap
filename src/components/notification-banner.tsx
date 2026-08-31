@@ -361,15 +361,17 @@ export function NotificationBanner() {
   // Realtime listener: enqueue incoming notification banners.
   useEffect(() => {
     const supabase = createClient()
+    let active = true
+    const rtNonce = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
     let channel: ReturnType<typeof supabase.channel> | undefined
 
     async function init() {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      if (!user || !active) return
       userIdRef.current = user.id
 
       channel = supabase
-        .channel(`notif-banner:${user.id}`)
+        .channel(`notif-banner:${user.id}:${rtNonce}`)
         .on(
           'postgres_changes',
           { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
@@ -423,11 +425,14 @@ export function NotificationBanner() {
           },
         )
         .subscribe()
+
+      if (!active) { if (channel) { void supabase.removeChannel(channel); channel = undefined } }
     }
 
     void init()
 
     return () => {
+      active = false
       if (channel) void supabase.removeChannel(channel)
     }
   }, [])

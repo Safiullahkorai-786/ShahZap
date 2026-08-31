@@ -8,3 +8,4 @@ supabase/.temp/
 
 .wrangler/
 *.tsbuildinfo
+src/app/.layout.tsx.swp
