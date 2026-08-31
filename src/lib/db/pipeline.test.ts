@@ -2570,5 +2570,187 @@ describe('Phase I — Cost Optimization', () => {
       expect(loaded.map((m) => m.id).sort()).toEqual(['cost-persist-1', 'cost-persist-2'])
     })
   })
+
+  describe('Mixed-transport CRUD: cross-transport mutations', () => {
+    it('T1: reaction on a Supabase-delivered message via WebRTC', async () => {
+      // Peer B received a message via Supabase Realtime
+      const canonical = supabaseToPipeline(makeRow({ id: 'mix-rx-1', sender_id: 'peer-b' }), 'supabase')
+      canonical.conversationId = convId
+      await ingestMessage(canonical)
+
+      // Peer A reacts to it via WebRTC
+      const result = await dispatchChatOperation({
+        operation: 'reaction.add',
+        conversationId: convId,
+        senderId: uid,
+        payload: { messageId: 'mix-rx-1', emoji: '❤️' },
+        currentVersion: 1,
+        p2pOpen: () => true,
+      })
+      expect(result.via).toBe('webrtc')
+
+      // Peer B receives the reaction event via DataChannel
+      const received = await handleEvent(result.event, 'webrtc')
+      expect(received).not.toBeNull()
+      expect(received!.reactions).toEqual({ '❤️': [uid] })
+    })
+
+    it('T2: edit on a Supabase-delivered message via WebRTC', async () => {
+      const canonical = supabaseToPipeline(makeRow({ id: 'mix-ed-1', sender_id: 'peer-b', original_message: 'original' }), 'supabase')
+      canonical.conversationId = convId
+      await ingestMessage(canonical)
+
+      const result = await dispatchChatOperation({
+        operation: 'message.edit',
+        conversationId: convId,
+        senderId: uid,
+        payload: { messageId: 'mix-ed-1', originalMessage: 'edited', editedAt: now },
+        currentVersion: 1,
+        p2pOpen: () => true,
+      })
+      expect(result.via).toBe('webrtc')
+
+      const received = await handleEvent(result.event, 'webrtc')
+      expect(received).not.toBeNull()
+      expect(received!.originalMessage).toBe('edited')
+    })
+
+    it('T3: delete on a Supabase-delivered message via WebRTC', async () => {
+      const canonical = supabaseToPipeline(makeRow({ id: 'mix-dl-1', sender_id: 'peer-b' }), 'supabase')
+      canonical.conversationId = convId
+      await ingestMessage(canonical)
+
+      const result = await dispatchChatOperation({
+        operation: 'message.delete',
+        conversationId: convId,
+        senderId: uid,
+        payload: { messageId: 'mix-dl-1', deletedAt: now },
+        currentVersion: 1,
+        p2pOpen: () => true,
+      })
+      expect(result.via).toBe('webrtc')
+
+      const received = await handleEvent(result.event, 'webrtc')
+      expect(received).not.toBeNull()
+      expect(received!.deletedAt).toBe(now)
+    })
+
+    it('T4: reaction on a WebRTC-delivered message via Supabase', async () => {
+      // Peer A sent a message via WebRTC
+      await dispatchChatOperation({
+        operation: 'message.create',
+        conversationId: convId,
+        senderId: 'peer-a',
+        payload: { messageId: 'mix-rx-4', originalMessage: 'via webrtc' },
+        currentVersion: 0,
+        p2pOpen: () => true,
+      })
+
+      // Peer B reacts via Supabase (P2P disconnected)
+      const reactResult = await dispatchChatOperation({
+        operation: 'reaction.add',
+        conversationId: convId,
+        senderId: uid,
+        payload: { messageId: 'mix-rx-4', emoji: '🔥' },
+        currentVersion: 1,
+        p2pOpen: () => false,
+      })
+      expect(reactResult.via).toBe('supabase')
+
+      const loaded = await loadFromIndexedDB(convId)
+      const msg = loaded.find((m) => m.id === 'mix-rx-4')
+      expect(msg!.reactions).toEqual({ '🔥': [uid] })
+    })
+
+    it('T5: edit on a WebRTC-delivered message via Supabase', async () => {
+      await dispatchChatOperation({
+        operation: 'message.create',
+        conversationId: convId,
+        senderId: 'peer-a',
+        payload: { messageId: 'mix-ed-5', originalMessage: 'original' },
+        currentVersion: 0,
+        p2pOpen: () => true,
+      })
+
+      const editResult = await dispatchChatOperation({
+        operation: 'message.edit',
+        conversationId: convId,
+        senderId: uid,
+        payload: { messageId: 'mix-ed-5', originalMessage: 'edited', editedAt: now },
+        currentVersion: 1,
+        p2pOpen: () => false,
+      })
+      expect(editResult.via).toBe('supabase')
+
+      const loaded = await loadFromIndexedDB(convId)
+      const msg = loaded.find((m) => m.id === 'mix-ed-5')
+      expect(msg!.originalMessage).toBe('edited')
+    })
+
+    it('T6: delete on a WebRTC-delivered message via Supabase', async () => {
+      await dispatchChatOperation({
+        operation: 'message.create',
+        conversationId: convId,
+        senderId: 'peer-a',
+        payload: { messageId: 'mix-dl-6', originalMessage: 'to delete' },
+        currentVersion: 0,
+        p2pOpen: () => true,
+      })
+
+      const delResult = await dispatchChatOperation({
+        operation: 'message.delete',
+        conversationId: convId,
+        senderId: uid,
+        payload: { messageId: 'mix-dl-6', deletedAt: now },
+        currentVersion: 1,
+        p2pOpen: () => false,
+      })
+      expect(delResult.via).toBe('supabase')
+
+      const loaded = await loadFromIndexedDB(convId)
+      const msg = loaded.find((m) => m.id === 'mix-dl-6')
+      expect(msg!.deletedAt).toBe(now)
+    })
+
+    it('T7: refresh after mixed operations preserves all mutations', async () => {
+      // Create message via WebRTC
+      await dispatchChatOperation({
+        operation: 'message.create',
+        conversationId: convId,
+        senderId: 'peer-a',
+        payload: { messageId: 'mix-t7', originalMessage: 'persistent' },
+        currentVersion: 0,
+        p2pOpen: () => true,
+      })
+
+      // React via Supabase
+      await dispatchChatOperation({
+        operation: 'reaction.add',
+        conversationId: convId,
+        senderId: uid,
+        payload: { messageId: 'mix-t7', emoji: '👍' },
+        currentVersion: 1,
+        p2pOpen: () => false,
+      })
+
+      // Edit via WebRTC
+      await dispatchChatOperation({
+        operation: 'message.edit',
+        conversationId: convId,
+        senderId: uid,
+        payload: { messageId: 'mix-t7', originalMessage: 'edited', editedAt: now },
+        currentVersion: 2,
+        p2pOpen: () => true,
+      })
+
+      // Simulate refresh: load from IDB
+      const loaded = await loadFromIndexedDB(convId)
+      const msg = loaded.find((m) => m.id === 'mix-t7')
+      expect(msg).toBeDefined()
+      expect(msg!.originalMessage).toBe('edited')
+      expect(msg!.reactions).toEqual({ '👍': [uid] })
+      expect(msg!.editedAt).toBe(now)
+    })
+  })
 })
 

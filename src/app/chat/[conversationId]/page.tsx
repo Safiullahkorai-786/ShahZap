@@ -1208,7 +1208,12 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
     if (parsed.conversationId !== conversationId) return
     const result = await handleEvent(parsed, 'webrtc')
     if (result) {
-      setMessages((current) => (current.some((item) => item.id === result.id) ? current : [...current, pipelineToUI(result) as unknown as Message]))
+      const uiResult = pipelineToUI(result) as unknown as Message
+      setMessages((current) => {
+        const exists = current.some((item) => item.id === result.id)
+        if (!exists) return [...current, uiResult]
+        return current.map((item) => (item.id === result.id ? { ...item, ...uiResult } : item))
+      })
       playMessageSound()
     }
   }, [userId, conversationId, playMessageSound])
@@ -1334,7 +1339,12 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
               for (const event of resp.events) {
                 void handleEvent(event, 'webrtc').then((result) => {
                   if (result) {
-                    setMessages((current) => (current.some((item) => item.id === result.id) ? current : [...current, pipelineToUI(result) as unknown as Message]))
+                    const uiResult = pipelineToUI(result) as unknown as Message
+                    setMessages((current) => {
+                      const exists = current.some((item) => item.id === result.id)
+                      if (!exists) return [...current, uiResult]
+                      return current.map((item) => (item.id === result.id ? { ...item, ...uiResult } : item))
+                    })
                   }
                 })
               }
