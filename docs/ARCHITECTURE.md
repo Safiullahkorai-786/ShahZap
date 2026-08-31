@@ -101,8 +101,8 @@ WebRTC is the preferred transport for realtime communication:
 - Ordered, binary (`arraybuffer`), 16KB chunks
 - One DataChannel per conversation, survives call start/end
 - Token-based signaling validation
-- Deterministic initiator selection (earlier timestamp = initiator)
-- Auto-retry on failure (3s interval)
+- Initiator selection: local-time heuristic `Date.now() <= parseInt(token.split('-')[0], 36)`. Because both peers create their token in the same millisecond, it is effectively true for both — the channel still converges because the second subscriber's offer reaches the first (both send offers); not currently a correctness bug, but the "earlier peer initiates" intent is not achieved.
+- Retry (bounded exponential backoff): `backoff = min(3000 * 2^min(attempts, 4), 30000)` ms → 3000, 6000, 12000, 24000, then capped at 30000. `attemptsRef` resets to 0 on DataChannel open and on teardown. Retries are **not** scheduled while the peer is known offline (`peerOnline !== false`).
 
 ### Text Messaging
 - Text messages route through DataChannel when open (WebRTC-first)
@@ -236,6 +236,61 @@ UI
 
 **Supabase is NOT the source of truth for WebRTC-delivered messages.**
 
+### Transport vs Presence vs Conversation Existence (Phase 4.3)
+
+**WebRTC availability must never determine whether a DM can be opened.**
+
+A DM is openable with a recipient who is ONLINE or OFFLINE, and while WebRTC is
+OPEN, CONNECTING, DISCONNECTED, or FAILED. The conversation UI does not depend
+on WebRTC being connected. WebRTC is a transport; it is not the source of truth
+for whether a conversation exists.
+
+- **Conversation existence** = two participants sharing one `conversation_id`.
+  Independent of presence. `start_direct_chat` creates/finds one without any
+  online-window check; accepted **friends** are always DM-able even when the
+  peer is offline and fully private (friendship is mutual consent).
+- **Presence** = whether the peer is online right now (`last_active_at` window).
+  Only decides whether WebRTC can be attempted and whether `delivered_at` is
+  stamped on insert. It never blocks opening or using a conversation.
+- **Transport** = the pipe a message rides (`webrtc` vs `supabase`).
+- **Offline delivery (Supabase mailbox)** = writing to the `messages` table when
+  the peer is offline; the peer ingests pending rows through the unified
+  pipeline when they return.
+- **WebRTC reconciliation** = `sync-request`/`sync-response` on DataChannel open
+  to fill gaps when a peer reconnects.
+
+Presence-aware P2P (`useBackgroundP2P`): when the peer is known offline we keep
+the signaling channel subscribed (so we can still answer an inbound offer) but do
+not initiate offers or schedule retries. Retries use bounded exponential backoff.
+This prevents WebRTC from churning/degrading the page when a DM is opened with an
+offline recipient.
+
+Offline send flow (recipient offline):
+
+```
+A writes message
+   ↓
+crypto.randomUUID() → canonical messageId
+   ↓
+p2pOpen() false (peer offline / WebRTC down)
+   ↓
+supabase.from('messages').insert({ id: messageId, ... })   ← explicit id
+   ↓
+unified pipeline → IndexedDB + UI (optimistic, immediate)
+```
+
+Recipient return flow:
+
+```
+B comes online and opens ShahZap / the DM
+   ↓
+loadFromIndexedDB (instant) → supabase select (pending rows)
+   ↓
+ingestBatch → unified pipeline → processingIds + unique messageId dedup
+   ↓
+IndexedDB + UI
+```
+
 ### Pipeline API (`src/lib/db/pipeline.ts`)
 
 ```typescript
@@ -259,6 +314,8 @@ SupabaseRow → supabaseToPipeline() → PipelineMessage (canonical)
 PipelineMessage → pipelineToUI() → UIMessage (React state)
 UIMessage → uiToPipeline() → PipelineMessage (IndexedDB)
 ```
+
+> **Read-only constraint (CRITICAL):** The React `messages` state must contain **only** snake_case `UIMessage` objects (the shape the renderer and `<RichText>` consume). Any `PipelineMessage` (camelCase) entering the DM page via `loadFromIndexedDB()`, `ingestBatch()`, or a local/WebRTC send **must** be mapped through `pipelineToUI()` before being added to state. Skipping this made `m.original_message` `undefined` for rendered text messages, which crashed `RichText`'s `useMemo(() => parse(text))` on `text.split()` — production error `Cannot read properties of undefined (reading 'split')`.
 
 ### Current Integration Points
 
@@ -410,6 +467,18 @@ Users can clear browser data at any time — this is acceptable.
 - Session stored in cookies (via `@supabase/ssr`)
 - Profile created with random display name on first login
 - Profile data: display_name, gender, age_band, country, languages, interests
+
+**Offline-mailbox identity (Phase 4.3):** anonymous users are created via
+`supabase.auth.signInAnonymously()`. The server-issued `auth.uid()` (UUID) is a
+stable identifier stored in the Auth session cookie, used as `profile_id` across
+`conversations` / `conversation_participants` / `messages`. This is stable enough
+to support asynchronous/offline delivery keyed by `conversation_id`/`profile_id`
+across the recipient's offline period. No new auth system is introduced.
+
+**Limitation (documented):** if the recipient clears browser data/cookies or the
+anonymous session is lost, the identifier is gone and history does not follow to
+a new session. Offline delivery is scoped to a stable anonymous session, matching
+the product model ("chat history does not follow the user to another device").
 
 ---
 

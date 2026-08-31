@@ -227,6 +227,139 @@ Survives page refresh. Resets on new anonymous session (IndexedDB cleanup).
 
 ---
 
+## Phase 4.3: Offline DM Access + Asynchronous Message Delivery ✅
+
+### Core Rule
+
+**WebRTC is a transport, not a source of truth.** A conversation, and the
+ability to open and message in it, must NEVER depend on WebRTC being
+connected — or on the recipient being online/present.
+
+A DM is openable when the recipient is ONLINE or OFFLINE, and WebRTC is OPEN,
+CONNECTING, DISCONNECTED, or FAILED. Presence only decides transport
+availability, never conversation existence.
+
+### Conceptual model
+
+```
+                         SEND MESSAGE
+                              │
+                       Is WebRTC OPEN?
+                         /          \
+                       YES           NO
+                        │             │
+                     WebRTC       Supabase
+                        │          fallback
+                        │             │
+                        └──────┬──────┘
+                               ▼
+                        Unified Pipeline
+                               │
+                        ┌──────┴──────┐
+                        ▼             ▼
+                    IndexedDB         UI
+```
+
+### Transport / Presence / Existence (distinctions)
+
+| Concept | Definition | Determines |
+|---|---|---|
+| **Transport** | Which pipe a message rides (`webrtc` vs `supabase`) | Delivery mechanism only |
+| **Presence** | Whether the peer is online right now (`last_active_at` window) | Whether WebRTC can be attempted; `delivered_at` tick on insert |
+| **Conversation existence** | Two participants sharing one `conversation_id` | Whether the DM can be opened at all — independent of presence |
+| **Offline delivery** | Sending to a `messages` row when the peer is offline | Supabase mailbox; retrieved when peer returns |
+| **IndexedDB persistence** | Local store of all messages | Offline rendering, dedup, history |
+| **Supabase mailbox/fallback** | `messages` table used when WebRTC unavailable OR peer offline | Async delivery + controlled fallback |
+| **WebRTC reconciliation** | `sync-request`/`sync-response` on DataChannel open | Filling gaps when a peer reconnects |
+
+### Files Modified
+
+- `supabase/migrations/20260831000100_fix_offline_friend_dm.sql` — `start_direct_chat`
+  now also authorizes a DM when the two users are **accepted friends**, so an
+  offline, fully-private friend is still DM-able (friendship is mutual consent,
+  independent of directory visibility flags and presence).
+- `src/hooks/use-background-p2p.ts` — presence-aware P2P: when the peer is known
+  offline, keep the signaling channel subscribed (so we can still answer an
+  inbound offer) but do NOT initiate offers or schedule retries. Retries use
+  bounded exponential backoff. WebRTC no longer churns/degrades the page when a
+  DM is opened with an offline recipient.
+- `src/app/chat/[conversationId]/page.tsx` — passes `peerOnline={otherOnline}` to
+  `useBackgroundP2P`. Offline send already routes through the Supabase fallback
+  (`p2pOpen()` false → `insert({ id: messageId, ... })`); recipient reconnect
+  already ingests pending rows via `ingestBatch` (initial load + smart poll +
+  realtime), all deduplicated.
+
+### Offline send flow (recipient offline)
+
+```
+A writes message
+       ↓
+crypto.randomUUID() → messageId (canonical)
+       ↓
+p2pOpen() false (peer offline / WebRTC down)
+       ↓
+supabase.from('messages').insert({ id: messageId, ... })   ← explicit id
+       ↓
+supabaseToPipeline → ingestMessage → IndexedDB + UI (optimistic, immediate)
+       ↓
+messages row persists (mailbox)
+```
+
+### Recipient return flow
+
+```
+B comes online, opens ShahZap / the DM
+       ↓
+loadFromIndexedDB (instant render of local copy)
+       ↓
+supabase.from('messages').select(...) → pending rows (mailbox)
+       ↓
+ingestBatch(..., 'supabase') → unified pipeline
+       ↓
+processingIds + IndexedDB unique messageId dedup → one record
+       ↓
+UI + IndexedDB
+```
+
+### Online WebRTC flow (unchanged, WebRTC-first)
+
+```
+A → WebRTC DataChannel → B    (zero Supabase message INSERT for successful P2P)
+```
+
+### Identity model (what identifies a recipient offline)
+
+Anonymous users are created via `supabase.auth.signInAnonymously()`. The
+server-issued `auth.uid()` (UUID) is stored in the Auth session cookie and used
+as `profile_id` in `conversations`/`conversation_participants`/`messages`. This
+is a stable identifier across the recipient's offline period, so an offline
+mailbox keyed by `conversation_id`/`profile_id` is reliable. No new auth system
+is introduced.
+
+**Limitation (documented):** if the recipient clears browser data / cookies, or
+the anonymous session is lost, the account identifier is gone and history does
+not follow to a new session. Offline delivery is therefore scoped to a stable
+anonymous session, matching the product model ("chat history does not follow the
+user to another device").
+
+### RLS / Security
+
+Offline delivery does not weaken RLS. `messages` select/insert remain scoped to
+conversation participants; `start_direct_chat` remains `security definer` and
+still rejects blocks and self-targets. The friendship carve-out only adds a
+consent path for accepted friends (explicit mutual consent) — an arbitrary user
+still cannot open a conversation with or read a stranger's offline messages
+merely by knowing a conversation id.
+
+### Traffic impact
+
+- Healthy P2P: WebRTC → IndexedDB, no Supabase message INSERT.
+- Offline/fallback: only the actual message rows are written (no ACKs, no
+  new polling loops, no per-message worker calls).
+- No new Realtime channels, no Cloudflare Worker call for messaging.
+
+---
+
 ## Phase 5: WebRTC-First Typing
 
 ### Modify typing to use DataChannel

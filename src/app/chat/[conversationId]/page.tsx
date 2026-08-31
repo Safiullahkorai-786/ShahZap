@@ -15,10 +15,11 @@ import { registerChatComposerFocus } from '@/lib/chat-composer-focus'
 import { useSiteActive } from '@/hooks/use-site-active'
 import { useBackgroundP2P } from '@/hooks/use-background-p2p'
 import { validateFile, newFileId, chunkFile, BROADCAST_THRESHOLD, fileToDataUrl, dataUrlToBlob, type BroadcastFileMessage, type FileMeta, type TextMessage } from '@/lib/file-transfer'
-import { ingestMessage, ingestBatch, patchMessage, loadFromIndexedDB, supabaseToPipeline, getLatestSenderSequence, getNextSenderSequence, type PipelineMessage } from '@/lib/db/pipeline'
+import { ingestMessage, ingestBatch, patchMessage, loadFromIndexedDB, supabaseToPipeline, pipelineToUI, getLatestSenderSequence, getNextSenderSequence, type PipelineMessage } from '@/lib/db/pipeline'
 import { deleteMessage as deleteIDBMessage } from '@/lib/db/messages'
 import type { SyncRequest, SyncResponse } from '@/lib/file-transfer'
 import type { MessageTransport } from '@/lib/db/schema'
+import { logText, logReconcile } from '@/lib/p2p-debug'
 import { useCallCoveringChat } from '@/hooks/use-call-covering-chat'
 import { Shimmer } from '@/components/shimmer'
 import { RichText } from '@/components/rich-text'
@@ -248,6 +249,8 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
   const [otherOnline, setOtherOnline] = useState(false)
   const [presenceLabel, setPresenceLabel] = useState('')
   const [otherLastActiveAt, setOtherLastActiveAt] = useState<string | null>(null)
+  const [p2pStatus, setP2pStatus] = useState<'idle' | 'signaling' | 'connecting' | 'open' | 'failed'>('idle')
+  const devP2P = process.env.NODE_ENV === 'development' || (typeof window !== 'undefined' && window.localStorage.getItem('__P2P_DEBUG__') === '1')
   const [showScrollDown, setShowScrollDown] = useState(false)
   const [reactorInfo, setReactorInfo] = useState<{ emoji: string; names: string[] } | null>(null)
   const [sel, setSel] = useState<Selection>({ base: 'dark', accent: 'none' })
@@ -488,7 +491,10 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
       // ── Phase 3: Load from IndexedDB first for instant rendering ──────
       const localMsgs = await loadFromIndexedDB(conversationId)
       if (active && localMsgs.length > 0) {
-        setMessages(localMsgs as unknown as Message[])
+        // Pipeline messages are camelCase; the UI consumes snake_case rows, so
+        // normalize before rendering. This prevents `original_message` being
+        // undefined when <RichText> later calls .split() on it.
+        setMessages((localMsgs as PipelineMessage[]).map(pipelineToUI) as unknown as Message[])
         setLoading(false)
       }
 
@@ -497,7 +503,7 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
       if (readError) setError(friendlyError(readError, 'Could not load the messages. Please refresh.'))
       if (active && data) {
         const merged = await ingestBatch(data as never[], conversationId, 'supabase')
-        setMessages(merged as unknown as Message[])
+        setMessages((merged as PipelineMessage[]).map(pipelineToUI) as unknown as Message[])
         setLoading(false)
       }
 
@@ -515,7 +521,7 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
         const { data: fresh } = await supabase.from('messages').select(MESSAGE_COLUMNS).eq('conversation_id', conversationId).order('created_at', { ascending: true })
         if (active && fresh) {
           const merged = await ingestBatch(fresh as never[], conversationId, 'supabase')
-          setMessages(merged as unknown as Message[])
+          setMessages((merged as PipelineMessage[]).map(pipelineToUI) as unknown as Message[])
         }
       })()
 
@@ -1113,9 +1119,10 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
         senderSequence,
       }
       void ingestMessage(canonical)
-      setMessages((current) => (current.some((item) => item.id === messageId) ? current : [...current, canonical as unknown as Message]))
+      setMessages((current) => (current.some((item) => item.id === messageId) ? current : [...current, pipelineToUI(canonical) as unknown as Message]))
       // Send via DataChannel — if this fails, fall back to Supabase
       const sent = p2pSend(JSON.stringify(textMsg))
+      logText({ case: sent ? 'webrtc' : 'race-cleanup', messageId, p2pOpen: p2pOpen(), p2pSend: sent })
       if (sent) {
         playSentSound()
         setReplyTo(null)
@@ -1146,6 +1153,7 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
       setText(value)
       return
     }
+    logText({ case: 'supabase-fallback', messageId, p2pOpen: p2pOpen() })
     // Phase 3: Persist sent message to IndexedDB via unified pipeline
     const canonical = supabaseToPipeline(inserted as never, 'supabase')
     canonical.conversationId = conversationId
@@ -1164,6 +1172,13 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
     conversationId,
     myId: userId,
     enabled: !disableP2P,
+    // Phase 4.3: WebRTC is transport only. When the peer is known offline we
+    // keep the signaling channel subscribed but do not initiate/retry P2P, so
+    // a DM with an offline recipient never depends on (or churns over) WebRTC.
+    peerOnline: otherOnline,
+    // Dev-only: surface live transport state for the indicator (no-op in prod
+    // unless the explicit __P2P_DEBUG__ flag is set).
+    onStatusChange: setP2pStatus,
     onData: useCallback(async (data: ArrayBuffer | string) => {
       if (typeof data === 'string') {
         try {
@@ -1197,7 +1212,7 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
             }
             void ingestMessage(canonical).then((isNew) => {
               if (isNew) {
-                setMessages((current) => (current.some((item) => item.id === textMsg.id) ? current : [...current, canonical as unknown as Message]))
+                setMessages((current) => (current.some((item) => item.id === textMsg.id) ? current : [...current, pipelineToUI(canonical) as unknown as Message]))
                 playMessageSound()
               }
             })
@@ -1230,12 +1245,14 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
               const syncResp: SyncResponse = { kind: 'sync-response', senderId: userId, messages: missing }
               p2pSend(JSON.stringify(syncResp))
             }
+            logReconcile('sync-response', missing.length)
             return
           }
           // Phase 4: Reconnect reconciliation — receive missing messages
           if (parsed.kind === 'sync-response' && userId) {
             const resp = parsed as SyncResponse
             if (resp.senderId === userId) return
+            logReconcile('sync-request', resp.messages.length)
             for (const textMsg of resp.messages) {
               const canonical: PipelineMessage = {
                 id: textMsg.id,
@@ -1260,7 +1277,7 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
               }
               void ingestMessage(canonical).then((isNew) => {
                 if (isNew) {
-                  setMessages((current) => (current.some((item) => item.id === textMsg.id) ? current : [...current, canonical as unknown as Message]))
+                  setMessages((current) => (current.some((item) => item.id === textMsg.id) ? current : [...current, pipelineToUI(canonical) as unknown as Message]))
                 }
               })
             }
@@ -1784,7 +1801,22 @@ export function ChatRoom({ conversationId, suppressCalls = false, markReadInCall
             className={`flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1 py-1 text-left transition ${persona ? '' : 'hover:bg-slate-800/60'}`}>
             <span aria-hidden><Avatar name={otherName} online={otherOnline} large /></span>
             <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold">{otherName}</span>
+              <span className="flex items-center gap-2">
+                <span className="block truncate text-sm font-semibold">{otherName}</span>
+                {devP2P && (
+                  <span
+                    className={`inline-flex flex-none items-center gap-1 rounded px-1 py-px text-[9px] font-semibold uppercase tracking-wide ${
+                      p2pStatus === 'open' ? 'bg-emerald-500/20 text-emerald-300' :
+                      p2pStatus === 'failed' ? 'bg-rose-500/20 text-rose-300' :
+                      p2pStatus === 'idle' ? 'bg-slate-600/30 text-slate-400' :
+                      'bg-amber-500/20 text-amber-300'
+                    }`}
+                    title="Dev-only WebRTC transport state (__P2P_DEBUG__)"
+                  >
+                    P2P: {p2pStatus.toUpperCase()}
+                  </span>
+                )}
+              </span>
               <span className={`block truncate text-xs ${subtitle === 'typing…' ? 'animate-pulse text-cyan-300' : 'text-slate-400'}`}>{subtitle}</span>
             </span>
           </button>

@@ -455,3 +455,53 @@ describe('messageId contract', () => {
     expect(msgs[0].reactions).toEqual({ '👍': ['user-2'] })
   })
 })
+
+// ── Regressions: DM page renders snake_case UI fields ─────────────────
+// The DM page renders messages from IndexedDB / ingestBatch (camelCase
+// PipelineMessage) AFTER converting them with pipelineToUI(). This guards the
+// runtime crash "Cannot read properties of undefined (reading 'split')" which
+// happened when a camelCase message was rendered directly: the UI read
+// `m.original_message`, got undefined, and passed it to <RichText> →
+// `undefined.split('\n')` in a useMemo.
+
+describe('DM render normalization (pipelineToUI)', () => {
+  it('loadFromIndexedDB output converted via pipelineToUI exposes original_message as a string', async () => {
+    await ingestMessage(makePipelineMsg({
+      id: 'ui-norm-1',
+      conversationId: 'conv-1',
+      senderId: 'user-2',
+      originalMessage: 'hello **world**',
+      translatedMessage: null,
+      createdAt: now,
+    }))
+    const localMsgs = await loadFromIndexedDB('conv-1')
+    const ui = (localMsgs as PipelineMessage[]).map(pipelineToUI)
+    // The exact fields the DM page <RichText> branch reads:
+    expect(ui[0].original_message).toBe('hello **world**')
+    expect(ui[0].created_at).toBe(now)
+    expect(ui[0].sender_id).toBe('user-2')
+    expect(ui[0].translated_message).toBeNull()
+    // original_message must never be undefined for a text message — that is
+    // what feeds <RichText text={body}> and would crash on .split().
+    expect(typeof ui[0].original_message).toBe('string')
+  })
+
+  it('ingestBatch output converted via pipelineToUI keeps original_message defined', async () => {
+    const row = makeRow({ id: 'ui-batch-1', sender_id: 'user-2', original_message: 'batch hello' })
+    const merged = await ingestBatch([row], 'conv-1', 'supabase')
+    const ui = (merged as PipelineMessage[]).map(pipelineToUI)
+    expect(ui[0].original_message).toBe('batch hello')
+    expect(typeof ui[0].original_message).toBe('string')
+    expect(ui[0].created_at).toBeTruthy()
+  })
+
+  it('supabaseToPipeline → pipelineToUI round-trip preserves text', async () => {
+    const row = makeRow({ id: 'ui-rt-1', original_message: 'round trip' })
+    const p = supabaseToPipeline(row)
+    p.conversationId = 'conv-1'
+    const ui = pipelineToUI(p)
+    expect(ui.original_message).toBe('round trip')
+    expect(typeof ui.original_message).toBe('string')
+  })
+})
+
